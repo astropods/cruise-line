@@ -1,0 +1,43 @@
+# yaml-language-server: $schema=https://astropods.ai/schema/package.json
+spec: package/v1
+name: cruise-line
+
+meta:
+  visibility: private
+
+agent:
+  build:
+    context: .
+    dockerfile: Dockerfile
+  interfaces:
+    frontend: true
+  inputs:
+    # All GitHub credentials are auto-configured via the in-app setup flow.
+    # No manual configuration needed — just deploy and visit /setup.
+    - name: CLAUDE_MODEL
+      datatype: string
+      default: "claude-sonnet-4-5"
+      description: Claude model for analysis
+    - name: MAX_CONCURRENT_JOBS
+      datatype: string
+      default: "3"
+      description: Max concurrent walkthrough generation jobs
+
+models:
+  anthropic:
+    provider: anthropic
+
+knowledge:
+  cruise-db:
+    container:
+      image: pgvector/pgvector:pg17
+      port: 5432
+      volume: /var/lib/postgresql/data
+    persistent: true
+    inputs:
+      - name: POSTGRES_HOST_AUTH_METHOD
+        datatype: string
+        default: trust
+      - name: POSTGRES_DB
+        datatype: string
+        default: cruise_line

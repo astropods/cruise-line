@@ -1,0 +1,66 @@
+import type { Context, Next } from 'hono';
+import { config } from '../config.js';
+import { verifySessionToken, type SessionPayload } from '../github/oauth.js';
+import { verifyRepoAccess } from '../github/client.js';
+import { AppError } from './error.js';
+
+// Repo access cache: `${userId}:${owner}/${repo}` -> expiry timestamp
+const accessCache = new Map<string, number>();
+const ACCESS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+/**
+ * Middleware that requires a valid session cookie.
+ * Attaches session payload to the context.
+ */
+export async function requireAuth(c: Context, next: Next) {
+  const cookie = getCookie(c, config.session.cookieName);
+  if (!cookie) {
+    throw new AppError(401, 'Not authenticated');
+  }
+
+  const session = await verifySessionToken(cookie);
+  if (!session) {
+    throw new AppError(401, 'Invalid or expired session');
+  }
+
+  c.set('session', session);
+  await next();
+}
+
+/**
+ * Middleware that verifies the authenticated user has access to the repo
+ * specified in :owner/:repo route params.
+ */
+export async function requireRepoAccess(c: Context, next: Next) {
+  const session = c.get('session') as SessionPayload;
+  const owner = c.req.param('owner');
+  const repo = c.req.param('repo');
+
+  if (!owner || !repo) {
+    throw new AppError(400, 'Missing owner or repo parameter');
+  }
+
+  const cacheKey = `${session.userId}:${owner}/${repo}`;
+  const cached = accessCache.get(cacheKey);
+
+  if (cached && cached > Date.now()) {
+    await next();
+    return;
+  }
+
+  const hasAccess = await verifyRepoAccess(session.githubToken, owner, repo);
+  if (!hasAccess) {
+    throw new AppError(403, 'You do not have access to this repository');
+  }
+
+  accessCache.set(cacheKey, Date.now() + ACCESS_CACHE_TTL);
+  await next();
+}
+
+function getCookie(c: Context, name: string): string | undefined {
+  const header = c.req.header('cookie');
+  if (!header) return undefined;
+
+  const match = header.match(new RegExp(`(?:^|;\\s*)${name}=([^;]*)`));
+  return match ? decodeURIComponent(match[1]) : undefined;
+}

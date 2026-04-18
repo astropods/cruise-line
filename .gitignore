@@ -1,0 +1,34 @@
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Astro
+.ast/
+
+# Dependencies
+node_modules/
+
+# Build
+dist/
+
+# Frontend
+frontend/dist/
+frontend/node_modules/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Bun
+bun.lockb

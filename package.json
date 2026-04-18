@@ -1,0 +1,26 @@
+{
+  "name": "cruise-line",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "description": "Auto generate a guided walkthrough of Github pull requests.",
+  "scripts": {
+    "dev": "bun --watch scripts/dev.ts",
+    "start": "bun agent/index.ts",
+    "build:frontend": "cd frontend && bun install && bun run build"
+  },
+  "main": "./agent/index.ts",
+  "dependencies": {
+    "hono": "^4.7",
+    "@anthropic-ai/claude-agent-sdk": "latest",
+    "postgres": "^3.4",
+    "jose": "^6.0",
+    "@octokit/rest": "^21.0",
+    "@octokit/auth-app": "^7.0",
+    "@octokit/webhooks": "^13.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.1.14",
+    "typescript": "^5.9.3"
+  }
+}
