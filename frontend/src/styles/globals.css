@@ -155,7 +155,7 @@ body {
   /* Word-level edit highlights */
   --diff-code-insert-edit-background-color: rgba(46, 160, 67, 0.45);
   --diff-code-insert-edit-text-color: var(--text-primary);
-  --diff-code-delete-edit-background-color: rgba(248, 81, 73, 0.45);
+  --diff-code-delete-edit-background-color: rgba(248, 81, 73, 0.27);
   --diff-code-delete-edit-text-color: var(--text-primary);
 
   /* Selection */
