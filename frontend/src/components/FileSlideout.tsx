@@ -322,11 +322,22 @@ function SlideoutDiffView({ filePath, fileContent, focusLines }: { filePath: str
         const lineComments = getCommentsForLine(filePath, lineNum);
         const isActiveInput = activeCommentLine?.path === filePath && activeCommentLine?.line === lineNum;
 
-        if (lineComments.length > 0 || isActiveInput) {
+        // Separate top-level comments from replies
+        const topLevel = lineComments.filter((c) => !c.inReplyToId);
+        const repliesMap = new Map<number, typeof lineComments>();
+        for (const c of lineComments) {
+          if (c.inReplyToId) {
+            const arr = repliesMap.get(c.inReplyToId) ?? [];
+            arr.push(c);
+            repliesMap.set(c.inReplyToId, arr);
+          }
+        }
+
+        if (topLevel.length > 0 || isActiveInput) {
           w[changeKey] = (
             <div>
-              {lineComments.map((c) => (
-                <InlineComment key={c.id} comment={c} />
+              {topLevel.map((c) => (
+                <InlineComment key={c.id} comment={c} replies={repliesMap.get(c.id)} />
               ))}
               {isActiveInput && (
                 <CommentInput
@@ -452,9 +463,20 @@ function SlideoutCodeView({ filePath, fileContent, focusLines }: { filePath: str
                 {line}
               </span>
             </div>
-            {lineComments.map((c) => (
-              <InlineComment key={c.id} comment={c} />
-            ))}
+            {(() => {
+              const topLevel = lineComments.filter((c) => !c.inReplyToId);
+              const repliesMap = new Map<number, typeof lineComments>();
+              for (const c of lineComments) {
+                if (c.inReplyToId) {
+                  const arr = repliesMap.get(c.inReplyToId) ?? [];
+                  arr.push(c);
+                  repliesMap.set(c.inReplyToId, arr);
+                }
+              }
+              return topLevel.map((c) => (
+                <InlineComment key={c.id} comment={c} replies={repliesMap.get(c.id)} />
+              ));
+            })()}
             {isActiveInput && (
               <CommentInput
                 userAvatarUrl={userAvatarUrl}

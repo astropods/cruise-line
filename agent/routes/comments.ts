@@ -10,6 +10,23 @@ export const commentRoutes = new Hono();
 commentRoutes.use('/:owner/:repo/:pr/*', requireAuth, requireRepoAccess);
 commentRoutes.use('/:owner/:repo/:pr', requireAuth, requireRepoAccess);
 
+function formatComment(c: any) {
+  return {
+    id: c.id,
+    body: c.body,
+    path: c.path,
+    line: c.line ?? c.original_line,
+    side: c.side ?? 'RIGHT',
+    user: {
+      login: c.user?.login ?? 'unknown',
+      avatarUrl: c.user?.avatar_url ?? '',
+    },
+    createdAt: c.created_at,
+    inReplyToId: c.in_reply_to_id ?? null,
+    htmlUrl: c.html_url ?? '',
+  };
+}
+
 /**
  * GET /api/comments/:owner/:repo/:pr
  * Fetch all review comments for the PR.
@@ -34,21 +51,7 @@ commentRoutes.get('/:owner/:repo/:pr', async (c) => {
     per_page: 100,
   });
 
-  const comments = data.map((c: any) => ({
-    id: c.id,
-    body: c.body,
-    path: c.path,
-    line: c.line ?? c.original_line,
-    side: c.side ?? 'RIGHT',
-    user: {
-      login: c.user?.login ?? 'unknown',
-      avatarUrl: c.user?.avatar_url ?? '',
-    },
-    createdAt: c.created_at,
-    inReplyToId: c.in_reply_to_id ?? null,
-  }));
-
-  return c.json({ comments });
+  return c.json({ comments: data.map(formatComment) });
 });
 
 /**
@@ -92,19 +95,38 @@ commentRoutes.post('/:owner/:repo/:pr', async (c) => {
     commit_id: commitId,
   });
 
-  return c.json({
-    comment: {
-      id: data.id,
-      body: data.body,
-      path: data.path,
-      line: data.line ?? data.original_line,
-      side: data.side ?? 'RIGHT',
-      user: {
-        login: data.user?.login ?? session.login,
-        avatarUrl: data.user?.avatar_url ?? session.avatarUrl,
-      },
-      createdAt: data.created_at,
-      inReplyToId: data.in_reply_to_id ?? null,
-    },
-  }, 201);
+  return c.json({ comment: formatComment(data) }, 201);
+});
+
+/**
+ * POST /api/comments/:owner/:repo/:pr/:commentId/reply
+ * Reply to an existing review comment.
+ */
+commentRoutes.post('/:owner/:repo/:pr/:commentId/reply', async (c) => {
+  const session = c.get('session') as SessionPayload;
+  const owner = c.req.param('owner');
+  const repo = c.req.param('repo');
+  const prNumber = Number(c.req.param('pr'));
+  const commentId = Number(c.req.param('commentId'));
+
+  if (isNaN(prNumber)) throw new AppError(400, 'Invalid PR number');
+  if (isNaN(commentId)) throw new AppError(400, 'Invalid comment ID');
+
+  const { body } = await c.req.json<{ body: string }>();
+  if (!body?.trim()) throw new AppError(400, 'Reply body is required');
+
+  const octokit = new Octokit({
+    baseUrl: config.github.baseUrl,
+    auth: session.githubToken,
+  });
+
+  const { data } = await octokit.pulls.createReplyForReviewComment({
+    owner,
+    repo,
+    pull_number: prNumber,
+    comment_id: commentId,
+    body: body.trim(),
+  });
+
+  return c.json({ comment: formatComment(data) }, 201);
 });

@@ -125,6 +125,7 @@ export interface PRComment {
   user: { login: string; avatarUrl: string };
   createdAt: string;
   inReplyToId: number | null;
+  htmlUrl: string;
 }
 
 export function fetchComments(owner: string, repo: string, pr: number) {
@@ -141,5 +142,19 @@ export function postComment(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(comment),
+  });
+}
+
+export function replyToComment(
+  owner: string,
+  repo: string,
+  pr: number,
+  commentId: number,
+  body: string,
+) {
+  return apiFetch<{ comment: PRComment }>(`/api/comments/${owner}/${repo}/${pr}/${commentId}/reply`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ body }),
   });
 }

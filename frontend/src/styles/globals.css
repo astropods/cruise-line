@@ -237,6 +237,8 @@ body {
 }
 .cruise-diff-wrapper .slideout-focus-row {
   background: rgba(88, 166, 255, 0.06) !important;
+  position: relative;
+  z-index: 1;
 }
 
 /* Commentable diff gutter — show + on hover */
@@ -264,6 +266,8 @@ body {
 /* Comment widgets in diff */
 .cruise-diff-wrapper .diff-widget {
   background: transparent;
+  position: relative;
+  z-index: 5;
 }
 .cruise-diff-wrapper .diff-widget-content {
   padding: 0;

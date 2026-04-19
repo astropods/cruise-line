@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { fetchComments, postComment, type PRComment } from '../api';
+import { fetchComments, postComment, replyToComment, type PRComment } from '../api';
 
 interface UseCommentsOptions {
   owner: string;
@@ -62,11 +62,21 @@ export function useComments({ owner, repo, pr, commitId }: UseCommentsOptions) {
     [owner, repo, pr, commitId],
   );
 
+  const replyTo = useCallback(
+    async (commentId: number, body: string) => {
+      const res = await replyToComment(owner, repo, pr, commentId, body);
+      setComments((prev) => [...prev, res.comment]);
+      return res.comment;
+    },
+    [owner, repo, pr],
+  );
+
   return {
     comments,
     loading,
     getCommentsForLine,
     commentCountForFile,
     addComment,
+    replyTo,
   };
 }
