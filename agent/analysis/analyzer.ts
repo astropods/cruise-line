@@ -1,12 +1,11 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
-import { tmpdir } from 'os';
-import { mkdtemp, rm, readFile } from 'fs/promises';
+import { readFile } from 'fs/promises';
 import { join } from 'path';
 import { config } from '../config.js';
 import { SYSTEM_PROMPT, buildUserPrompt } from './prompt.js';
 import { walkthroughJsonSchema, type Walkthrough, type ClaudeWalkthroughOutput, type FileContent } from './types.js';
 import { updateWalkthroughStatus } from '../db/walkthroughs.js';
-import { getInstallationToken } from '../github/app.js';
+import { ensureClone } from '../repo/manager.js';
 import { jobManager } from './jobs.js';
 import type { PrMetadata } from '../github/types.js';
 
@@ -113,37 +112,31 @@ export async function analyzePr(
   walkthroughId: number,
   prMetadata: PrMetadata,
 ): Promise<void> {
-  let tmpDir: string | undefined;
-
   try {
-    tmpDir = await mkdtemp(join(tmpdir(), 'cruise-'));
-    addProgress(walkthroughId, 'status', 'Cloning repository...');
+    addProgress(walkthroughId, 'status', 'Preparing repository...');
 
-    const token = await getInstallationToken(prMetadata.installationId);
-    const host = new URL(config.github.htmlUrl).host;
-    const cloneUrl = `https://x-access-token:${token}@${host}/${prMetadata.owner}/${prMetadata.repo}.git`;
-
-    const cloneProc = Bun.spawn(
-      ['git', 'clone', '--depth=50', '--single-branch', '--branch', prMetadata.headRef, cloneUrl, '.'],
-      { cwd: tmpDir, stdout: 'pipe', stderr: 'pipe' },
+    // Ensure persistent clone exists and is at the correct SHA
+    const repoDir = await ensureClone(
+      prMetadata.owner,
+      prMetadata.repo,
+      prMetadata.number,
+      prMetadata.headSha,
+      prMetadata.headRef,
+      prMetadata.installationId,
     );
-    const cloneExit = await cloneProc.exited;
-    if (cloneExit !== 0) {
-      const stderr = await new Response(cloneProc.stderr).text();
-      throw new Error(`git clone failed (exit ${cloneExit}): ${stderr}`);
-    }
 
     addProgress(walkthroughId, 'status', 'Fetching base branch for diff...');
 
+    // Fetch base branch for diff context
     const fetchProc = Bun.spawn(
       ['git', 'fetch', 'origin', prMetadata.baseRef, '--depth=50'],
-      { cwd: tmpDir, stdout: 'pipe', stderr: 'pipe' },
+      { cwd: repoDir, stdout: 'pipe', stderr: 'pipe' },
     );
     await fetchProc.exited;
 
     const diffProc = Bun.spawn(
       ['git', 'diff', `origin/${prMetadata.baseRef}...HEAD`],
-      { cwd: tmpDir, stdout: 'pipe', stderr: 'pipe' },
+      { cwd: repoDir, stdout: 'pipe', stderr: 'pipe' },
     );
     const diffOutput = await new Response(diffProc.stdout).text();
 
@@ -157,7 +150,7 @@ export async function analyzePr(
     for await (const message of query({
       prompt: userPrompt,
       options: {
-        cwd: tmpDir,
+        cwd: repoDir,
         systemPrompt: SYSTEM_PROMPT,
         model: config.claude.model,
         allowedTools: ['Read', 'Glob', 'Grep', 'Bash'],
@@ -213,7 +206,7 @@ export async function analyzePr(
     addProgress(walkthroughId, 'status', 'Reading file contents...');
 
     // Read actual file contents for all referenced files
-    const files = await collectFiles(tmpDir, prMetadata.baseRef, claudeOutput);
+    const files = await collectFiles(repoDir, prMetadata.baseRef, claudeOutput);
 
     // Assemble the full walkthrough with file contents
     const walkthrough: Walkthrough = {
@@ -237,9 +230,5 @@ export async function analyzePr(
       undefined,
       error instanceof Error ? error.message : String(error),
     );
-  } finally {
-    if (tmpDir) {
-      await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
-    }
   }
 }

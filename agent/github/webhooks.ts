@@ -1,6 +1,8 @@
 import { Webhooks } from '@octokit/webhooks';
 import { config } from '../config.js';
 import { postWalkthroughComment } from './client.js';
+import { cleanupClone } from '../repo/manager.js';
+import { deleteChatSessionsForPr } from '../db/chat-sessions.js';
 
 let webhooksInstance: Webhooks | null = null;
 
@@ -28,6 +30,23 @@ function registerHandlers(wh: Webhooks) {
       }
     },
   );
+
+  // When a PR is closed or merged, clean up the clone and chat sessions
+  wh.on('pull_request.closed', async ({ payload }) => {
+    const { repository, pull_request: pr } = payload;
+    const owner = repository.owner.login;
+    const repo = repository.name;
+    const prNumber = pr.number;
+
+    console.log(`PR closed: ${owner}/${repo}#${prNumber}, cleaning up...`);
+
+    try {
+      await cleanupClone(owner, repo, prNumber);
+      await deleteChatSessionsForPr(owner, repo, prNumber);
+    } catch (err) {
+      console.error(`Cleanup failed for ${owner}/${repo}#${prNumber}:`, err);
+    }
+  });
 }
 
 /**

@@ -23,6 +23,9 @@ FROM oven/bun:1-slim
 RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
+# Persistent data directory for clones and session data
+RUN mkdir -p /data/repos /data/sessions
+
 WORKDIR /app
 
 # Copy backend
@@ -34,7 +37,7 @@ COPY package.json ./
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 
 # Non-root user
-RUN chown -R bun:bun /app
+RUN chown -R bun:bun /app /data
 USER bun
 
 EXPOSE 80

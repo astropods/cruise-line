@@ -10,6 +10,7 @@ import { MiniNav } from '../components/MiniNav';
 import { ProgressBar } from '../components/ProgressBar';
 import { GenerateButton } from '../components/GenerateButton';
 import { StaleIndicator } from '../components/StaleIndicator';
+import { ChatPanel } from '../components/ChatPanel';
 import { PageLoading, ErrorState } from '../components/LoadingStates';
 import Markdown from 'react-markdown';
 
@@ -125,6 +126,9 @@ export function WalkthroughPage() {
 
         {/* File side panel — sits alongside the document */}
         <FileSlideout files={walkthrough.files} />
+
+        {/* Chat panel — floating bottom-right */}
+        <ChatPanel owner={owner!} repo={repo!} prNumber={prNumber} />
       </div>
       </CommentsProvider>
     </SlideoutProvider>
