@@ -66,6 +66,21 @@ async function getFilePatch(repoDir: string, baseRef: string, filePath: string):
 }
 
 /**
+ * Extract all file paths referenced by directives in section bodies.
+ */
+function extractFileReferences(output: ClaudeWalkthroughOutput): Set<string> {
+  const files = new Set<string>();
+  const regex = /::(?:diff|code|file)\{[^}]*file="([^"]+)"[^}]*\}/g;
+  for (const section of output.sections) {
+    let match;
+    while ((match = regex.exec(section.body)) !== null) {
+      files.add(match[1]);
+    }
+  }
+  return files;
+}
+
+/**
  * Collect file contents and unified diff patches for all referenced files.
  */
 async function collectFiles(
@@ -74,15 +89,7 @@ async function collectFiles(
   output: ClaudeWalkthroughOutput,
 ): Promise<Record<string, FileContent>> {
   const files: Record<string, FileContent> = {};
-  const filePaths = new Set<string>();
-
-  for (const chapter of output.chapters) {
-    for (const step of chapter.steps) {
-      for (const ref of step.refs) {
-        filePaths.add(ref.file);
-      }
-    }
-  }
+  const filePaths = extractFileReferences(output);
 
   await Promise.all(
     Array.from(filePaths).map(async (filePath) => {

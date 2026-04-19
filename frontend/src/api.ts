@@ -28,29 +28,13 @@ export interface Walkthrough {
     headSha: string;
   };
   summary: string;
-  highlights: string[];
   files: Record<string, FileContent>;
-  chapters: Chapter[];
+  sections: Section[];
 }
 
-export interface Chapter {
+export interface Section {
   title: string;
-  intent: string;
-  steps: Step[];
-}
-
-export interface CodeReference {
-  file: string;
-  language: string;
-  changeType: 'added' | 'modified' | 'deleted' | 'context';
-  focusStart: number;
-  focusEnd: number;
-}
-
-export interface Step {
-  title: string;
-  explanation: string;
-  refs: CodeReference[];
+  body: string;
 }
 
 export interface UserInfo {

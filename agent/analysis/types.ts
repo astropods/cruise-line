@@ -1,7 +1,7 @@
 export interface FileContent {
-  after?: string;    // content at head ref (undefined for deleted files)
+  after?: string;
   language: string;
-  /** Raw unified diff patch from `git diff` for this file. Undefined for context-only files. */
+  /** Raw unified diff patch from `git diff`. Undefined for context-only files. */
   patch?: string;
 }
 
@@ -15,60 +15,28 @@ export interface Walkthrough {
     headSha: string;
   };
   summary: string;
-  highlights: string[];
-  /** Full file contents keyed by path, populated by the analyzer (not Claude) */
+  sections: Section[];
+  /** Full file contents keyed by path, populated by the analyzer */
   files: Record<string, FileContent>;
-  chapters: Chapter[];
 }
 
-export interface Chapter {
+export interface Section {
   title: string;
-  intent: string;
-  steps: Step[];
+  /** Markdown body with embedded directives (::diff{}, ::code{}, ::file{}, ::callout{}) */
+  body: string;
 }
 
-export interface CodeReference {
-  file: string;
-  language: string;
-  changeType: 'added' | 'modified' | 'deleted' | 'context';
-  focusStart: number;
-  focusEnd: number;
-}
-
-export interface Step {
-  title: string;
-  explanation: string;
-  /** Array of code regions to show for this step. Usually one, but can be multiple. */
-  refs: CodeReference[];
-}
-
-/** The shape Claude produces (without full file contents — we add those after) */
+/** The shape Claude produces (without full file contents) */
 export interface ClaudeWalkthroughOutput {
   pr: Walkthrough['pr'];
   summary: string;
-  highlights: string[];
-  chapters: Chapter[];
+  sections: Section[];
 }
-
-const codeReferenceSchema = {
-  type: 'object',
-  required: ['file', 'language', 'changeType', 'focusStart', 'focusEnd'],
-  properties: {
-    file: { type: 'string' },
-    language: { type: 'string' },
-    changeType: {
-      type: 'string',
-      enum: ['added', 'modified', 'deleted', 'context'],
-    },
-    focusStart: { type: 'integer', description: '1-indexed start line of the focus region' },
-    focusEnd: { type: 'integer', description: '1-indexed end line of the focus region' },
-  },
-} as const;
 
 /** JSON Schema for Claude Agent SDK structured output */
 export const walkthroughJsonSchema = {
   type: 'object',
-  required: ['pr', 'summary', 'highlights', 'chapters'],
+  required: ['pr', 'summary', 'sections'],
   properties: {
     pr: {
       type: 'object',
@@ -83,30 +51,16 @@ export const walkthroughJsonSchema = {
       },
     },
     summary: { type: 'string' },
-    highlights: { type: 'array', items: { type: 'string' } },
-    chapters: {
+    sections: {
       type: 'array',
       items: {
         type: 'object',
-        required: ['title', 'intent', 'steps'],
+        required: ['title', 'body'],
         properties: {
           title: { type: 'string' },
-          intent: { type: 'string' },
-          steps: {
-            type: 'array',
-            items: {
-              type: 'object',
-              required: ['title', 'explanation', 'refs'],
-              properties: {
-                title: { type: 'string' },
-                explanation: { type: 'string' },
-                refs: {
-                  type: 'array',
-                  items: codeReferenceSchema,
-                  description: 'Code regions to show. Usually one, but use multiple to show related code across files together.',
-                },
-              },
-            },
+          body: {
+            type: 'string',
+            description: 'Markdown with embedded directives: ::diff{file="path" lines="start-end"}, ::code{file="path" lines="start-end"}, ::file{file="path"}, ::callout{type="info|warning|breaking"}',
           },
         },
       },
