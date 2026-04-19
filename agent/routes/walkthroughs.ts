@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { config } from '../config.js';
 import { requireAuth, requireRepoAccess } from '../middleware/session.js';
 import {
   upsertWalkthrough,
@@ -39,7 +40,7 @@ walkthroughRoutes.get('/:owner/:repo/:pr', async (c) => {
   }
 
   if (!walkthrough) {
-    return c.json({ walkthrough: null, currentHeadSha });
+    return c.json({ walkthrough: null, currentHeadSha, githubUrl: config.github.htmlUrl });
   }
 
   return c.json({
@@ -53,6 +54,7 @@ walkthroughRoutes.get('/:owner/:repo/:pr', async (c) => {
       updatedAt: walkthrough.updated_at,
     },
     currentHeadSha,
+    githubUrl: config.github.htmlUrl,
   });
 });
 

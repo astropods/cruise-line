@@ -15,6 +15,7 @@ interface WalkthroughState {
   walkthroughHeadSha: string | null;
   isStale: boolean;
   progress: ProgressEntry[];
+  githubUrl: string;
 }
 
 export function useWalkthrough(owner: string, repo: string, pr: number) {
@@ -26,6 +27,7 @@ export function useWalkthrough(owner: string, repo: string, pr: number) {
     walkthroughHeadSha: null,
     isStale: false,
     progress: [],
+    githubUrl: 'https://github.com',
   });
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -51,6 +53,7 @@ export function useWalkthrough(owner: string, repo: string, pr: number) {
           walkthroughHeadSha: null,
           isStale: false,
           progress: [],
+          githubUrl: res.githubUrl,
         });
         return;
       }
@@ -65,6 +68,7 @@ export function useWalkthrough(owner: string, repo: string, pr: number) {
         walkthroughHeadSha: wt.headSha,
         isStale,
         progress: [],
+        githubUrl: res.githubUrl,
       });
 
       if (wt.status === 'pending' || wt.status === 'running') {

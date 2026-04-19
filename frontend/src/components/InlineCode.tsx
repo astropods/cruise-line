@@ -9,7 +9,7 @@ interface InlineCodeProps {
 }
 
 export function InlineCode({ file, lines, fileContent }: InlineCodeProps) {
-  const { openFile } = useSlideout();
+  const { openFile, githubFileUrl } = useSlideout();
   const [highlightedLines, setHighlightedLines] = useState<string[]>([]);
 
   const content = fileContent?.after ?? '';
@@ -59,10 +59,10 @@ export function InlineCode({ file, lines, fileContent }: InlineCodeProps) {
     <div className="my-4 rounded-lg border border-[var(--border)] overflow-hidden">
       {/* File header */}
       <div className="flex items-center justify-between px-4 py-2 bg-[var(--bg-tertiary)] border-b border-[var(--border)]">
-        <span className="text-xs font-mono text-[var(--text-secondary)]">
+        <a href={githubFileUrl(file)} target="_blank" rel="noopener noreferrer" className="text-xs font-mono text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors">
           {file}
           {lines && <span className="opacity-50 ml-2">L{lines[0]}–{lines[1]}</span>}
-        </span>
+        </a>
         <button
           onClick={() => openFile(file, lines)}
           className="text-xs text-[var(--accent)] hover:underline"

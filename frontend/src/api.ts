@@ -9,6 +9,7 @@ export interface WalkthroughResponse {
     updatedAt: string;
   } | null;
   currentHeadSha: string | null;
+  githubUrl: string;
 }
 
 export interface FileContent {
