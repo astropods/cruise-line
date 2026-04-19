@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { useParams } from 'react-router';
 import { useWalkthrough } from '../hooks/useWalkthrough';
+import { useAuth } from '../hooks/useAuth';
 import { SlideoutProvider } from '../contexts/SlideoutContext';
+import { CommentsProvider } from '../contexts/CommentsContext';
 import { SectionRenderer } from '../components/SectionRenderer';
 import { FileSlideout } from '../components/FileSlideout';
 import { MiniNav } from '../components/MiniNav';
@@ -14,6 +16,7 @@ import Markdown from 'react-markdown';
 export function WalkthroughPage() {
   const { owner, repo, pr } = useParams<{ owner: string; repo: string; pr: string }>();
   const prNumber = Number(pr);
+  const { user } = useAuth();
 
   const {
     walkthrough,
@@ -61,6 +64,13 @@ export function WalkthroughPage() {
       prNumber={prNumber}
       headSha={walkthrough.pr.headSha}
     >
+      <CommentsProvider
+        owner={owner!}
+        repo={repo!}
+        pr={prNumber}
+        commitId={walkthrough.pr.headSha}
+        userAvatarUrl={user?.avatarUrl ?? ''}
+      >
       <div className="flex h-screen overflow-hidden bg-[var(--bg-primary)]">
         {/* Main scrollable document */}
         <div className="flex-1 min-w-0 overflow-auto">
@@ -116,6 +126,7 @@ export function WalkthroughPage() {
         {/* File side panel — sits alongside the document */}
         <FileSlideout files={walkthrough.files} />
       </div>
+      </CommentsProvider>
     </SlideoutProvider>
   );
 }

@@ -113,3 +113,33 @@ export function fetchStatus(owner: string, repo: string, pr: number) {
 export function fetchUser() {
   return apiFetch<UserInfo>('/api/auth/me');
 }
+
+// --- PR Comments ---
+
+export interface PRComment {
+  id: number;
+  body: string;
+  path: string;
+  line: number;
+  side: 'LEFT' | 'RIGHT';
+  user: { login: string; avatarUrl: string };
+  createdAt: string;
+  inReplyToId: number | null;
+}
+
+export function fetchComments(owner: string, repo: string, pr: number) {
+  return apiFetch<{ comments: PRComment[] }>(`/api/comments/${owner}/${repo}/${pr}`);
+}
+
+export function postComment(
+  owner: string,
+  repo: string,
+  pr: number,
+  comment: { body: string; path: string; line: number; side: 'LEFT' | 'RIGHT'; commitId: string },
+) {
+  return apiFetch<{ comment: PRComment }>(`/api/comments/${owner}/${repo}/${pr}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(comment),
+  });
+}

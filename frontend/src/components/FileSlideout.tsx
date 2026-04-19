@@ -3,6 +3,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { parseDiff, Diff, Hunk, tokenize, markEdits } from 'react-diff-view';
 import refractor from 'refractor';
 import { useSlideout } from '../contexts/SlideoutContext';
+import { useCommentsContext } from '../contexts/CommentsContext';
+import { InlineComment } from './InlineComment';
+import { CommentInput } from './CommentInput';
 import type { FileContent } from '../api';
 import 'react-diff-view/style/index.css';
 
@@ -118,6 +121,7 @@ export function FileSlideout({ files }: FileSlideoutProps) {
             <div className="flex-1 overflow-auto" id="slideout-scroll-container">
               <SlideoutContent
                 key={`${activeSlideout.file}-${activeSlideout.lines?.join('-') ?? 'all'}`}
+                filePath={activeSlideout.file}
                 fileContent={fileContent}
                 focusLines={activeSlideout.lines}
               />
@@ -137,12 +141,12 @@ function middleTruncate(str: string, maxLen: number): string {
   return `${str.slice(0, front)}\u2026${str.slice(-back)}`;
 }
 
-function SlideoutContent({ fileContent, focusLines }: { fileContent: FileContent | undefined; focusLines?: [number, number] }) {
+function SlideoutContent({ filePath, fileContent, focusLines }: { filePath: string; fileContent: FileContent | undefined; focusLines?: [number, number] }) {
   if (fileContent?.patch) {
-    return <SlideoutDiffView fileContent={fileContent} focusLines={focusLines} />;
+    return <SlideoutDiffView filePath={filePath} fileContent={fileContent} focusLines={focusLines} />;
   }
   if (fileContent?.after) {
-    return <SlideoutCodeView fileContent={fileContent} focusLines={focusLines} />;
+    return <SlideoutCodeView filePath={filePath} fileContent={fileContent} focusLines={focusLines} />;
   }
   return (
     <div className="p-8 text-center text-[var(--text-secondary)]">
@@ -198,7 +202,8 @@ function FilePickerDropdown({ currentFile, allFiles, onSelect }: {
   );
 }
 
-function SlideoutDiffView({ fileContent, focusLines }: { fileContent: FileContent; focusLines?: [number, number] }) {
+function SlideoutDiffView({ filePath, fileContent, focusLines }: { filePath: string; fileContent: FileContent; focusLines?: [number, number] }) {
+  const { getCommentsForLine, addComment, activeCommentLine, setActiveCommentLine, userAvatarUrl } = useCommentsContext();
   const parsed = useMemo(() => {
     try {
       return parseDiff(fileContent.patch!, { nearbySequences: 'zip' })[0] ?? null;
@@ -238,17 +243,12 @@ function SlideoutDiffView({ fileContent, focusLines }: { fileContent: FileConten
       //   "N{lineNum}" for normal, "I{lineNum}" for insert, "D{lineNum}" for delete
       // Query all cells with change keys and extract line numbers
       const cells = container.querySelectorAll('td[data-change-key]');
-      let firstFocusRow: HTMLElement | null = null;
 
       cells.forEach((cell) => {
         const key = (cell as HTMLElement).dataset.changeKey ?? '';
-        // Extract line number from key — the number after the first character
         const num = parseInt(key.slice(1), 10);
         if (isNaN(num)) return;
 
-        // For normal lines (N), the number is oldLineNumber.
-        // For insert (I) and delete (D), it's the respective side's lineNumber.
-        // We'll match against newLineNumber for I and N lines.
         const prefix = key[0];
         const isNewSide = prefix === 'I' || prefix === 'N';
         if (!isNewSide) return;
@@ -258,18 +258,17 @@ function SlideoutDiffView({ fileContent, focusLines }: { fileContent: FileConten
 
         if (num >= focusLines[0] && num <= focusLines[1]) {
           row.classList.add('slideout-focus-row');
-          if (!firstFocusRow) firstFocusRow = row as HTMLElement;
         }
       });
 
-      if (firstFocusRow) {
-        // Find the last focus row to calculate total focus height
-        const focusRows = container.querySelectorAll('.slideout-focus-row');
-        const lastFocusRow = focusRows[focusRows.length - 1] as HTMLElement;
+      const focusRows = container.querySelectorAll('.slideout-focus-row');
+      if (focusRows.length > 0) {
+        const firstRow = focusRows[0] as HTMLElement;
+        const lastRow = focusRows[focusRows.length - 1] as HTMLElement;
 
         const containerRect = container.getBoundingClientRect();
-        const firstRect = firstFocusRow.getBoundingClientRect();
-        const lastRect = lastFocusRow.getBoundingClientRect();
+        const firstRect = firstRow.getBoundingClientRect();
+        const lastRect = lastRow.getBoundingClientRect();
 
         const focusTop = firstRect.top - containerRect.top + container.scrollTop;
         const focusHeight = lastRect.bottom - firstRect.top;
@@ -294,16 +293,89 @@ function SlideoutDiffView({ fileContent, focusLines }: { fileContent: FileConten
     return () => clearTimeout(timer);
   }, [focusLines, parsed]);
 
+  // Build widgets map: inject comments and comment input below relevant lines
+  const widgets = useMemo(() => {
+    if (!parsed) return {};
+    const w: Record<string, React.ReactElement> = {};
+
+    for (const hunk of parsed.hunks) {
+      for (const change of hunk.changes) {
+        // Determine the change key (same format react-diff-view uses internally)
+        let changeKey: string;
+        let lineNum: number;
+        let side: 'LEFT' | 'RIGHT';
+
+        if (change.type === 'insert') {
+          changeKey = `I${change.lineNumber}`;
+          lineNum = change.lineNumber;
+          side = 'RIGHT';
+        } else if (change.type === 'delete') {
+          changeKey = `D${change.lineNumber}`;
+          lineNum = change.lineNumber;
+          side = 'LEFT';
+        } else {
+          changeKey = `N${change.oldLineNumber}`;
+          lineNum = change.newLineNumber;
+          side = 'RIGHT';
+        }
+
+        const lineComments = getCommentsForLine(filePath, lineNum);
+        const isActiveInput = activeCommentLine?.path === filePath && activeCommentLine?.line === lineNum;
+
+        if (lineComments.length > 0 || isActiveInput) {
+          w[changeKey] = (
+            <div>
+              {lineComments.map((c) => (
+                <InlineComment key={c.id} comment={c} />
+              ))}
+              {isActiveInput && (
+                <CommentInput
+                  userAvatarUrl={userAvatarUrl}
+                  onSubmit={async (body) => {
+                    await addComment(filePath, lineNum, side, body);
+                    setActiveCommentLine(null);
+                  }}
+                  onCancel={() => setActiveCommentLine(null)}
+                />
+              )}
+            </div>
+          );
+        }
+      }
+    }
+    return w;
+  }, [parsed, filePath, getCommentsForLine, activeCommentLine, addComment, setActiveCommentLine, userAvatarUrl]);
+
+  // Gutter click handler — open comment input on the clicked line
+  const handleGutterClick = useCallback(({ change }: any) => {
+    if (!change) return;
+    let lineNum: number;
+    let side: 'LEFT' | 'RIGHT';
+    if (change.type === 'insert') {
+      lineNum = change.lineNumber;
+      side = 'RIGHT';
+    } else if (change.type === 'delete') {
+      lineNum = change.lineNumber;
+      side = 'LEFT';
+    } else {
+      lineNum = change.newLineNumber;
+      side = 'RIGHT';
+    }
+    setActiveCommentLine({ path: filePath, line: lineNum, side });
+  }, [filePath, setActiveCommentLine]);
+
   if (!parsed) return null;
 
   return (
-    <div className="cruise-diff-wrapper min-w-fit">
+    <div className="cruise-diff-wrapper cruise-commentable-diff min-w-fit">
       <Diff
         viewType="unified"
         diffType={parsed.type}
         hunks={parsed.hunks}
         tokens={tokens}
+        widgets={widgets}
         gutterType="default"
+        gutterEvents={{ onClick: handleGutterClick }}
       >
         {(hunks) => hunks.map((hunk) => <Hunk key={hunk.content} hunk={hunk} />)}
       </Diff>
@@ -311,7 +383,8 @@ function SlideoutDiffView({ fileContent, focusLines }: { fileContent: FileConten
   );
 }
 
-function SlideoutCodeView({ fileContent, focusLines }: { fileContent: FileContent; focusLines?: [number, number] }) {
+function SlideoutCodeView({ filePath, fileContent, focusLines }: { filePath: string; fileContent: FileContent; focusLines?: [number, number] }) {
+  const { getCommentsForLine, addComment, activeCommentLine, setActiveCommentLine, userAvatarUrl } = useCommentsContext();
   const lines = (fileContent.after ?? '').split('\n');
   const focusRef = useRef<HTMLDivElement>(null);
 
@@ -348,32 +421,53 @@ function SlideoutCodeView({ fileContent, focusLines }: { fileContent: FileConten
   }, [focusLines]);
 
   return (
-    <pre className="text-[13px] leading-[1.5] font-mono m-0 bg-[var(--bg-secondary)] min-w-fit">
+    <div className="text-[13px] leading-[1.5] font-mono m-0 bg-[var(--bg-secondary)] min-w-fit">
       {lines.map((line, i) => {
         const lineNum = i + 1;
         const inFocus = focusLines && lineNum >= focusLines[0] && lineNum <= focusLines[1];
         const isFirst = focusLines && lineNum === focusLines[0];
+        const lineComments = getCommentsForLine(filePath, lineNum);
+        const isActiveInput = activeCommentLine?.path === filePath && activeCommentLine?.line === lineNum;
 
         return (
-          <div
-            key={i}
-            ref={isFirst ? focusRef : undefined}
-            className="flex"
-            data-slideout-focus={inFocus ? true : undefined}
-            style={{
-              background: inFocus ? 'rgba(88,166,255,0.06)' : 'transparent',
-              boxShadow: inFocus ? 'inset 3px 0 0 var(--accent)' : 'none',
-            }}
-          >
-            <span className="select-none w-12 flex-shrink-0 text-right pr-4 text-xs text-[var(--text-secondary)]/40" style={{ lineHeight: '1.5em' }}>
-              {lineNum}
-            </span>
-            <span className="flex-1 px-4 whitespace-pre text-[var(--text-primary)]">
-              {line}
-            </span>
+          <div key={i}>
+            <div
+              ref={isFirst ? focusRef : undefined}
+              className="flex group"
+              data-slideout-focus={inFocus ? true : undefined}
+              style={{
+                background: inFocus ? 'rgba(88,166,255,0.06)' : 'transparent',
+                boxShadow: inFocus ? 'inset 3px 0 0 var(--accent)' : 'none',
+              }}
+            >
+              <span
+                className="select-none w-12 flex-shrink-0 text-right pr-4 text-xs text-[var(--text-secondary)]/40 cursor-pointer hover:text-[var(--accent)] relative"
+                style={{ lineHeight: '1.5em' }}
+                onClick={() => setActiveCommentLine({ path: filePath, line: lineNum, side: 'RIGHT' })}
+              >
+                <span className="group-hover:invisible">{lineNum}</span>
+                <span className="absolute inset-0 hidden group-hover:flex items-center justify-center text-[var(--accent)] font-bold">+</span>
+              </span>
+              <span className="flex-1 px-4 whitespace-pre text-[var(--text-primary)]">
+                {line}
+              </span>
+            </div>
+            {lineComments.map((c) => (
+              <InlineComment key={c.id} comment={c} />
+            ))}
+            {isActiveInput && (
+              <CommentInput
+                userAvatarUrl={userAvatarUrl}
+                onSubmit={async (body) => {
+                  await addComment(filePath, lineNum, 'RIGHT', body);
+                  setActiveCommentLine(null);
+                }}
+                onCancel={() => setActiveCommentLine(null)}
+              />
+            )}
           </div>
         );
       })}
-    </pre>
+    </div>
   );
 }

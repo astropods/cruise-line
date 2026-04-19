@@ -14,6 +14,7 @@ import { healthRoutes } from './routes/health.js';
 import { webhookRoutes } from './routes/webhook.js';
 import { authRoutes } from './routes/auth.js';
 import { walkthroughRoutes } from './routes/walkthroughs.js';
+import { commentRoutes } from './routes/comments.js';
 import { setupRoutes } from './routes/setup.js';
 import { errorHandler } from './middleware/error.js';
 
@@ -37,6 +38,7 @@ app.route('/', healthRoutes);
 app.route('/api/auth', authRoutes);
 app.route('/api/webhook', webhookRoutes);
 app.route('/api/walkthroughs', walkthroughRoutes);
+app.route('/api/comments', commentRoutes);
 app.route('/api/setup', setupRoutes);
 
 if (isDev) {
