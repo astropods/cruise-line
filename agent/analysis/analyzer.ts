@@ -42,23 +42,31 @@ async function readFileContent(repoDir: string, filePath: string): Promise<strin
   }
 }
 
-async function readFileAtRef(repoDir: string, ref: string, filePath: string): Promise<string | undefined> {
-  try {
-    const proc = Bun.spawn(
-      ['git', 'show', `${ref}:${filePath}`],
-      { cwd: repoDir, stdout: 'pipe', stderr: 'pipe' },
-    );
-    const exitCode = await proc.exited;
-    if (exitCode !== 0) return undefined;
-    return await new Response(proc.stdout).text();
-  } catch {
-    return undefined;
+/**
+ * Get the unified diff patch for a single file using git diff.
+ */
+async function getFilePatch(repoDir: string, baseRef: string, filePath: string): Promise<string | undefined> {
+  // Try different ref formats
+  for (const ref of [baseRef, `origin/${baseRef}`, 'FETCH_HEAD']) {
+    try {
+      const proc = Bun.spawn(
+        ['git', 'diff', `${ref}...HEAD`, '--', filePath],
+        { cwd: repoDir, stdout: 'pipe', stderr: 'pipe' },
+      );
+      const exitCode = await proc.exited;
+      if (exitCode === 0) {
+        const output = await new Response(proc.stdout).text();
+        if (output.trim()) return output;
+      }
+    } catch {
+      continue;
+    }
   }
+  return undefined;
 }
 
 /**
- * Collect full file contents for all files referenced in the walkthrough.
- * Reads both before (base) and after (head) versions for diff context.
+ * Collect file contents and unified diff patches for all referenced files.
  */
 async function collectFiles(
   repoDir: string,
@@ -76,15 +84,15 @@ async function collectFiles(
 
   await Promise.all(
     Array.from(filePaths).map(async (filePath) => {
-      const [after, before] = await Promise.all([
+      const [after, patch] = await Promise.all([
         readFileContent(repoDir, filePath),
-        readFileAtRef(repoDir, `origin/${baseRef}`, filePath),
+        getFilePatch(repoDir, baseRef, filePath),
       ]);
 
       files[filePath] = {
-        before: before ?? undefined,
         after: after ?? undefined,
         language: detectLanguage(filePath),
+        patch: patch ?? undefined,
       };
     }),
   );

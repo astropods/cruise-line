@@ -1,7 +1,8 @@
 export interface FileContent {
-  before?: string;  // content at base ref (undefined for new files)
-  after?: string;   // content at head ref (undefined for deleted files)
+  after?: string;    // content at head ref (undefined for deleted files)
   language: string;
+  /** Raw unified diff patch from `git diff` for this file. Undefined for context-only files. */
+  patch?: string;
 }
 
 export interface Walkthrough {

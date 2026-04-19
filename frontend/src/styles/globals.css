@@ -9,10 +9,6 @@
   --text-secondary: #8b949e;
   --accent: #58a6ff;
   --accent-hover: #79c0ff;
-  --diff-add-bg: rgba(46, 160, 67, 0.15);
-  --diff-add-line: rgba(46, 160, 67, 0.4);
-  --diff-remove-bg: rgba(248, 81, 73, 0.15);
-  --diff-remove-line: rgba(248, 81, 73, 0.4);
 }
 
 body {
@@ -42,4 +38,67 @@ body {
 ::-webkit-scrollbar-thumb {
   background: var(--border);
   border-radius: 4px;
+}
+
+/* ============================================
+   react-diff-view dark theme overrides
+   ============================================ */
+
+.cruise-diff-wrapper {
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* react-diff-view dark theme — override CSS custom properties */
+.cruise-diff-wrapper {
+  --diff-background-color: var(--bg-secondary);
+  --diff-text-color: var(--text-primary);
+  --diff-font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+
+  /* Gutter colors */
+  --diff-gutter-insert-background-color: rgba(46, 160, 67, 0.12);
+  --diff-gutter-insert-text-color: rgba(63, 185, 80, 0.8);
+  --diff-gutter-delete-background-color: rgba(248, 81, 73, 0.10);
+  --diff-gutter-delete-text-color: rgba(248, 81, 73, 0.8);
+
+  /* Code line colors */
+  --diff-code-insert-background-color: rgba(46, 160, 67, 0.15);
+  --diff-code-insert-text-color: var(--text-primary);
+  --diff-code-delete-background-color: rgba(248, 81, 73, 0.12);
+  --diff-code-delete-text-color: var(--text-primary);
+
+  /* Word-level edit highlights */
+  --diff-code-insert-edit-background-color: rgba(46, 160, 67, 0.45);
+  --diff-code-insert-edit-text-color: var(--text-primary);
+  --diff-code-delete-edit-background-color: rgba(248, 81, 73, 0.45);
+  --diff-code-delete-edit-text-color: var(--text-primary);
+
+  /* Selection */
+  --diff-selection-background-color: rgba(88, 166, 255, 0.3);
+  --diff-selection-text-color: var(--text-primary);
+
+  font-size: 13px;
+}
+
+/* Row transitions for focus/dim */
+.cruise-diff-wrapper .diff tr {
+  transition: opacity 0.3s ease;
+}
+
+/* Hunk headers */
+.cruise-diff-wrapper .diff-hunk-header td {
+  background: rgba(88, 166, 255, 0.08);
+  color: var(--text-secondary);
+  font-size: 12px;
+  padding: 4px 16px;
+}
+
+/* Code cell padding */
+.cruise-diff-wrapper .diff-code {
+  padding-left: 16px;
+}
+
+/* Remove borders */
+.cruise-diff-wrapper .diff td {
+  border: none;
 }

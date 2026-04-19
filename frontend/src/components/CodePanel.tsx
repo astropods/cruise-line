@@ -1,6 +1,8 @@
 import { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { parseDiff, Diff, Hunk } from 'react-diff-view';
 import type { Step, FileContent } from '../api';
+import 'react-diff-view/style/index.css';
 
 interface CodePanelProps {
   step: Step;
@@ -8,113 +10,52 @@ interface CodePanelProps {
   fileContent: FileContent | undefined;
 }
 
-const LINE_HEIGHT = 19.5; // 13px font * 1.5 line-height
+const LINE_HEIGHT = 20;
 
 export function CodePanel({ step, stepKey, fileContent }: CodePanelProps) {
-  const [highlightedLines, setHighlightedLines] = useState<string[]>([]);
   const containerRef = useRef<HTMLDivElement>(null);
   const prevFileRef = useRef<string>('');
   const prevStepKeyRef = useRef<string>('');
 
   const isSameFile = prevFileRef.current === step.file;
+  const hasPatch = !!fileContent?.patch;
 
-  // Pick the right version of the file to display
-  const sourceCode = useMemo(() => {
-    if (!fileContent) return '';
-    if (step.changeType === 'deleted') return fileContent.before ?? '';
-    return fileContent.after ?? fileContent.before ?? '';
-  }, [fileContent, step.changeType]);
+  const focusStart = step.focusStart;
+  const focusEnd = step.focusEnd;
 
-  const lines = useMemo(() => sourceCode.split('\n'), [sourceCode]);
-  const language = fileContent?.language ?? step.language ?? 'text';
-
-  const focusStart = Math.max(1, step.focusStart);
-  const focusEnd = Math.min(lines.length, step.focusEnd);
-
-  // Scroll to focus region
+  // Scroll logic
   const scrollToFocus = useCallback((smooth: boolean) => {
     const container = containerRef.current;
     if (!container) return;
 
-    const headerHeight = 36; // sticky header covers this much of the viewport
-    const padding = 24; // breathing room above focus start
-    const visibleHeight = container.clientHeight - headerHeight;
-    const focusHeight = (focusEnd - focusStart + 1) * LINE_HEIGHT;
-    const focusLineOffset = (focusStart - 1) * LINE_HEIGHT;
+    // Find the focus target element
+    const focusEl = container.querySelector('[data-focus-start]') as HTMLElement | null;
+    if (focusEl) {
+      const containerRect = container.getBoundingClientRect();
+      const focusRect = focusEl.getBoundingClientRect();
+      const headerHeight = 36;
+      const padding = 24;
+      const offset = focusRect.top - containerRect.top + container.scrollTop - headerHeight - padding;
 
-    // If focus fits in visible area, center it vertically below the header.
-    // Otherwise, align the top of the focus just below the header with padding.
-    const targetScroll = focusHeight < visibleHeight - padding * 2
-      ? focusLineOffset - headerHeight - (visibleHeight - focusHeight) / 2
-      : focusLineOffset - headerHeight - padding;
-
-    container.scrollTo({
-      top: Math.max(0, targetScroll),
-      behavior: smooth ? 'smooth' : 'instant',
-    });
-  }, [focusStart, focusEnd]);
-
-  // Highlight with Shiki
-  useEffect(() => {
-    let cancelled = false;
-
-    async function highlight() {
-      if (!sourceCode) {
-        setHighlightedLines([]);
-        return;
-      }
-
-      const { codeToTokens } = await import('shiki');
-
-      try {
-        const result = await codeToTokens(sourceCode, {
-          lang: language as any,
-          theme: 'github-dark',
-        });
-
-        if (cancelled) return;
-
-        const htmlLines = result.tokens.map((lineTokens) => {
-          return lineTokens
-            .map((token) => {
-              const style = token.color ? ` style="color:${token.color}"` : '';
-              const escaped = token.content
-                .replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;');
-              return `<span${style}>${escaped}</span>`;
-            })
-            .join('');
-        });
-
-        if (!cancelled) setHighlightedLines(htmlLines);
-      } catch {
-        if (!cancelled) {
-          setHighlightedLines(
-            lines.map((line) =>
-              `<span>${line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</span>`
-            ),
-          );
-        }
-      }
+      container.scrollTo({
+        top: Math.max(0, offset),
+        behavior: smooth ? 'smooth' : 'instant',
+      });
+      return;
     }
+  }, []);
 
-    highlight();
-    return () => { cancelled = true; };
-  }, [sourceCode, language]);
-
-  // Handle scroll on step change
   useEffect(() => {
     if (prevStepKeyRef.current === stepKey) return;
     const wasSameFile = prevFileRef.current === step.file;
     prevFileRef.current = step.file;
     prevStepKeyRef.current = stepKey;
 
-    if (wasSameFile) {
-      // Same file: smooth scroll to new focus
-      scrollToFocus(true);
-    }
-    // Different file: handled by onAnimationComplete below
+    // Small delay to let react-diff-view render
+    const timer = setTimeout(() => {
+      scrollToFocus(wasSameFile);
+    }, wasSameFile ? 0 : 50);
+    return () => clearTimeout(timer);
   }, [stepKey, step.file, scrollToFocus]);
 
   return (
@@ -128,7 +69,6 @@ export function CodePanel({ step, stepKey, fileContent }: CodePanelProps) {
         </span>
       </div>
 
-      {/* Full file with focus region */}
       <AnimatePresence mode="wait">
         <motion.div
           key={isSameFile ? step.file : stepKey}
@@ -137,52 +77,210 @@ export function CodePanel({ step, stepKey, fileContent }: CodePanelProps) {
           exit={isSameFile ? undefined : { opacity: 0 }}
           transition={{ duration: 0.2 }}
           onAnimationComplete={() => {
-            // After fade-in for a new file, jump to the focus area instantly
-            if (!isSameFile) {
-              scrollToFocus(false);
-            }
+            if (!isSameFile) scrollToFocus(false);
           }}
         >
-          <pre className="text-[13px] leading-[1.5] font-mono m-0">
-            {(highlightedLines.length > 0 ? highlightedLines : lines).map((lineHtml, i) => {
-              const lineNum = i + 1;
-              const inFocus = lineNum >= focusStart && lineNum <= focusEnd;
-
-              return (
-                <div
-                  key={i}
-                  className="flex"
-                  style={{
-                    opacity: inFocus ? 1 : 0.35,
-                    background: inFocus ? 'rgba(88,166,255,0.08)' : 'transparent',
-                    transition: 'opacity 0.3s ease, background 0.3s ease',
-                  }}
-                >
-                  {/* Line number */}
-                  <span
-                    className="select-none w-12 flex-shrink-0 text-right pr-4 text-xs"
-                    style={{
-                      lineHeight: '1.5em',
-                      color: inFocus ? 'var(--text-secondary)' : 'rgba(139,148,158,0.3)',
-                      transition: 'color 0.3s ease',
-                    }}
-                  >
-                    {lineNum}
-                  </span>
-                  {/* Code */}
-                  <span
-                    className="flex-1 px-4 whitespace-pre-wrap break-all"
-                    dangerouslySetInnerHTML={{
-                      __html: highlightedLines.length > 0 ? lineHtml : (lineHtml as string),
-                    }}
-                  />
-                </div>
-              );
-            })}
-          </pre>
+          {hasPatch ? (
+            <DiffFileView
+              patch={fileContent!.patch!}
+              focusStart={focusStart}
+              focusEnd={focusEnd}
+            />
+          ) : (
+            <PlainFileView
+              content={fileContent?.after ?? ''}
+              language={fileContent?.language ?? 'text'}
+              focusStart={focusStart}
+              focusEnd={focusEnd}
+            />
+          )}
         </motion.div>
       </AnimatePresence>
     </div>
+  );
+}
+
+/**
+ * Renders a file diff using react-diff-view with focus/dim regions.
+ */
+function DiffFileView({ patch, focusStart, focusEnd }: {
+  patch: string;
+  focusStart: number;
+  focusEnd: number;
+}) {
+  const files = useMemo(() => {
+    try {
+      return parseDiff(patch, { nearbySequences: 'zip' });
+    } catch {
+      return [];
+    }
+  }, [patch]);
+
+  if (files.length === 0) return null;
+
+  const file = files[0];
+
+  return (
+    <div className="cruise-diff-wrapper" style={{
+      '--focus-start': focusStart,
+      '--focus-end': focusEnd,
+    } as React.CSSProperties}>
+      <Diff
+        viewType="unified"
+        diffType={file.type}
+        hunks={file.hunks}
+        gutterType="default"
+      >
+        {(hunks) => hunks.map((hunk) => (
+          <DiffHunkWithFocus
+            key={hunk.content}
+            hunk={hunk}
+            focusStart={focusStart}
+            focusEnd={focusEnd}
+          />
+        ))}
+      </Diff>
+    </div>
+  );
+}
+
+/**
+ * Wraps each hunk and applies focus/dim styling per line.
+ */
+function DiffHunkWithFocus({ hunk, focusStart, focusEnd }: {
+  hunk: any;
+  focusStart: number;
+  focusEnd: number;
+}) {
+  const hunkRef = useRef<HTMLTableSectionElement>(null);
+
+  // Apply focus/dim after render via DOM manipulation
+  // react-diff-view renders as a <table>, so we style the <tr> rows
+  useEffect(() => {
+    const tbody = hunkRef.current;
+    if (!tbody) return;
+
+    const rows = tbody.querySelectorAll('tr');
+    let foundFocusStart = false;
+
+    rows.forEach((row) => {
+      // Get the new-side line number from the gutter cell
+      const gutterCells = row.querySelectorAll('td.diff-gutter');
+      let lineNum: number | null = null;
+
+      // The last gutter cell in unified view is the new-side line number
+      gutterCells.forEach((cell) => {
+        const num = parseInt((cell as HTMLElement).dataset.lineNumber ?? '', 10);
+        if (!isNaN(num)) lineNum = num;
+      });
+
+      // For removed lines, check if they're adjacent to focus
+      const isChange = row.classList.contains('diff-line-insert') || row.classList.contains('diff-line-delete');
+      const inFocus = lineNum !== null && lineNum >= focusStart && lineNum <= focusEnd;
+
+      // Also include removed lines between focus start and end
+      const isDeleteInRange = row.classList.contains('diff-line-delete') && lineNum === null;
+
+      if (inFocus) {
+        row.style.opacity = '1';
+        if (!foundFocusStart) {
+          row.setAttribute('data-focus-start', 'true');
+          foundFocusStart = true;
+        }
+      } else {
+        row.style.opacity = '0.3';
+        row.style.transition = 'opacity 0.3s ease';
+      }
+    });
+  }, [focusStart, focusEnd, hunk]);
+
+  return (
+    <Hunk ref={hunkRef} hunk={hunk} />
+  );
+}
+
+/**
+ * Plain code view for new files and context-only files (no diff).
+ */
+function PlainFileView({ content, language, focusStart, focusEnd }: {
+  content: string;
+  language: string;
+  focusStart: number;
+  focusEnd: number;
+}) {
+  const [highlightedLines, setHighlightedLines] = useState<string[]>([]);
+  const lines = useMemo(() => content.split('\n'), [content]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function highlight() {
+      if (!content) return;
+      const { codeToTokens } = await import('shiki');
+
+      try {
+        const result = await codeToTokens(content, {
+          lang: language as any,
+          theme: 'github-dark',
+        });
+        if (cancelled) return;
+
+        setHighlightedLines(result.tokens.map((lineTokens) =>
+          lineTokens.map((token) => {
+            const style = token.color ? ` style="color:${token.color}"` : '';
+            const escaped = token.content
+              .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            return `<span${style}>${escaped}</span>`;
+          }).join('')
+        ));
+      } catch {
+        if (!cancelled) {
+          setHighlightedLines(lines.map((l) =>
+            `<span>${l.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</span>`
+          ));
+        }
+      }
+    }
+
+    highlight();
+    return () => { cancelled = true; };
+  }, [content, language]);
+
+  return (
+    <pre className="text-[13px] leading-[1.5] font-mono m-0">
+      {(highlightedLines.length > 0 ? highlightedLines : lines).map((lineHtml, i) => {
+        const lineNum = i + 1;
+        const inFocus = lineNum >= focusStart && lineNum <= focusEnd;
+        const isFirst = lineNum === focusStart;
+
+        return (
+          <div
+            key={i}
+            className="flex"
+            data-focus-start={isFirst ? 'true' : undefined}
+            style={{
+              opacity: inFocus ? 1 : 0.3,
+              background: inFocus ? 'rgba(88,166,255,0.04)' : 'transparent',
+              transition: 'opacity 0.3s ease, background 0.3s ease',
+            }}
+          >
+            <span
+              className="select-none w-12 flex-shrink-0 text-right pr-4 text-xs"
+              style={{
+                lineHeight: '1.5em',
+                color: inFocus ? 'var(--text-secondary)' : 'rgba(139,148,158,0.25)',
+              }}
+            >
+              {lineNum}
+            </span>
+            <span
+              className="flex-1 px-4 whitespace-pre-wrap break-all"
+              dangerouslySetInnerHTML={{ __html: lineHtml }}
+            />
+          </div>
+        );
+      })}
+    </pre>
   );
 }
 

@@ -12,9 +12,10 @@ export interface WalkthroughResponse {
 }
 
 export interface FileContent {
-  before?: string;
   after?: string;
   language: string;
+  /** Raw unified diff patch from git diff */
+  patch?: string;
 }
 
 export interface Walkthrough {
