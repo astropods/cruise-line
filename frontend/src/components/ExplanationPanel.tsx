@@ -1,4 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion';
+import Markdown from 'react-markdown';
 import type { Step } from '../api';
 
 interface ExplanationPanelProps {
@@ -29,9 +30,9 @@ export function ExplanationPanel({
             <h2 className="text-lg font-semibold text-[var(--text-primary)]">
               {chapterTitle}
             </h2>
-            <p className="mt-1 text-sm text-[var(--text-secondary)]">
-              {chapterIntent}
-            </p>
+            <div className="cruise-markdown mt-1 text-sm text-[var(--text-secondary)]">
+              <Markdown>{chapterIntent}</Markdown>
+            </div>
           </div>
 
           {/* Step details */}
@@ -39,8 +40,8 @@ export function ExplanationPanel({
             {step.title}
           </h3>
 
-          <div className="prose prose-invert prose-sm max-w-none text-[var(--text-primary)] leading-relaxed whitespace-pre-wrap">
-            {step.explanation}
+          <div className="cruise-markdown">
+            <Markdown>{step.explanation}</Markdown>
           </div>
         </motion.div>
       </AnimatePresence>

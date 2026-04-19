@@ -39,14 +39,18 @@ export interface Chapter {
   steps: Step[];
 }
 
-export interface Step {
-  title: string;
-  explanation: string;
+export interface CodeReference {
   file: string;
   language: string;
   changeType: 'added' | 'modified' | 'deleted' | 'context';
   focusStart: number;
   focusEnd: number;
+}
+
+export interface Step {
+  title: string;
+  explanation: string;
+  refs: CodeReference[];
 }
 
 export interface UserInfo {

@@ -1,34 +1,38 @@
 import { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { parseDiff, Diff, Hunk } from 'react-diff-view';
-import type { Step, FileContent } from '../api';
+import { parseDiff, Diff, Hunk, tokenize, markEdits } from 'react-diff-view';
+import refractor from 'refractor';
+import type { Step, CodeReference, FileContent } from '../api';
 import 'react-diff-view/style/index.css';
+
+const REFRACTOR_LANG_MAP: Record<string, string> = {
+  typescript: 'typescript', tsx: 'tsx', javascript: 'javascript', jsx: 'jsx',
+  python: 'python', ruby: 'ruby', go: 'go', rust: 'rust',
+  java: 'java', kotlin: 'kotlin', swift: 'swift', csharp: 'csharp',
+  cpp: 'cpp', c: 'c', sql: 'sql', bash: 'bash',
+  yaml: 'yaml', json: 'json', toml: 'toml', markdown: 'markdown',
+  css: 'css', scss: 'scss', html: 'markup', xml: 'markup',
+  graphql: 'graphql', dockerfile: 'docker',
+};
 
 interface CodePanelProps {
   step: Step;
   stepKey: string;
-  fileContent: FileContent | undefined;
+  files: Record<string, FileContent>;
 }
 
-const LINE_HEIGHT = 20;
-
-export function CodePanel({ step, stepKey, fileContent }: CodePanelProps) {
+export function CodePanel({ step, stepKey, files }: CodePanelProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const prevFileRef = useRef<string>('');
   const prevStepKeyRef = useRef<string>('');
+  const prevFilesKey = useRef<string>('');
 
-  const isSameFile = prevFileRef.current === step.file;
-  const hasPatch = !!fileContent?.patch;
+  // Build a key representing which files are shown
+  const filesKey = step.refs.map((r) => r.file).join('|');
+  const isSameFiles = prevFilesKey.current === filesKey;
 
-  const focusStart = step.focusStart;
-  const focusEnd = step.focusEnd;
-
-  // Scroll logic
   const scrollToFocus = useCallback((smooth: boolean) => {
     const container = containerRef.current;
     if (!container) return;
-
-    // Find the focus target element
     const focusEl = container.querySelector('[data-focus-start]') as HTMLElement | null;
     if (focusEl) {
       const containerRect = container.getBoundingClientRect();
@@ -36,64 +40,46 @@ export function CodePanel({ step, stepKey, fileContent }: CodePanelProps) {
       const headerHeight = 36;
       const padding = 24;
       const offset = focusRect.top - containerRect.top + container.scrollTop - headerHeight - padding;
-
       container.scrollTo({
         top: Math.max(0, offset),
         behavior: smooth ? 'smooth' : 'instant',
       });
-      return;
     }
   }, []);
 
   useEffect(() => {
     if (prevStepKeyRef.current === stepKey) return;
-    const wasSameFile = prevFileRef.current === step.file;
-    prevFileRef.current = step.file;
+    const wasSameFiles = prevFilesKey.current === filesKey;
+    prevFilesKey.current = filesKey;
     prevStepKeyRef.current = stepKey;
 
-    // Small delay to let react-diff-view render
     const timer = setTimeout(() => {
-      scrollToFocus(wasSameFile);
-    }, wasSameFile ? 0 : 50);
+      scrollToFocus(wasSameFiles);
+    }, wasSameFiles ? 0 : 50);
     return () => clearTimeout(timer);
-  }, [stepKey, step.file, scrollToFocus]);
+  }, [stepKey, filesKey, scrollToFocus]);
 
   return (
     <div ref={containerRef} className="h-full overflow-auto bg-[var(--bg-secondary)]">
-      {/* File path header */}
-      <div className="sticky top-0 z-10 flex items-center gap-2 px-4 py-2 text-sm bg-[var(--bg-tertiary)] border-b border-[var(--border)]">
-        <ChangeTypeBadge type={step.changeType} />
-        <span className="font-mono text-[var(--text-secondary)]">{step.file}</span>
-        <span className="text-xs text-[var(--text-secondary)] opacity-50">
-          L{focusStart}–{focusEnd}
-        </span>
-      </div>
-
       <AnimatePresence mode="wait">
         <motion.div
-          key={isSameFile ? step.file : stepKey}
-          initial={isSameFile ? false : { opacity: 0 }}
+          key={isSameFiles ? filesKey : stepKey}
+          initial={isSameFiles ? false : { opacity: 0 }}
           animate={{ opacity: 1 }}
-          exit={isSameFile ? undefined : { opacity: 0 }}
+          exit={isSameFiles ? undefined : { opacity: 0 }}
           transition={{ duration: 0.2 }}
           onAnimationComplete={() => {
-            if (!isSameFile) scrollToFocus(false);
+            if (!isSameFiles) scrollToFocus(false);
           }}
         >
-          {hasPatch ? (
-            <DiffFileView
-              patch={fileContent!.patch!}
-              focusStart={focusStart}
-              focusEnd={focusEnd}
+          {step.refs.map((ref, i) => (
+            <SingleFileView
+              key={`${ref.file}-${i}`}
+              ref_={ref}
+              fileContent={files[ref.file]}
+              isFirst={i === 0}
             />
-          ) : (
-            <PlainFileView
-              content={fileContent?.after ?? ''}
-              language={fileContent?.language ?? 'text'}
-              focusStart={focusStart}
-              focusEnd={focusEnd}
-            />
-          )}
+          ))}
         </motion.div>
       </AnimatePresence>
     </div>
@@ -101,10 +87,48 @@ export function CodePanel({ step, stepKey, fileContent }: CodePanelProps) {
 }
 
 /**
- * Renders a file diff using react-diff-view with focus/dim regions.
+ * Renders one file reference — either as a diff or as plain code.
  */
-function DiffFileView({ patch, focusStart, focusEnd }: {
+function SingleFileView({ ref_, fileContent, isFirst }: {
+  ref_: CodeReference;
+  fileContent: FileContent | undefined;
+  isFirst: boolean;
+}) {
+  const hasPatch = !!fileContent?.patch;
+
+  return (
+    <div className={!isFirst ? 'mt-2 border-t border-[var(--border)]' : ''}>
+      {/* File header */}
+      <div className="sticky top-0 z-10 flex items-center gap-2 px-4 py-2 text-sm bg-[var(--bg-tertiary)] border-b border-[var(--border)]">
+        <ChangeTypeBadge type={ref_.changeType} />
+        <span className="font-mono text-[var(--text-secondary)]">{ref_.file}</span>
+        <span className="text-xs text-[var(--text-secondary)] opacity-50">
+          L{ref_.focusStart}–{ref_.focusEnd}
+        </span>
+      </div>
+
+      {hasPatch ? (
+        <DiffFileView
+          patch={fileContent!.patch!}
+          language={fileContent!.language}
+          focusStart={ref_.focusStart}
+          focusEnd={ref_.focusEnd}
+        />
+      ) : (
+        <PlainFileView
+          content={fileContent?.after ?? ''}
+          language={fileContent?.language ?? ref_.language}
+          focusStart={ref_.focusStart}
+          focusEnd={ref_.focusEnd}
+        />
+      )}
+    </div>
+  );
+}
+
+function DiffFileView({ patch, language, focusStart, focusEnd }: {
   patch: string;
+  language: string;
   focusStart: number;
   focusEnd: number;
 }) {
@@ -116,19 +140,39 @@ function DiffFileView({ patch, focusStart, focusEnd }: {
     }
   }, [patch]);
 
-  if (files.length === 0) return null;
-
   const file = files[0];
 
+  const tokens = useMemo(() => {
+    if (!file?.hunks?.length) return undefined;
+    const refractorLang = REFRACTOR_LANG_MAP[language] ?? language;
+    const hasLang = refractor.registered(refractorLang);
+    try {
+      return tokenize(file.hunks, {
+        highlight: hasLang,
+        refractor: hasLang ? refractor : undefined,
+        language: hasLang ? refractorLang : undefined,
+        enhancers: [markEdits(file.hunks, { type: 'block' })],
+      });
+    } catch {
+      try {
+        return tokenize(file.hunks, {
+          enhancers: [markEdits(file.hunks, { type: 'block' })],
+        });
+      } catch {
+        return undefined;
+      }
+    }
+  }, [file, language]);
+
+  if (!file) return null;
+
   return (
-    <div className="cruise-diff-wrapper" style={{
-      '--focus-start': focusStart,
-      '--focus-end': focusEnd,
-    } as React.CSSProperties}>
+    <div className="cruise-diff-wrapper">
       <Diff
         viewType="unified"
         diffType={file.type}
         hunks={file.hunks}
+        tokens={tokens}
         gutterType="default"
       >
         {(hunks) => hunks.map((hunk) => (
@@ -144,9 +188,6 @@ function DiffFileView({ patch, focusStart, focusEnd }: {
   );
 }
 
-/**
- * Wraps each hunk and applies focus/dim styling per line.
- */
 function DiffHunkWithFocus({ hunk, focusStart, focusEnd }: {
   hunk: any;
   focusStart: number;
@@ -154,8 +195,6 @@ function DiffHunkWithFocus({ hunk, focusStart, focusEnd }: {
 }) {
   const hunkRef = useRef<HTMLTableSectionElement>(null);
 
-  // Apply focus/dim after render via DOM manipulation
-  // react-diff-view renders as a <table>, so we style the <tr> rows
   useEffect(() => {
     const tbody = hunkRef.current;
     if (!tbody) return;
@@ -164,22 +203,14 @@ function DiffHunkWithFocus({ hunk, focusStart, focusEnd }: {
     let foundFocusStart = false;
 
     rows.forEach((row) => {
-      // Get the new-side line number from the gutter cell
       const gutterCells = row.querySelectorAll('td.diff-gutter');
       let lineNum: number | null = null;
-
-      // The last gutter cell in unified view is the new-side line number
       gutterCells.forEach((cell) => {
         const num = parseInt((cell as HTMLElement).dataset.lineNumber ?? '', 10);
         if (!isNaN(num)) lineNum = num;
       });
 
-      // For removed lines, check if they're adjacent to focus
-      const isChange = row.classList.contains('diff-line-insert') || row.classList.contains('diff-line-delete');
       const inFocus = lineNum !== null && lineNum >= focusStart && lineNum <= focusEnd;
-
-      // Also include removed lines between focus start and end
-      const isDeleteInRange = row.classList.contains('diff-line-delete') && lineNum === null;
 
       if (inFocus) {
         row.style.opacity = '1';
@@ -194,14 +225,9 @@ function DiffHunkWithFocus({ hunk, focusStart, focusEnd }: {
     });
   }, [focusStart, focusEnd, hunk]);
 
-  return (
-    <Hunk ref={hunkRef} hunk={hunk} />
-  );
+  return <Hunk ref={hunkRef} hunk={hunk} />;
 }
 
-/**
- * Plain code view for new files and context-only files (no diff).
- */
 function PlainFileView({ content, language, focusStart, focusEnd }: {
   content: string;
   language: string;
@@ -213,18 +239,15 @@ function PlainFileView({ content, language, focusStart, focusEnd }: {
 
   useEffect(() => {
     let cancelled = false;
-
     async function highlight() {
       if (!content) return;
       const { codeToTokens } = await import('shiki');
-
       try {
         const result = await codeToTokens(content, {
           lang: language as any,
           theme: 'github-dark',
         });
         if (cancelled) return;
-
         setHighlightedLines(result.tokens.map((lineTokens) =>
           lineTokens.map((token) => {
             const style = token.color ? ` style="color:${token.color}"` : '';
@@ -241,7 +264,6 @@ function PlainFileView({ content, language, focusStart, focusEnd }: {
         }
       }
     }
-
     highlight();
     return () => { cancelled = true; };
   }, [content, language]);
@@ -252,7 +274,6 @@ function PlainFileView({ content, language, focusStart, focusEnd }: {
         const lineNum = i + 1;
         const inFocus = lineNum >= focusStart && lineNum <= focusEnd;
         const isFirst = lineNum === focusStart;
-
         return (
           <div
             key={i}
@@ -284,7 +305,7 @@ function PlainFileView({ content, language, focusStart, focusEnd }: {
   );
 }
 
-function ChangeTypeBadge({ type }: { type: Step['changeType'] }) {
+function ChangeTypeBadge({ type }: { type: CodeReference['changeType'] }) {
   const styles: Record<string, string> = {
     added: 'bg-green-900/50 text-green-400 border-green-700',
     modified: 'bg-yellow-900/50 text-yellow-400 border-yellow-700',

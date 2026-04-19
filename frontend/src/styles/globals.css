@@ -41,6 +41,91 @@ body {
 }
 
 /* ============================================
+   Markdown rendering in explanation panel
+   ============================================ */
+.cruise-markdown {
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1.7;
+}
+.cruise-markdown p {
+  margin: 0 0 0.75em;
+}
+.cruise-markdown p:last-child {
+  margin-bottom: 0;
+}
+.cruise-markdown code {
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+  padding: 0.15em 0.4em;
+  font-size: 0.9em;
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  color: var(--accent);
+}
+.cruise-markdown pre {
+  background: var(--bg-tertiary);
+  border-radius: 6px;
+  padding: 0.75em 1em;
+  overflow-x: auto;
+  margin: 0.75em 0;
+}
+.cruise-markdown pre code {
+  background: none;
+  padding: 0;
+  color: var(--text-primary);
+}
+.cruise-markdown strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.cruise-markdown em {
+  color: var(--text-secondary);
+}
+.cruise-markdown ul, .cruise-markdown ol {
+  padding-left: 1.5em;
+  margin: 0.5em 0;
+}
+.cruise-markdown li {
+  margin: 0.25em 0;
+}
+.cruise-markdown h1, .cruise-markdown h2, .cruise-markdown h3,
+.cruise-markdown h4, .cruise-markdown h5, .cruise-markdown h6 {
+  color: var(--text-primary);
+  margin: 1em 0 0.5em;
+  font-weight: 600;
+}
+.cruise-markdown a {
+  color: var(--accent);
+  text-decoration: none;
+}
+.cruise-markdown a:hover {
+  text-decoration: underline;
+}
+.cruise-markdown blockquote {
+  border-left: 3px solid var(--border);
+  padding-left: 1em;
+  margin: 0.75em 0;
+  color: var(--text-secondary);
+}
+.cruise-markdown hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 1em 0;
+}
+.cruise-markdown table {
+  border-collapse: collapse;
+  margin: 0.75em 0;
+}
+.cruise-markdown th, .cruise-markdown td {
+  border: 1px solid var(--border);
+  padding: 0.4em 0.8em;
+  text-align: left;
+}
+.cruise-markdown th {
+  background: var(--bg-tertiary);
+}
+
+/* ============================================
    react-diff-view dark theme overrides
    ============================================ */
 
@@ -101,4 +186,59 @@ body {
 /* Remove borders */
 .cruise-diff-wrapper .diff td {
   border: none;
+}
+
+/* ============================================
+   Syntax highlighting (Prism/refractor tokens)
+   GitHub dark theme colors
+   ============================================ */
+.cruise-diff-wrapper .token.comment,
+.cruise-diff-wrapper .token.prolog,
+.cruise-diff-wrapper .token.doctype,
+.cruise-diff-wrapper .token.cdata {
+  color: #8b949e;
+}
+.cruise-diff-wrapper .token.punctuation {
+  color: #c9d1d9;
+}
+.cruise-diff-wrapper .token.property,
+.cruise-diff-wrapper .token.tag,
+.cruise-diff-wrapper .token.constant,
+.cruise-diff-wrapper .token.symbol,
+.cruise-diff-wrapper .token.deleted {
+  color: #ff7b72;
+}
+.cruise-diff-wrapper .token.boolean,
+.cruise-diff-wrapper .token.number {
+  color: #79c0ff;
+}
+.cruise-diff-wrapper .token.selector,
+.cruise-diff-wrapper .token.attr-name,
+.cruise-diff-wrapper .token.string,
+.cruise-diff-wrapper .token.char,
+.cruise-diff-wrapper .token.builtin,
+.cruise-diff-wrapper .token.inserted {
+  color: #a5d6ff;
+}
+.cruise-diff-wrapper .token.operator,
+.cruise-diff-wrapper .token.entity,
+.cruise-diff-wrapper .token.url {
+  color: #79c0ff;
+}
+.cruise-diff-wrapper .token.atrule,
+.cruise-diff-wrapper .token.attr-value,
+.cruise-diff-wrapper .token.keyword {
+  color: #ff7b72;
+}
+.cruise-diff-wrapper .token.function,
+.cruise-diff-wrapper .token.class-name {
+  color: #d2a8ff;
+}
+.cruise-diff-wrapper .token.regex,
+.cruise-diff-wrapper .token.important,
+.cruise-diff-wrapper .token.variable {
+  color: #ffa657;
+}
+.cruise-diff-wrapper .token.string {
+  color: #a5d6ff;
 }

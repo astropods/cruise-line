@@ -78,7 +78,9 @@ async function collectFiles(
 
   for (const chapter of output.chapters) {
     for (const step of chapter.steps) {
-      filePaths.add(step.file);
+      for (const ref of step.refs) {
+        filePaths.add(ref.file);
+      }
     }
   }
 

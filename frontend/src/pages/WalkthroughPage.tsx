@@ -119,7 +119,6 @@ export function WalkthroughPage() {
 
   const chapter = walkthrough.chapters[chapterIndex];
   const step = chapter.steps[stepIndex];
-  const fileContent = walkthrough.files?.[step.file];
   const stepKey = `${chapterIndex}-${stepIndex}`;
   const hasPrev = globalStepIndex > 0;
   const hasNext = globalStepIndex < totalSteps - 1;
@@ -159,7 +158,7 @@ export function WalkthroughPage() {
 
         {/* Code panel (60%) */}
         <div className="flex-[3] min-w-0">
-          <CodePanel step={step} stepKey={stepKey} fileContent={fileContent} />
+          <CodePanel step={step} stepKey={stepKey} files={walkthrough.files} />
         </div>
 
         {/* Explanation panel (40%) */}

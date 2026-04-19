@@ -27,15 +27,19 @@ export interface Chapter {
   steps: Step[];
 }
 
-export interface Step {
-  title: string;
-  explanation: string;
+export interface CodeReference {
   file: string;
   language: string;
   changeType: 'added' | 'modified' | 'deleted' | 'context';
-  /** 1-indexed line range to focus on in the "after" version (or "before" for deleted) */
   focusStart: number;
   focusEnd: number;
+}
+
+export interface Step {
+  title: string;
+  explanation: string;
+  /** Array of code regions to show for this step. Usually one, but can be multiple. */
+  refs: CodeReference[];
 }
 
 /** The shape Claude produces (without full file contents — we add those after) */
@@ -45,6 +49,21 @@ export interface ClaudeWalkthroughOutput {
   highlights: string[];
   chapters: Chapter[];
 }
+
+const codeReferenceSchema = {
+  type: 'object',
+  required: ['file', 'language', 'changeType', 'focusStart', 'focusEnd'],
+  properties: {
+    file: { type: 'string' },
+    language: { type: 'string' },
+    changeType: {
+      type: 'string',
+      enum: ['added', 'modified', 'deleted', 'context'],
+    },
+    focusStart: { type: 'integer', description: '1-indexed start line of the focus region' },
+    focusEnd: { type: 'integer', description: '1-indexed end line of the focus region' },
+  },
+} as const;
 
 /** JSON Schema for Claude Agent SDK structured output */
 export const walkthroughJsonSchema = {
@@ -77,18 +96,15 @@ export const walkthroughJsonSchema = {
             type: 'array',
             items: {
               type: 'object',
-              required: ['title', 'explanation', 'file', 'language', 'changeType', 'focusStart', 'focusEnd'],
+              required: ['title', 'explanation', 'refs'],
               properties: {
                 title: { type: 'string' },
                 explanation: { type: 'string' },
-                file: { type: 'string' },
-                language: { type: 'string' },
-                changeType: {
-                  type: 'string',
-                  enum: ['added', 'modified', 'deleted', 'context'],
+                refs: {
+                  type: 'array',
+                  items: codeReferenceSchema,
+                  description: 'Code regions to show. Usually one, but use multiple to show related code across files together.',
                 },
-                focusStart: { type: 'integer', description: '1-indexed start line of the focus region' },
-                focusEnd: { type: 'integer', description: '1-indexed end line of the focus region' },
               },
             },
           },
