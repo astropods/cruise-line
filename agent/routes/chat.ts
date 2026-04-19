@@ -55,6 +55,16 @@ chatRoutes.post('/:owner/:repo/:pr/message', async (c) => {
   const isFirstMessage = chatSession.created_at.getTime() === chatSession.last_message_at.getTime();
 
   return streamSSE(c, async (stream) => {
+    // Send heartbeats every 5 seconds to keep the connection alive
+    // while Claude is exploring the codebase between responses
+    const heartbeat = setInterval(async () => {
+      try {
+        await stream.writeSSE({ data: JSON.stringify({ type: 'heartbeat' }) });
+      } catch {
+        clearInterval(heartbeat);
+      }
+    }, 5000);
+
     try {
       const options: any = {
         cwd: repoDir,
@@ -119,6 +129,8 @@ chatRoutes.post('/:owner/:repo/:pr/message', async (c) => {
         }),
       });
     }
+
+    clearInterval(heartbeat);
 
     // Update last message timestamp
     await touchChatSession(chatSession.session_id);

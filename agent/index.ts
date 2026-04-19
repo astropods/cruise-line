@@ -85,6 +85,7 @@ if (dbConfig) {
 Bun.serve({
   port: config.port,
   fetch: app.fetch,
+  idleTimeout: 30, // Heartbeats every 5s keep SSE connections alive within this window
 });
 
 console.log(`Cruise Line listening on :${config.port}`);

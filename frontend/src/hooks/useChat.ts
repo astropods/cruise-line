@@ -1,9 +1,10 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 
 export interface ChatMessage {
-  role: 'user' | 'assistant';
+  role: 'user' | 'assistant' | 'tool';
   content: string;
   timestamp: Date;
+  toolName?: string;
 }
 
 interface UseChatOptions {
@@ -68,12 +69,20 @@ export function useChat({ owner, repo, pr }: UseChatOptions) {
           try {
             const event = JSON.parse(jsonStr);
 
-            if (event.type === 'delta') {
+            if (event.type === 'heartbeat') {
+              continue;
+            } else if (event.type === 'delta') {
               accumulated += event.text;
               setStreamingText(accumulated);
               setToolActivity('');
             } else if (event.type === 'tool') {
-              setToolActivity(`${event.name}${event.detail ? ': ' + event.detail : ''}`);
+              // Push tool calls into the message stream in real-time
+              const detail = event.detail ? `: ${event.detail}` : '';
+              setMessages((prev) => [
+                ...prev,
+                { role: 'tool', content: `${event.name}${detail}`, timestamp: new Date(), toolName: event.name },
+              ]);
+              setToolActivity(`${event.name}${detail}`);
             } else if (event.type === 'done') {
               const finalText = event.text || accumulated;
               if (finalText) {

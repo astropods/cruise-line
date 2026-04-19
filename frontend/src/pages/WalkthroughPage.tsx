@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useParams } from 'react-router';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useWalkthrough } from '../hooks/useWalkthrough';
 import { useAuth } from '../hooks/useAuth';
 import { SlideoutProvider } from '../contexts/SlideoutContext';
@@ -11,8 +12,11 @@ import { ProgressBar } from '../components/ProgressBar';
 import { GenerateButton } from '../components/GenerateButton';
 import { StaleIndicator } from '../components/StaleIndicator';
 import { ChatPanel } from '../components/ChatPanel';
+import { ChatInputBar } from '../components/ChatInputBar';
 import { PageLoading, ErrorState } from '../components/LoadingStates';
 import Markdown from 'react-markdown';
+
+type ViewMode = 'walkthrough' | 'chat';
 
 export function WalkthroughPage() {
   const { owner, repo, pr } = useParams<{ owner: string; repo: string; pr: string }>();
@@ -30,7 +34,15 @@ export function WalkthroughPage() {
     reload,
   } = useWalkthrough(owner!, repo!, prNumber);
 
+  const [viewMode, setViewMode] = useState<ViewMode>('walkthrough');
+  const [chatInitialMessage, setChatInitialMessage] = useState<string | undefined>();
+
   const prUrl = `${githubUrl}/${owner}/${repo}/pull/${pr}`;
+
+  function startChat(message: string) {
+    setChatInitialMessage(message);
+    setViewMode('chat');
+  }
 
   // Loading
   if (status === 'loading') return <PageLoading />;
@@ -52,7 +64,6 @@ export function WalkthroughPage() {
     );
   }
 
-  // Walkthrough ready
   if (!walkthrough || !walkthrough.sections?.length) {
     return <ErrorState message="Walkthrough has no content" onRetry={generate} />;
   }
@@ -73,14 +84,9 @@ export function WalkthroughPage() {
         userAvatarUrl={user?.avatarUrl ?? ''}
       >
       <div className="flex h-screen overflow-hidden bg-[var(--bg-primary)]">
-        {/* Main scrollable document */}
-        <div className="flex-1 min-w-0 overflow-auto">
-          <ProgressBar />
-
-          {/* Stale banner */}
-          {isStale && <StaleIndicator onRegenerate={generate} />}
-
-          {/* Header */}
+        {/* Main content area */}
+        <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
+          {/* Header with tabs */}
           <header className="sticky top-0 z-30 bg-[var(--bg-primary)]/80 backdrop-blur-md border-b border-[var(--border)]">
             <div className="max-w-[800px] mx-auto px-8 py-4 flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -98,37 +104,95 @@ export function WalkthroughPage() {
                   </a>
                 </div>
               </div>
-              <HeaderMenu onRegenerate={generate} prUrl={prUrl} />
+
+              <div className="flex items-center gap-3">
+                {/* View tabs */}
+                <div className="flex rounded-lg bg-[var(--bg-tertiary)] p-0.5">
+                  <button
+                    onClick={() => setViewMode('walkthrough')}
+                    className={`px-3 py-1 text-xs rounded-md transition-colors ${
+                      viewMode === 'walkthrough'
+                        ? 'bg-[var(--bg-secondary)] text-[var(--text-bright)] shadow-sm'
+                        : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                    }`}
+                  >
+                    Walkthrough
+                  </button>
+                  <button
+                    onClick={() => { setViewMode('chat'); setChatInitialMessage(undefined); }}
+                    className={`px-3 py-1 text-xs rounded-md transition-colors ${
+                      viewMode === 'chat'
+                        ? 'bg-[var(--bg-secondary)] text-[var(--text-bright)] shadow-sm'
+                        : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                    }`}
+                  >
+                    Chat
+                  </button>
+                </div>
+
+                <HeaderMenu onRegenerate={generate} prUrl={prUrl} />
+              </div>
             </div>
           </header>
 
-          {/* Main document */}
-          <main className="max-w-[800px] mx-auto px-8 py-12">
-            {/* Summary */}
-            <div className="mb-20 cruise-markdown text-[1.125rem] leading-[1.8] text-[var(--text-secondary)]">
-              <Markdown>{walkthrough.summary}</Markdown>
-            </div>
+          {/* Stale banner */}
+          {isStale && viewMode === 'walkthrough' && <StaleIndicator onRegenerate={generate} />}
 
-            {/* Sections */}
-            {walkthrough.sections.map((section, i) => (
-              <SectionRenderer
-                key={i}
-                section={section}
-                files={walkthrough.files}
-                index={i}
-              />
-            ))}
-          </main>
+          {/* Content area with transitions */}
+          <div className="flex-1 overflow-hidden relative">
+            <AnimatePresence mode="wait">
+              {viewMode === 'walkthrough' ? (
+                <motion.div
+                  key="walkthrough"
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  transition={{ duration: 0.2, ease: 'easeOut' }}
+                  className="absolute inset-0 overflow-auto"
+                >
+                  <ProgressBar />
+                  <main className="max-w-[800px] mx-auto px-8 py-12 pb-24">
+                    <div className="mb-20 cruise-markdown text-[1.125rem] leading-[1.8] text-[var(--text-secondary)]">
+                      <Markdown>{walkthrough.summary}</Markdown>
+                    </div>
+                    {walkthrough.sections.map((section, i) => (
+                      <SectionRenderer
+                        key={i}
+                        section={section}
+                        files={walkthrough.files}
+                        index={i}
+                      />
+                    ))}
+                  </main>
+                  <MiniNav sections={walkthrough.sections} />
 
-          {/* Navigation */}
-          <MiniNav sections={walkthrough.sections} />
+                  {/* Floating chat input bar */}
+                  <ChatInputBar onSubmit={startChat} />
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="chat"
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 20 }}
+                  transition={{ duration: 0.2, ease: 'easeOut' }}
+                  className="absolute inset-0"
+                >
+                  <ChatPanel
+                    owner={owner!}
+                    repo={repo!}
+                    prNumber={prNumber}
+                    onSwitchToWalkthrough={() => setViewMode('walkthrough')}
+                    initialMessage={chatInitialMessage}
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
         </div>
 
-        {/* File side panel — sits alongside the document */}
+        {/* File side panel */}
         <FileSlideout files={walkthrough.files} />
-
-        {/* Chat panel — floating bottom-right */}
-        <ChatPanel owner={owner!} repo={repo!} prNumber={prNumber} />
       </div>
       </CommentsProvider>
     </SlideoutProvider>
