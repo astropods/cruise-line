@@ -51,54 +51,57 @@ export function WalkthroughPage() {
 
   return (
     <SlideoutProvider>
-      <div className="min-h-screen bg-[var(--bg-primary)]">
-        <ProgressBar />
+      <div className="flex h-screen overflow-hidden bg-[var(--bg-primary)]">
+        {/* Main scrollable document */}
+        <div className="flex-1 min-w-0 overflow-auto">
+          <ProgressBar />
 
-        {/* Stale banner */}
-        {isStale && <StaleIndicator onRegenerate={generate} />}
+          {/* Stale banner */}
+          {isStale && <StaleIndicator onRegenerate={generate} />}
 
-        {/* Header */}
-        <header className="sticky top-0 z-30 bg-[var(--bg-primary)]/80 backdrop-blur-md border-b border-[var(--border)]">
-          <div className="max-w-[800px] mx-auto px-8 py-4 flex items-center justify-between">
-            <div>
-              <h1 className="text-base font-semibold text-[var(--text-primary)]">
-                {walkthrough.pr.title}
-              </h1>
-              <span className="text-xs text-[var(--text-secondary)]">
-                {walkthrough.pr.repo}#{walkthrough.pr.number} by {walkthrough.pr.author}
-              </span>
+          {/* Header */}
+          <header className="sticky top-0 z-30 bg-[var(--bg-primary)]/80 backdrop-blur-md border-b border-[var(--border)]">
+            <div className="max-w-[800px] mx-auto px-8 py-4 flex items-center justify-between">
+              <div>
+                <h1 className="text-base font-semibold text-[var(--text-bright)] tracking-tight">
+                  {walkthrough.pr.title}
+                </h1>
+                <span className="text-xs text-[var(--text-secondary)]">
+                  {walkthrough.pr.repo}#{walkthrough.pr.number} by {walkthrough.pr.author}
+                </span>
+              </div>
+              <button
+                onClick={generate}
+                className="px-3 py-1.5 text-xs rounded border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--accent)] transition-colors"
+              >
+                Regenerate
+              </button>
             </div>
-            <button
-              onClick={generate}
-              className="px-3 py-1.5 text-xs rounded border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--accent)] transition-colors"
-            >
-              Regenerate
-            </button>
-          </div>
-        </header>
+          </header>
 
-        {/* Main document */}
-        <main className="max-w-[800px] mx-auto px-8 py-12">
-          {/* Summary */}
-          <div className="mb-16 cruise-markdown text-lg leading-relaxed text-[var(--text-secondary)]">
-            <Markdown>{walkthrough.summary}</Markdown>
-          </div>
+          {/* Main document */}
+          <main className="max-w-[800px] mx-auto px-8 py-12">
+            {/* Summary */}
+            <div className="mb-20 cruise-markdown text-[1.125rem] leading-[1.8] text-[var(--text-secondary)]">
+              <Markdown>{walkthrough.summary}</Markdown>
+            </div>
 
-          {/* Sections */}
-          {walkthrough.sections.map((section, i) => (
-            <SectionRenderer
-              key={i}
-              section={section}
-              files={walkthrough.files}
-              index={i}
-            />
-          ))}
-        </main>
+            {/* Sections */}
+            {walkthrough.sections.map((section, i) => (
+              <SectionRenderer
+                key={i}
+                section={section}
+                files={walkthrough.files}
+                index={i}
+              />
+            ))}
+          </main>
 
-        {/* Navigation */}
-        <MiniNav sections={walkthrough.sections} />
+          {/* Navigation */}
+          <MiniNav sections={walkthrough.sections} />
+        </div>
 
-        {/* File slide-out */}
+        {/* File side panel — sits alongside the document */}
         <FileSlideout files={walkthrough.files} />
       </div>
     </SlideoutProvider>

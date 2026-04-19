@@ -133,7 +133,8 @@ export async function verifyRepoAccess(
   try {
     await octokit.repos.get({ owner, repo });
     return true;
-  } catch {
+  } catch (err: any) {
+    console.error(`Repo access check failed for ${owner}/${repo}:`, err?.status, err?.message);
     return false;
   }
 }

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useMemo } from 'react';
+import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { parseDiff, Diff, Hunk, tokenize, markEdits } from 'react-diff-view';
 import refractor from 'refractor';
@@ -20,11 +20,17 @@ interface FileSlideoutProps {
   files: Record<string, FileContent>;
 }
 
-export function FileSlideout({ files }: FileSlideoutProps) {
-  const { activeSlideout, closeFile } = useSlideout();
-  const panelRef = useRef<HTMLDivElement>(null);
+const DEFAULT_WIDTH = 700;
+const MIN_WIDTH = 350;
+const MAX_WIDTH = 1200;
 
-  // Close on Escape
+export function FileSlideout({ files }: FileSlideoutProps) {
+  const { activeSlideout, openFile, closeFile } = useSlideout();
+  const [panelWidth, setPanelWidth] = useState(DEFAULT_WIDTH);
+  const isDragging = useRef(false);
+  const startX = useRef(0);
+  const startWidth = useRef(0);
+
   useEffect(() => {
     if (!activeSlideout) return;
     function handleKey(e: KeyboardEvent) {
@@ -34,42 +40,64 @@ export function FileSlideout({ files }: FileSlideoutProps) {
     return () => window.removeEventListener('keydown', handleKey);
   }, [activeSlideout, closeFile]);
 
+  const onDragStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    isDragging.current = true;
+    startX.current = e.clientX;
+    startWidth.current = panelWidth;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    function onMove(e: MouseEvent) {
+      if (!isDragging.current) return;
+      const delta = startX.current - e.clientX; // dragging left = wider
+      const newWidth = Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, startWidth.current + delta));
+      setPanelWidth(newWidth);
+    }
+
+    function onUp() {
+      isDragging.current = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    }
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, [panelWidth]);
+
   const fileContent = activeSlideout ? files[activeSlideout.file] : undefined;
 
   return (
     <AnimatePresence>
       {activeSlideout && (
-        <>
-          {/* Backdrop */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="fixed inset-0 bg-black/50 z-40"
-            onClick={closeFile}
+        <motion.div
+          initial={{ width: 0 }}
+          animate={{ width: panelWidth }}
+          exit={{ width: 0 }}
+          transition={isDragging.current ? { duration: 0 } : { type: 'spring', damping: 35, stiffness: 250 }}
+          className="flex-shrink-0 h-screen sticky top-0 overflow-hidden border-l border-[var(--border)] bg-[var(--bg-primary)] relative"
+        >
+          {/* Resize handle */}
+          <div
+            onMouseDown={onDragStart}
+            className="absolute left-0 top-0 bottom-0 w-1 cursor-col-resize z-10 hover:bg-[var(--accent)]/30 active:bg-[var(--accent)]/50 transition-colors"
           />
 
-          {/* Panel */}
-          <motion.div
-            ref={panelRef}
-            initial={{ x: '100%' }}
-            animate={{ x: 0 }}
-            exit={{ x: '100%' }}
-            transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-            className="fixed top-0 right-0 bottom-0 z-50 bg-[var(--bg-primary)] border-l border-[var(--border)] flex flex-col"
-            style={{ width: 'clamp(600px, 70vw, 1200px)' }}
-          >
-            {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3 bg-[var(--bg-secondary)] border-b border-[var(--border)]">
-              <span className="text-sm font-mono text-[var(--text-primary)]">
-                {activeSlideout.file}
-              </span>
+          <div className="h-full flex flex-col" style={{ width: panelWidth }}>
+            {/* Header with file picker */}
+            <div className="flex items-center justify-between px-4 py-3 bg-[var(--bg-secondary)] border-b border-[var(--border)] flex-shrink-0 gap-2">
+              <FilePickerDropdown
+                currentFile={activeSlideout.file}
+                allFiles={Object.keys(files)}
+                onSelect={(file) => openFile(file)}
+              />
               <button
                 onClick={closeFile}
-                className="w-8 h-8 flex items-center justify-center rounded hover:bg-[var(--bg-tertiary)] text-[var(--text-secondary)] transition-colors"
+                className="w-7 h-7 flex items-center justify-center rounded hover:bg-[var(--bg-tertiary)] text-[var(--text-secondary)] transition-colors flex-shrink-0"
               >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
                   <path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.75.75 0 1 1 1.06 1.06L9.06 8l3.22 3.22a.75.75 0 1 1-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 0 1-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z"/>
                 </svg>
               </button>
@@ -87,10 +115,65 @@ export function FileSlideout({ files }: FileSlideoutProps) {
                 </div>
               )}
             </div>
-          </motion.div>
-        </>
+          </div>
+        </motion.div>
       )}
     </AnimatePresence>
+  );
+}
+
+function middleTruncate(str: string, maxLen: number): string {
+  if (str.length <= maxLen) return str;
+  const keep = maxLen - 3; // room for "..."
+  const front = Math.ceil(keep / 2);
+  const back = Math.floor(keep / 2);
+  return `${str.slice(0, front)}\u2026${str.slice(-back)}`;
+}
+
+function FilePickerDropdown({ currentFile, allFiles, onSelect }: {
+  currentFile: string;
+  allFiles: string[];
+  onSelect: (file: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const sorted = useMemo(() => [...allFiles].sort(), [allFiles]);
+
+  return (
+    <div className="relative min-w-0 flex-1">
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-2 min-w-0 w-full text-left px-2 py-1 -mx-2 -my-1 rounded hover:bg-[var(--bg-tertiary)] transition-colors"
+      >
+        <span className="text-sm font-mono text-[var(--text-primary)] truncate">
+          {currentFile}
+        </span>
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="var(--text-secondary)" className="flex-shrink-0">
+          <path d="M4.427 7.427l3.396 3.396a.25.25 0 00.354 0l3.396-3.396A.25.25 0 0011.396 7H4.604a.25.25 0 00-.177.427z"/>
+        </svg>
+      </button>
+
+      {open && (
+        <>
+          <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
+          <div className="absolute top-full left-0 mt-1 max-w-[min(22rem,90vw)] max-h-[50vh] overflow-y-auto overflow-x-hidden rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] shadow-xl z-30 py-1">
+            {sorted.map((file) => (
+              <button
+                key={file}
+                onClick={() => { onSelect(file); setOpen(false); }}
+                className={`w-full text-left px-3 py-2 text-xs font-mono transition-colors ${
+                  file === currentFile
+                    ? 'text-[var(--accent)] bg-[var(--accent)]/5'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]'
+                }`}
+                title={file}
+              >
+                {middleTruncate(file, 45)}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -126,7 +209,7 @@ function SlideoutDiffView({ fileContent }: { fileContent: FileContent }) {
   if (!parsed) return null;
 
   return (
-    <div className="cruise-diff-wrapper">
+    <div className="cruise-diff-wrapper min-w-fit">
       <Diff
         viewType="unified"
         diffType={parsed.type}
@@ -141,17 +224,16 @@ function SlideoutDiffView({ fileContent }: { fileContent: FileContent }) {
 }
 
 function SlideoutCodeView({ fileContent }: { fileContent: FileContent }) {
-  // Simple non-highlighted fallback for the slideout
   const lines = (fileContent.after ?? '').split('\n');
 
   return (
-    <pre className="text-[13px] leading-[1.5] font-mono m-0 bg-[var(--bg-secondary)]">
+    <pre className="text-[13px] leading-[1.5] font-mono m-0 bg-[var(--bg-secondary)] min-w-fit">
       {lines.map((line, i) => (
         <div key={i} className="flex">
           <span className="select-none w-12 flex-shrink-0 text-right pr-4 text-xs text-[var(--text-secondary)]/40" style={{ lineHeight: '1.5em' }}>
             {i + 1}
           </span>
-          <span className="flex-1 px-4 whitespace-pre-wrap break-all text-[var(--text-primary)]">
+          <span className="flex-1 px-4 whitespace-pre text-[var(--text-primary)]">
             {line}
           </span>
         </div>

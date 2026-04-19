@@ -27,7 +27,7 @@ export function getAuthorizeUrl(state: string, redirectUri: string): string {
     client_id: config.github.clientId,
     redirect_uri: redirectUri,
     state,
-    scope: '',
+    scope: 'repo',
   });
   return `${base}/login/oauth/authorize?${params}`;
 }

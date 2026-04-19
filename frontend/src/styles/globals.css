@@ -1,21 +1,28 @@
 @import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
 :root {
   --bg-primary: #0d1117;
   --bg-secondary: #161b22;
   --bg-tertiary: #21262d;
   --border: #30363d;
-  --text-primary: #e6edf3;
+  --text-primary: #c9d1d9;
   --text-secondary: #8b949e;
+  --text-bright: #e6edf3;
   --accent: #58a6ff;
   --accent-hover: #79c0ff;
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
 }
 
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif;
+  font-family: var(--font-sans);
   background-color: var(--bg-primary);
   color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
 /* Shiki code blocks */
@@ -45,11 +52,12 @@ body {
    ============================================ */
 .cruise-markdown {
   color: var(--text-primary);
-  font-size: 14px;
-  line-height: 1.7;
+  font-size: 1rem;
+  line-height: 1.8;
+  letter-spacing: -0.006em;
 }
 .cruise-markdown p {
-  margin: 0 0 0.75em;
+  margin: 0 0 1.2em;
 }
 .cruise-markdown p:last-child {
   margin-bottom: 0;
@@ -57,72 +65,107 @@ body {
 .cruise-markdown code {
   background: var(--bg-tertiary);
   border-radius: 4px;
-  padding: 0.15em 0.4em;
-  font-size: 0.9em;
-  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  padding: 0.15em 0.45em;
+  font-size: 0.875em;
+  font-family: var(--font-mono);
   color: var(--accent);
+  font-weight: 400;
 }
 .cruise-markdown pre {
   background: var(--bg-tertiary);
-  border-radius: 6px;
-  padding: 0.75em 1em;
+  border-radius: 8px;
+  padding: 1em 1.25em;
   overflow-x: auto;
-  margin: 0.75em 0;
+  margin: 1.5em 0;
+  font-size: 0.875rem;
+  line-height: 1.6;
 }
 .cruise-markdown pre code {
   background: none;
   padding: 0;
   color: var(--text-primary);
+  font-size: inherit;
 }
 .cruise-markdown strong {
-  color: var(--text-primary);
+  color: var(--text-bright);
   font-weight: 600;
 }
 .cruise-markdown em {
   color: var(--text-secondary);
+  font-style: italic;
 }
 .cruise-markdown ul, .cruise-markdown ol {
-  padding-left: 1.5em;
-  margin: 0.5em 0;
+  padding-left: 1.6em;
+  margin: 0.8em 0 1.2em;
 }
 .cruise-markdown li {
-  margin: 0.25em 0;
+  margin: 0.4em 0;
+  line-height: 1.7;
 }
-.cruise-markdown h1, .cruise-markdown h2, .cruise-markdown h3,
-.cruise-markdown h4, .cruise-markdown h5, .cruise-markdown h6 {
-  color: var(--text-primary);
-  margin: 1em 0 0.5em;
+.cruise-markdown li::marker {
+  color: var(--text-secondary);
+}
+.cruise-markdown h1 {
+  color: var(--text-bright);
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 2em 0 0.75em;
+  letter-spacing: -0.02em;
+}
+.cruise-markdown h2 {
+  color: var(--text-bright);
+  font-size: 1.25rem;
   font-weight: 600;
+  margin: 1.75em 0 0.6em;
+  letter-spacing: -0.015em;
+}
+.cruise-markdown h3 {
+  color: var(--text-bright);
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 1.5em 0 0.5em;
+}
+.cruise-markdown h4, .cruise-markdown h5, .cruise-markdown h6 {
+  color: var(--text-bright);
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 1.25em 0 0.5em;
 }
 .cruise-markdown a {
   color: var(--accent);
   text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.15s;
 }
 .cruise-markdown a:hover {
-  text-decoration: underline;
+  border-bottom-color: var(--accent);
 }
 .cruise-markdown blockquote {
   border-left: 3px solid var(--border);
-  padding-left: 1em;
-  margin: 0.75em 0;
+  padding-left: 1.25em;
+  margin: 1.25em 0;
   color: var(--text-secondary);
+  font-style: italic;
 }
 .cruise-markdown hr {
   border: none;
   border-top: 1px solid var(--border);
-  margin: 1em 0;
+  margin: 2em 0;
 }
 .cruise-markdown table {
   border-collapse: collapse;
-  margin: 0.75em 0;
+  margin: 1.25em 0;
+  font-size: 0.9375rem;
 }
 .cruise-markdown th, .cruise-markdown td {
   border: 1px solid var(--border);
-  padding: 0.4em 0.8em;
+  padding: 0.5em 1em;
   text-align: left;
 }
 .cruise-markdown th {
   background: var(--bg-tertiary);
+  font-weight: 600;
+  color: var(--text-bright);
 }
 
 /* ============================================

@@ -204,6 +204,12 @@ export async function analyzePr(
       throw new Error('Claude did not return a structured walkthrough');
     }
 
+    // Fix escaped newlines from structured output
+    claudeOutput.summary = claudeOutput.summary.replace(/\\n/g, '\n');
+    for (const section of claudeOutput.sections) {
+      section.body = section.body.replace(/\\n/g, '\n');
+    }
+
     addProgress(walkthroughId, 'status', 'Reading file contents...');
 
     // Read actual file contents for all referenced files

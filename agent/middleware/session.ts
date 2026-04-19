@@ -50,7 +50,8 @@ export async function requireRepoAccess(c: Context, next: Next) {
 
   const hasAccess = await verifyRepoAccess(session.githubToken, owner, repo);
   if (!hasAccess) {
-    throw new AppError(403, 'You do not have access to this repository');
+    // Could be expired token or genuinely no access — clear session so user re-authenticates
+    throw new AppError(401, 'Session expired or repository not accessible');
   }
 
   accessCache.set(cacheKey, Date.now() + ACCESS_CACHE_TTL);

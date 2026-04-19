@@ -21,7 +21,7 @@ export function SectionRenderer({ section, files, index }: SectionRendererProps)
       data-section-index={index}
       className="mb-16"
     >
-      <h2 className="text-2xl font-bold text-[var(--text-primary)] mb-6 pb-3 border-b border-[var(--border)]">
+      <h2 className="text-[1.6rem] font-semibold text-[var(--text-bright)] mb-8 pb-4 border-b border-[var(--border)] tracking-tight leading-tight">
         {section.title}
       </h2>
 
