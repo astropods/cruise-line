@@ -1,14 +1,12 @@
 import { useState, useRef, useEffect } from 'react';
-import Markdown from 'react-markdown';
-import { useChat, type ChatMessage } from '../hooks/useChat';
+import { Md } from './Md';
+import { useChat, type ChatEntry } from '../hooks/useChat';
 
 interface ChatPanelProps {
   owner: string;
   repo: string;
   prNumber: number;
-  /** Called when user wants to switch back to walkthrough */
   onSwitchToWalkthrough: () => void;
-  /** Initial message to send (from the floating input bar) */
   initialMessage?: string;
 }
 
@@ -19,10 +17,10 @@ export function ChatPanel({ owner, repo, prNumber, onSwitchToWalkthrough, initia
   const sentInitial = useRef(false);
 
   const {
-    messages,
+    entries,
     isStreaming,
     streamingText,
-    toolActivity,
+    historyLoaded,
     sendMessage,
     resetSession,
   } = useChat({ owner, repo, pr: prNumber });
@@ -30,15 +28,15 @@ export function ChatPanel({ owner, repo, prNumber, onSwitchToWalkthrough, initia
   // Auto-scroll
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, streamingText]);
+  }, [entries, streamingText]);
 
-  // Send initial message once
+  // Send initial message once (after history has loaded)
   useEffect(() => {
-    if (initialMessage && !sentInitial.current) {
+    if (initialMessage && historyLoaded && !sentInitial.current) {
       sentInitial.current = true;
       sendMessage(initialMessage);
     }
-  }, [initialMessage, sendMessage]);
+  }, [initialMessage, historyLoaded, sendMessage]);
 
   // Focus input
   useEffect(() => {
@@ -58,7 +56,6 @@ export function ChatPanel({ owner, repo, prNumber, onSwitchToWalkthrough, initia
     }
   }
 
-  // Auto-resize textarea
   useEffect(() => {
     const el = inputRef.current;
     if (el) {
@@ -71,41 +68,46 @@ export function ChatPanel({ owner, repo, prNumber, onSwitchToWalkthrough, initia
     <div className="flex flex-col h-full">
       {/* Messages */}
       <div className="flex-1 overflow-auto px-8 py-6">
-        <div className="max-w-[800px] mx-auto space-y-3">
-          {messages.length === 0 && !isStreaming && (
+        <div className="max-w-[800px] mx-auto space-y-1">
+          {!historyLoaded && (
+            <div className="text-center text-[var(--text-secondary)] text-sm py-12">
+              Loading conversation...
+            </div>
+          )}
+
+          {historyLoaded && entries.length === 0 && !isStreaming && (
             <div className="text-center text-[var(--text-secondary)] text-sm py-12">
               Ask a question about this pull request. Claude can read the codebase to answer.
             </div>
           )}
 
-          {messages.map((msg, i) => (
-            <MessageBubble key={i} message={msg} />
+          {entries.map((entry, i) => (
+            <EntryView key={i} entry={entry} />
           ))}
 
-          {/* Streaming response */}
-          {isStreaming && (
-            <div className="flex gap-3">
+          {/* Streaming text */}
+          {isStreaming && streamingText && (
+            <div className="flex gap-3 pt-2">
               <div className="w-6 h-6 rounded-full bg-[var(--accent)]/20 flex items-center justify-center flex-shrink-0 mt-1">
                 <span className="text-xs text-[var(--accent)]">C</span>
               </div>
-              <div className="flex-1 min-w-0">
-                {streamingText ? (
-                  <div className="cruise-markdown text-sm">
-                    <Markdown>{streamingText}</Markdown>
-                    <span className="inline-block w-1.5 h-4 bg-[var(--accent)] animate-pulse ml-0.5 align-middle" />
-                  </div>
-                ) : toolActivity ? (
-                  <div className="flex items-center gap-2 text-xs font-mono text-[var(--text-secondary)]">
-                    <span className="text-yellow-400">&#9656;</span>
-                    <span>{toolActivity}</span>
-                  </div>
-                ) : (
-                  <div className="flex gap-1 py-2">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[var(--text-secondary)] animate-bounce" style={{ animationDelay: '0ms' }} />
-                    <span className="w-1.5 h-1.5 rounded-full bg-[var(--text-secondary)] animate-bounce" style={{ animationDelay: '150ms' }} />
-                    <span className="w-1.5 h-1.5 rounded-full bg-[var(--text-secondary)] animate-bounce" style={{ animationDelay: '300ms' }} />
-                  </div>
-                )}
+              <div className="flex-1 min-w-0 cruise-markdown text-sm">
+                <Md>{streamingText}</Md>
+                <span className="inline-block w-1.5 h-4 bg-[var(--accent)] animate-pulse ml-0.5 align-middle" />
+              </div>
+            </div>
+          )}
+
+          {/* Thinking indicator (no text yet, no recent tool call) */}
+          {isStreaming && !streamingText && entries[entries.length - 1]?.type !== 'tool_call' && (
+            <div className="flex gap-3 pt-2">
+              <div className="w-6 h-6 rounded-full bg-[var(--accent)]/20 flex items-center justify-center flex-shrink-0 mt-1">
+                <span className="text-xs text-[var(--accent)]">C</span>
+              </div>
+              <div className="flex gap-1 py-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-[var(--text-secondary)] animate-bounce" style={{ animationDelay: '0ms' }} />
+                <span className="w-1.5 h-1.5 rounded-full bg-[var(--text-secondary)] animate-bounce" style={{ animationDelay: '150ms' }} />
+                <span className="w-1.5 h-1.5 rounded-full bg-[var(--text-secondary)] animate-bounce" style={{ animationDelay: '300ms' }} />
               </div>
             </div>
           )}
@@ -153,33 +155,45 @@ export function ChatPanel({ owner, repo, prNumber, onSwitchToWalkthrough, initia
   );
 }
 
-function MessageBubble({ message }: { message: ChatMessage }) {
-  if (message.role === 'user') {
+function EntryView({ entry }: { entry: ChatEntry }) {
+  if (entry.type === 'user') {
     return (
-      <div className="flex justify-end">
+      <div className="flex justify-end pt-3">
         <div className="max-w-[85%] px-4 py-2.5 rounded-lg bg-[var(--accent)]/15 text-sm text-[var(--text-primary)]">
-          {message.content}
+          {entry.content}
         </div>
       </div>
     );
   }
 
-  if (message.role === 'tool') {
+  if (entry.type === 'tool_call') {
     return (
       <div className="flex items-center gap-2 py-0.5 pl-9 text-xs font-mono text-[var(--text-secondary)] opacity-50">
         <span className="text-yellow-400">&#9656;</span>
-        <span className="truncate">{message.content}</span>
+        <span className="truncate">{entry.content}</span>
       </div>
     );
   }
 
+  if (entry.type === 'error') {
+    return (
+      <div className="flex gap-3 pt-2">
+        <div className="w-6 h-6 rounded-full bg-red-500/20 flex items-center justify-center flex-shrink-0 mt-1">
+          <span className="text-xs text-red-400">!</span>
+        </div>
+        <div className="flex-1 text-sm text-red-400">{entry.content}</div>
+      </div>
+    );
+  }
+
+  // text or result
   return (
-    <div className="flex gap-3">
+    <div className="flex gap-3 pt-2">
       <div className="w-6 h-6 rounded-full bg-[var(--accent)]/20 flex items-center justify-center flex-shrink-0 mt-1">
         <span className="text-xs text-[var(--accent)]">C</span>
       </div>
       <div className="flex-1 min-w-0 cruise-markdown text-sm">
-        <Markdown>{message.content}</Markdown>
+        <Md>{entry.content}</Md>
       </div>
     </div>
   );

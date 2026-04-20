@@ -1,10 +1,10 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 
-export interface ChatMessage {
-  role: 'user' | 'assistant' | 'tool';
+export interface ChatEntry {
+  type: 'user' | 'text' | 'tool_call' | 'tool_result' | 'error';
   content: string;
-  timestamp: Date;
   toolName?: string;
+  timestamp: Date;
 }
 
 interface UseChatOptions {
@@ -14,20 +14,60 @@ interface UseChatOptions {
 }
 
 export function useChat({ owner, repo, pr }: UseChatOptions) {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [entries, setEntries] = useState<ChatEntry[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingText, setStreamingText] = useState('');
-  const [toolActivity, setToolActivity] = useState('');
+  const [historyLoaded, setHistoryLoaded] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+
+  // Load conversation history from the server on mount
+  useEffect(() => {
+    async function loadHistory() {
+      try {
+        const res = await fetch(`/api/chat/${owner}/${repo}/${pr}/session`, {
+          credentials: 'include',
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!data.messages?.length) return;
+
+        const restored: ChatEntry[] = [];
+        for (const msg of data.messages) {
+          if (msg.type === 'user') {
+            restored.push({ type: 'user', content: msg.content, timestamp: new Date() });
+          } else if (msg.type === 'assistant') {
+            for (const part of msg.parts ?? []) {
+              if (part.type === 'text') {
+                restored.push({ type: 'text', content: part.content, timestamp: new Date() });
+              } else if (part.type === 'tool_call') {
+                const detail = part.detail ? `: ${part.detail}` : '';
+                restored.push({
+                  type: 'tool_call',
+                  content: `${part.name}${detail}`,
+                  toolName: part.name,
+                  timestamp: new Date(),
+                });
+              }
+            }
+          } else if (msg.type === 'result' && msg.content) {
+            restored.push({ type: 'text', content: msg.content, timestamp: new Date() });
+          }
+        }
+        if (restored.length > 0) {
+          setEntries(restored);
+        }
+      } catch { /* ignore */ }
+      setHistoryLoaded(true);
+    }
+    loadHistory();
+  }, [owner, repo, pr]);
 
   const sendMessage = useCallback(async (text: string) => {
     if (!text.trim() || isStreaming) return;
 
-    // Add user message
-    setMessages((prev) => [...prev, { role: 'user', content: text, timestamp: new Date() }]);
+    setEntries((prev) => [...prev, { type: 'user', content: text, timestamp: new Date() }]);
     setIsStreaming(true);
     setStreamingText('');
-    setToolActivity('');
 
     const controller = new AbortController();
     abortRef.current = controller;
@@ -56,10 +96,8 @@ export function useChat({ owner, repo, pr }: UseChatOptions) {
         if (done) break;
 
         buffer += decoder.decode(value, { stream: true });
-
-        // Parse SSE events from buffer
         const lines = buffer.split('\n');
-        buffer = lines.pop() ?? ''; // Keep incomplete line in buffer
+        buffer = lines.pop() ?? '';
 
         for (const line of lines) {
           if (!line.startsWith('data:')) continue;
@@ -71,59 +109,56 @@ export function useChat({ owner, repo, pr }: UseChatOptions) {
 
             if (event.type === 'heartbeat') {
               continue;
-            } else if (event.type === 'delta') {
+            } else if (event.type === 'text_delta') {
               accumulated += event.text;
               setStreamingText(accumulated);
-              setToolActivity('');
-            } else if (event.type === 'tool') {
-              // Push tool calls into the message stream in real-time
+            } else if (event.type === 'tool_start') {
+              setEntries((prev) => [...prev, {
+                type: 'tool_call',
+                content: event.name,
+                toolName: event.name,
+                timestamp: new Date(),
+              }]);
+            } else if (event.type === 'tool_call') {
               const detail = event.detail ? `: ${event.detail}` : '';
-              setMessages((prev) => [
-                ...prev,
-                { role: 'tool', content: `${event.name}${detail}`, timestamp: new Date(), toolName: event.name },
-              ]);
-              setToolActivity(`${event.name}${detail}`);
+              setEntries((prev) => [...prev, {
+                type: 'tool_call',
+                content: `${event.name}${detail}`,
+                toolName: event.name,
+                timestamp: new Date(),
+              }]);
+            } else if (event.type === 'tool_result') {
+              // Tool finished — could show a checkmark or completion indicator
             } else if (event.type === 'done') {
-              const finalText = event.text || accumulated;
+              // Finalize: use accumulated streaming text if we have it, else the result text
+              const finalText = accumulated || event.text;
               if (finalText) {
-                setMessages((prev) => [
-                  ...prev,
-                  { role: 'assistant', content: finalText, timestamp: new Date() },
-                ]);
+                setEntries((prev) => [...prev, { type: 'text', content: finalText, timestamp: new Date() }]);
               }
               accumulated = '';
               setStreamingText('');
-              setToolActivity('');
             } else if (event.type === 'error') {
-              setMessages((prev) => [
-                ...prev,
-                { role: 'assistant', content: `Error: ${event.message}`, timestamp: new Date() },
-              ]);
+              setEntries((prev) => [...prev, { type: 'error', content: event.message, timestamp: new Date() }]);
             }
-          } catch {
-            // Skip malformed events
-          }
+          } catch { /* skip malformed */ }
         }
       }
 
-      // If there's accumulated text that wasn't finalized by a 'done' event
+      // If accumulated text wasn't finalized by a done event
       if (accumulated) {
-        setMessages((prev) => [
-          ...prev,
-          { role: 'assistant', content: accumulated, timestamp: new Date() },
-        ]);
+        setEntries((prev) => [...prev, { type: 'text', content: accumulated, timestamp: new Date() }]);
       }
     } catch (err) {
       if ((err as Error).name !== 'AbortError') {
-        setMessages((prev) => [
-          ...prev,
-          { role: 'assistant', content: `Error: ${(err as Error).message}`, timestamp: new Date() },
-        ]);
+        setEntries((prev) => [...prev, {
+          type: 'error',
+          content: (err as Error).message,
+          timestamp: new Date(),
+        }]);
       }
     } finally {
       setIsStreaming(false);
       setStreamingText('');
-      setToolActivity('');
       abortRef.current = null;
     }
   }, [owner, repo, pr, isStreaming]);
@@ -134,22 +169,17 @@ export function useChat({ owner, repo, pr }: UseChatOptions) {
         method: 'DELETE',
         credentials: 'include',
       });
-      setMessages([]);
+      setEntries([]);
       setStreamingText('');
     } catch { /* ignore */ }
   }, [owner, repo, pr]);
 
-  const cancelStreaming = useCallback(() => {
-    abortRef.current?.abort();
-  }, []);
-
   return {
-    messages,
+    entries,
     isStreaming,
     streamingText,
-    toolActivity,
+    historyLoaded,
     sendMessage,
     resetSession,
-    cancelStreaming,
   };
 }

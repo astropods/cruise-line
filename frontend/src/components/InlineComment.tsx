@@ -1,4 +1,4 @@
-import Markdown from 'react-markdown';
+import { Md } from './Md';
 import { useCommentsContext } from '../contexts/CommentsContext';
 import { CommentInput } from './CommentInput';
 import type { PRComment } from '../api';
@@ -51,7 +51,7 @@ function CommentBubble({ comment, isReply }: { comment: PRComment; isReply?: boo
           </a>
         </div>
         <div className="cruise-markdown text-sm">
-          <Markdown>{comment.body}</Markdown>
+          <Md>{comment.body}</Md>
         </div>
         {!isReply && (
           <button

@@ -1,4 +1,4 @@
-import Markdown from 'react-markdown';
+import { Md } from './Md';
 
 interface CalloutProps {
   type: 'info' | 'warning' | 'breaking';
@@ -35,7 +35,7 @@ export function Callout({ type, content }: CalloutProps) {
         {s.icon} {s.label}
       </div>
       <div className="cruise-markdown text-sm">
-        <Markdown>{content}</Markdown>
+        <Md>{content}</Md>
       </div>
     </div>
   );

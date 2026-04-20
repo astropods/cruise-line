@@ -156,16 +156,26 @@ body {
   border-collapse: collapse;
   margin: 1.25em 0;
   font-size: 0.9375rem;
+  width: 100%;
+  overflow-x: auto;
+  display: block;
 }
 .cruise-markdown th, .cruise-markdown td {
   border: 1px solid var(--border);
   padding: 0.5em 1em;
   text-align: left;
+  white-space: nowrap;
+}
+.cruise-markdown td {
+  white-space: normal;
 }
 .cruise-markdown th {
   background: var(--bg-tertiary);
   font-weight: 600;
   color: var(--text-bright);
+}
+.cruise-markdown tr:nth-child(even) td {
+  background: var(--bg-secondary);
 }
 
 /* ============================================

@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useParams } from 'react-router';
-import { motion, AnimatePresence } from 'framer-motion';
 import { useWalkthrough } from '../hooks/useWalkthrough';
 import { useAuth } from '../hooks/useAuth';
 import { SlideoutProvider } from '../contexts/SlideoutContext';
@@ -14,7 +13,7 @@ import { StaleIndicator } from '../components/StaleIndicator';
 import { ChatPanel } from '../components/ChatPanel';
 import { ChatInputBar } from '../components/ChatInputBar';
 import { PageLoading, ErrorState } from '../components/LoadingStates';
-import Markdown from 'react-markdown';
+import { Md } from '../components/Md';
 
 type ViewMode = 'walkthrough' | 'chat';
 
@@ -138,56 +137,52 @@ export function WalkthroughPage() {
           {/* Stale banner */}
           {isStale && viewMode === 'walkthrough' && <StaleIndicator onRegenerate={generate} />}
 
-          {/* Content area with transitions */}
+          {/* Content area — both views always mounted, active one visible */}
           <div className="flex-1 overflow-hidden relative">
-            <AnimatePresence mode="wait">
-              {viewMode === 'walkthrough' ? (
-                <motion.div
-                  key="walkthrough"
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -20 }}
-                  transition={{ duration: 0.2, ease: 'easeOut' }}
-                  className="absolute inset-0 overflow-auto"
-                >
-                  <ProgressBar />
-                  <main className="max-w-[800px] mx-auto px-8 py-12 pb-24">
-                    <div className="mb-20 cruise-markdown text-[1.125rem] leading-[1.8] text-[var(--text-secondary)]">
-                      <Markdown>{walkthrough.summary}</Markdown>
-                    </div>
-                    {walkthrough.sections.map((section, i) => (
-                      <SectionRenderer
-                        key={i}
-                        section={section}
-                        files={walkthrough.files}
-                        index={i}
-                      />
-                    ))}
-                  </main>
-                  <MiniNav sections={walkthrough.sections} />
-
-                  {/* Floating chat input bar */}
-                  <ChatInputBar onSubmit={startChat} />
-                </motion.div>
-              ) : (
-                <motion.div
-                  key="chat"
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: 20 }}
-                  transition={{ duration: 0.2, ease: 'easeOut' }}
-                  className="absolute inset-0"
-                >
-                  <ChatPanel
-                    owner={owner!}
-                    repo={repo!}
-                    prNumber={prNumber}
-                    onSwitchToWalkthrough={() => setViewMode('walkthrough')}
-                    initialMessage={chatInitialMessage}
+            {/* Walkthrough view */}
+            <div
+              className="absolute inset-0 overflow-auto transition-opacity duration-200"
+              style={{
+                opacity: viewMode === 'walkthrough' ? 1 : 0,
+                pointerEvents: viewMode === 'walkthrough' ? 'auto' : 'none',
+                zIndex: viewMode === 'walkthrough' ? 1 : 0,
+              }}
+            >
+              <ProgressBar />
+              <main className="max-w-[800px] mx-auto px-8 py-12 pb-24">
+                <div className="mb-20 cruise-markdown text-[1.125rem] leading-[1.8] text-[var(--text-secondary)]">
+                  <Md>{walkthrough.summary}</Md>
+                </div>
+                {walkthrough.sections.map((section, i) => (
+                  <SectionRenderer
+                    key={i}
+                    section={section}
+                    files={walkthrough.files}
+                    index={i}
                   />
-                </motion.div>
-              )}
-            </AnimatePresence>
+                ))}
+              </main>
+              <MiniNav sections={walkthrough.sections} />
+              <ChatInputBar onSubmit={startChat} />
+            </div>
+
+            {/* Chat view */}
+            <div
+              className="absolute inset-0 transition-opacity duration-200"
+              style={{
+                opacity: viewMode === 'chat' ? 1 : 0,
+                pointerEvents: viewMode === 'chat' ? 'auto' : 'none',
+                zIndex: viewMode === 'chat' ? 1 : 0,
+              }}
+            >
+              <ChatPanel
+                owner={owner!}
+                repo={repo!}
+                prNumber={prNumber}
+                onSwitchToWalkthrough={() => setViewMode('walkthrough')}
+                initialMessage={chatInitialMessage}
+              />
+            </div>
           </div>
         </div>
 
