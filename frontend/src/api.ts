@@ -115,6 +115,10 @@ export function fetchWalkthrough(owner: string, repo: string, pr: number) {
   return apiFetch<WalkthroughResponse>(`/api/walkthroughs/${owner}/${repo}/${pr}`);
 }
 
+export function fetchFileContent(owner: string, repo: string, pr: number, path: string) {
+  return apiFetch<FileContent>(`/api/files/${owner}/${repo}/${pr}/content?path=${encodeURIComponent(path)}`);
+}
+
 export function generateWalkthrough(owner: string, repo: string, pr: number, force = false) {
   const query = force ? '?force=true' : '';
   return apiFetch<{ walkthroughId: number; status: string }>(

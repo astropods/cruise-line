@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
+import { useParams } from 'react-router';
 import { motion, AnimatePresence } from 'framer-motion';
 import { parseDiff, Diff, Hunk, tokenize, markEdits } from 'react-diff-view';
 import refractor from 'refractor';
@@ -6,7 +7,8 @@ import { useSlideout } from '../contexts/SlideoutContext';
 import { useCommentsContext } from '../contexts/CommentsContext';
 import { InlineComment } from './InlineComment';
 import { CommentInput } from './CommentInput';
-import type { FileContent } from '../api';
+import { resolveFilePath } from '../lib/resolvePath';
+import { fetchFileContent, type FileContent } from '../api';
 import 'react-diff-view/style/index.css';
 
 const REFRACTOR_LANG_MAP: Record<string, string> = {
@@ -70,7 +72,40 @@ export function FileSlideout({ files }: FileSlideoutProps) {
     window.addEventListener('mouseup', onUp);
   }, [panelWidth]);
 
-  const fileContent = activeSlideout ? files[activeSlideout.file] : undefined;
+  // Resolve the file path against known files and lazy-load if missing
+  const { owner, repo, pr } = useParams<{ owner: string; repo: string; pr: string }>();
+  const knownPaths = useMemo(() => Object.keys(files), [files]);
+  const resolvedFile = activeSlideout ? resolveFilePath(activeSlideout.file, knownPaths) : '';
+  const staticContent = activeSlideout ? files[resolvedFile] : undefined;
+
+  const [lazyContent, setLazyContent] = useState<FileContent | null>(null);
+  const [lazyLoading, setLazyLoading] = useState(false);
+  const lazyFileRef = useRef('');
+
+  useEffect(() => {
+    if (!activeSlideout || staticContent) {
+      setLazyContent(null);
+      return;
+    }
+    // File not in pre-collected map — fetch on demand
+    const filePath = resolvedFile || activeSlideout.file;
+    if (lazyFileRef.current === filePath && lazyContent) return;
+    lazyFileRef.current = filePath;
+    setLazyLoading(true);
+    setLazyContent(null);
+
+    if (!owner || !repo || !pr) { setLazyLoading(false); return; }
+
+    let cancelled = false;
+    fetchFileContent(owner, repo, Number(pr), filePath)
+      .then((fc) => { if (!cancelled) setLazyContent(fc); })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setLazyLoading(false); });
+
+    return () => { cancelled = true; };
+  }, [activeSlideout?.file, resolvedFile, staticContent, owner, repo, pr]);
+
+  const fileContent = staticContent ?? lazyContent ?? undefined;
 
   return (
     <AnimatePresence>
@@ -124,6 +159,7 @@ export function FileSlideout({ files }: FileSlideoutProps) {
                 filePath={activeSlideout.file}
                 fileContent={fileContent}
                 focusLines={activeSlideout.lines}
+                loading={lazyLoading && !staticContent}
               />
             </div>
           </div>
@@ -141,8 +177,16 @@ function middleTruncate(str: string, maxLen: number): string {
   return `${str.slice(0, front)}\u2026${str.slice(-back)}`;
 }
 
-function SlideoutContent({ filePath, fileContent, focusLines }: { filePath: string; fileContent: FileContent | undefined; focusLines?: [number, number] }) {
+function SlideoutContent({ filePath, fileContent, focusLines, loading }: { filePath: string; fileContent: FileContent | undefined; focusLines?: [number, number]; loading?: boolean }) {
   const isInDiff = !!fileContent?.patch;
+
+  if (loading) {
+    return (
+      <div className="p-8 text-center text-[var(--text-secondary)]">
+        Loading file...
+      </div>
+    );
+  }
 
   return (
     <>

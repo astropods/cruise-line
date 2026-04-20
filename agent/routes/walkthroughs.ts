@@ -5,6 +5,7 @@ import {
   upsertWalkthrough,
   getLatestWalkthrough,
   getWalkthroughById,
+  deleteWalkthrough,
 } from '../db/walkthroughs.js';
 import { getPrMetadata, getInstallationForRepo } from '../github/client.js';
 import { jobManager } from '../analysis/jobs.js';
@@ -131,4 +132,19 @@ walkthroughRoutes.get('/:owner/:repo/:pr/status', async (c) => {
     error: walkthrough.error,
     progress,
   });
+});
+
+/**
+ * DELETE /api/walkthroughs/:owner/:repo/:pr
+ * Deletes the walkthrough record for a PR.
+ */
+walkthroughRoutes.delete('/:owner/:repo/:pr', async (c) => {
+  const owner = c.req.param('owner');
+  const repo = c.req.param('repo');
+  const prNumber = Number(c.req.param('pr'));
+
+  if (isNaN(prNumber)) throw new AppError(400, 'Invalid PR number');
+
+  await deleteWalkthrough(owner, repo, prNumber);
+  return c.json({ ok: true });
 });

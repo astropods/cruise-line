@@ -1,6 +1,8 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
+import { PencilSimpleLine, ChatText } from '@phosphor-icons/react';
 import type { FileContent } from '../api';
 import { useSlideout } from '../contexts/SlideoutContext';
+import { useCommentsContext } from '../contexts/CommentsContext';
 
 interface InlineSuggestionProps {
   file: string;
@@ -12,11 +14,13 @@ interface InlineSuggestionProps {
 
 export function InlineSuggestion({ file, lines, suggestion, fileContent }: InlineSuggestionProps) {
   const { openFile, githubFileUrl } = useSlideout();
+  const { setActiveCommentLine } = useCommentsContext();
   const [highlightedOld, setHighlightedOld] = useState<string[]>([]);
   const [highlightedNew, setHighlightedNew] = useState<string[]>([]);
 
   const content = fileContent?.after ?? '';
   const language = fileContent?.language ?? 'text';
+  const canComment = !!lines;
 
   const allLines = useMemo(() => content.split('\n'), [content]);
   const startLine = lines ? lines[0] : 1;
@@ -59,6 +63,21 @@ export function InlineSuggestion({ file, lines, suggestion, fileContent }: Inlin
     return () => { cancelled = true; };
   }, [oldLines.join('\n'), newLines.join('\n'), language]);
 
+  const handleCommentSuggestion = useCallback(() => {
+    if (!lines) return;
+    openFile(file, lines);
+    // Format as a GitHub suggestion comment
+    const prefill = `\`\`\`suggestion\n${suggestion}\n\`\`\``;
+    setTimeout(() => {
+      setActiveCommentLine({
+        path: file,
+        line: startLine,
+        side: 'RIGHT',
+        prefill,
+      });
+    }, 300);
+  }, [file, lines, startLine, suggestion, openFile, setActiveCommentLine]);
+
   if (!content && !suggestion) return null;
 
   return (
@@ -66,21 +85,29 @@ export function InlineSuggestion({ file, lines, suggestion, fileContent }: Inlin
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-2 bg-[var(--accent)]/5 border-b border-[var(--accent)]/20">
         <div className="flex items-center gap-2">
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" className="text-[var(--accent)]">
-            <path d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 0 1-.927-.928l.929-3.25c.081-.286.235-.547.445-.758l8.61-8.61Zm.176 4.823L9.75 4.81l-6.286 6.287a.253.253 0 0 0-.064.108l-.558 1.953 1.953-.558a.253.253 0 0 0 .108-.064Zm1.238-3.763a.25.25 0 0 0-.354 0L10.811 3.75l1.439 1.44 1.263-1.263a.25.25 0 0 0 0-.354Z"/>
-          </svg>
+          <PencilSimpleLine size={14} className="text-[var(--accent)]" />
           <span className="text-xs font-medium text-[var(--accent)]">Suggested change</span>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <a href={githubFileUrl(file)} target="_blank" rel="noopener noreferrer" className="text-xs font-mono text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors">
             {file}
             {lines && <span className="opacity-50 ml-2">L{lines[0]}–{lines[1]}</span>}
           </a>
+          {canComment && (
+            <button
+              onClick={handleCommentSuggestion}
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs text-[var(--text-secondary)] hover:text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors"
+              title="Post this suggestion as a GitHub review comment"
+            >
+              <ChatText size={12} />
+              Comment
+            </button>
+          )}
           <button
             onClick={() => openFile(file, lines)}
             className="text-xs text-[var(--accent)] hover:underline"
           >
-            View full file
+            View file
           </button>
         </div>
       </div>

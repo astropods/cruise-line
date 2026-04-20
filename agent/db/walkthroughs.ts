@@ -63,6 +63,17 @@ export async function getWalkthroughById(id: number): Promise<WalkthroughRow | n
   return row ?? null;
 }
 
+export async function deleteWalkthrough(
+  owner: string,
+  repo: string,
+  prNumber: number,
+): Promise<void> {
+  await sql`
+    DELETE FROM walkthroughs
+    WHERE owner = ${owner} AND repo = ${repo} AND pr_number = ${prNumber}
+  `;
+}
+
 export async function updateWalkthroughStatus(
   id: number,
   status: WalkthroughRow['status'],

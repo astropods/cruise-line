@@ -57,21 +57,88 @@ export async function getPrHeadSha(
   return pr.head.sha;
 }
 
+export interface AnalysisSummary {
+  verdict: 'approve' | 'request_changes' | 'needs_discussion';
+  verdictRationale: string;
+  findingCounts: { critical: number; high: number; medium: number; low: number; info: number };
+}
+
+export type CommentState =
+  | { status: 'ready' }
+  | { status: 'running' }
+  | { status: 'complete'; summary: AnalysisSummary }
+  | { status: 'failed' };
+
+const MARKER = '<!-- cruise-line-analysis -->';
+
+const VERDICT_LABELS: Record<string, { emoji: string; label: string }> = {
+  approve: { emoji: '\u2705', label: 'Looks good to merge' },
+  request_changes: { emoji: '\uD83D\uDEA8', label: 'Changes requested' },
+  needs_discussion: { emoji: '\uD83D\uDCAC', label: 'Needs discussion' },
+};
+
+function buildCommentBody(state: CommentState, analysisUrl: string): string {
+  switch (state.status) {
+    case 'running':
+      return `${MARKER}
+## \u2693 Cruise Line
+
+Analysis in progress\u2026
+
+[\u2192 View progress](${analysisUrl})`;
+
+    case 'complete': {
+      const v = VERDICT_LABELS[state.summary.verdict] ?? VERDICT_LABELS.needs_discussion;
+      const counts: string[] = [];
+      if (state.summary.findingCounts.critical > 0) counts.push(`${state.summary.findingCounts.critical} critical`);
+      if (state.summary.findingCounts.high > 0) counts.push(`${state.summary.findingCounts.high} high`);
+      if (state.summary.findingCounts.medium > 0) counts.push(`${state.summary.findingCounts.medium} medium`);
+      if (state.summary.findingCounts.low > 0) counts.push(`${state.summary.findingCounts.low} low`);
+      if (state.summary.findingCounts.info > 0) counts.push(`${state.summary.findingCounts.info} info`);
+      const total = Object.values(state.summary.findingCounts).reduce((a, b) => a + b, 0);
+
+      return `${MARKER}
+## ${v.emoji} Cruise Line \u2014 ${v.label}
+
+${state.summary.verdictRationale}
+
+${total > 0 ? `**${total} finding${total === 1 ? '' : 's'}:** ${counts.join(' \u00B7 ')}` : 'No findings.'}
+
+[\u2192 View full analysis](${analysisUrl})`;
+    }
+
+    case 'failed':
+      return `${MARKER}
+## \u26A0\uFE0F Cruise Line \u2014 Analysis failed
+
+Something went wrong during the analysis. Click below to retry.
+
+[\u2192 View details](${analysisUrl})`;
+
+    case 'ready':
+    default:
+      return `${MARKER}
+## \u2693 Cruise Line
+
+[\u2192 Click to start Cruise Line analysis](${analysisUrl})`;
+  }
+}
+
 /**
- * Post or update the walkthrough link comment on a PR.
+ * Post or update the Cruise Line analysis comment on a PR.
  */
-export async function postWalkthroughComment(
+export async function postAnalysisComment(
   installationId: number,
   owner: string,
   repo: string,
   prNumber: number,
+  state: CommentState = { status: 'ready' },
 ): Promise<void> {
   const token = await getInstallationToken(installationId);
   const octokit = createInstallationOctokit(token);
 
-  const walkthroughUrl = `${config.appUrl}/${owner}/${repo}/pull/${prNumber}`;
-  const marker = '<!-- cruise-line-walkthrough -->';
-  const body = `${marker}\n### Cruise Line\n[View guided walkthrough](${walkthroughUrl}) of this pull request.`;
+  const analysisUrl = `${config.appUrl}/${owner}/${repo}/pull/${prNumber}`;
+  const body = buildCommentBody(state, analysisUrl);
 
   // Check for existing comment
   const comments = await octokit.issues.listComments({
@@ -81,7 +148,7 @@ export async function postWalkthroughComment(
     per_page: 100,
   });
 
-  const existing = comments.data.find((c) => c.body?.includes(marker));
+  const existing = comments.data.find((c) => c.body?.includes(MARKER));
 
   if (existing) {
     await octokit.issues.updateComment({

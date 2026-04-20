@@ -469,3 +469,36 @@ body {
 .cruise-diff-wrapper .token.string {
   color: #a5d6ff;
 }
+
+/* ============================================
+   Finding navigation — container query layout
+   ============================================ */
+
+.cruise-main-container {
+  container-type: inline-size;
+  container-name: main;
+}
+
+/* Sidebar nav: hidden by default, shown when container is wide enough */
+.cruise-finding-sidebar {
+  display: none;
+}
+
+/* Header nav: shown by default, hidden when sidebar has room */
+.cruise-finding-header-nav {
+  animation: finding-nav-fade-in 0.2s ease;
+}
+
+@keyframes finding-nav-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@container main (min-width: 1400px) {
+  .cruise-finding-sidebar {
+    display: block;
+  }
+  .cruise-finding-header-nav {
+    display: none;
+  }
+}

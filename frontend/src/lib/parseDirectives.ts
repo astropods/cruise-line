@@ -4,10 +4,16 @@ export type Segment =
   | { type: 'code'; file: string; lines?: [number, number] }
   | { type: 'file'; file: string }
   | { type: 'callout'; calloutType: 'info' | 'warning' | 'breaking' | 'security' | 'perf'; content: string }
-  | { type: 'suggestion'; file: string; lines?: [number, number]; content: string };
+  | { type: 'suggestion'; file: string; lines?: [number, number]; content: string }
+  | { type: 'finding'; title: string; severity: string; category: string; fixPrompt?: string; body: string };
 
-const DIRECTIVE_RE = /^::(\w+)\{([^}]*)\}\s*$/;
+// Match directive on its own line — also tolerate leading/trailing whitespace.
+// Braces are optional (for ::endfinding). Attribute values in quotes can contain }.
+const DIRECTIVE_RE = /^\s*::(\w+)(?:\{((?:[^}"]*|"[^"]*")*)\})?\s*$/;
 const ATTR_RE = /(\w+)="([^"]*)"/g;
+
+// Detect code fence boundaries (``` or ~~~, optionally with language)
+const CODE_FENCE_RE = /^\s*(`{3,}|~{3,})/;
 
 function parseAttrs(raw: string): Record<string, string> {
   const attrs: Record<string, string> = {};
@@ -25,6 +31,87 @@ function parseLines(val: string): [number, number] | undefined {
 }
 
 /**
+ * Collect content lines for a block directive (callout, suggestion).
+ * Terminates on:
+ *  - A blank line followed by non-indented text (not more content)
+ *  - A code fence boundary (``` or ~~~)
+ *  - Another directive
+ *  - End of input
+ *  - Max 50 lines (safety cap)
+ */
+function collectBlockContent(lines: string[], startIndex: number): { content: string[]; endIndex: number } {
+  const contentLines: string[] = [];
+  let i = startIndex;
+  let inCodeFence = false;
+  let fenceMarker = '';
+  const MAX_LINES = 50;
+
+  while (i < lines.length && contentLines.length < MAX_LINES) {
+    const line = lines[i];
+
+    // Track code fences within the block content
+    const fenceMatch = CODE_FENCE_RE.exec(line);
+    if (fenceMatch) {
+      if (!inCodeFence) {
+        inCodeFence = true;
+        fenceMarker = fenceMatch[1][0]; // ` or ~
+        contentLines.push(line);
+        i++;
+        continue;
+      } else if (line.trim().startsWith(fenceMarker.repeat(3))) {
+        // Closing fence — include it and end the block
+        inCodeFence = false;
+        contentLines.push(line);
+        i++;
+        // After a closing code fence, the block directive is done
+        break;
+      }
+    }
+
+    // Inside a code fence, just collect lines
+    if (inCodeFence) {
+      contentLines.push(line);
+      i++;
+      continue;
+    }
+
+    // Blank line — check if this terminates the block
+    if (line.trim() === '') {
+      if (contentLines.length === 0) {
+        // Leading blank line, skip it
+        i++;
+        continue;
+      }
+
+      // Look ahead: if the next non-blank line is a directive or looks like
+      // regular prose (not indented code), terminate
+      let nextNonEmpty = i + 1;
+      while (nextNonEmpty < lines.length && lines[nextNonEmpty].trim() === '') nextNonEmpty++;
+
+      if (nextNonEmpty >= lines.length) break; // end of input
+      if (DIRECTIVE_RE.test(lines[nextNonEmpty])) break; // next directive
+
+      // If next non-empty line starts a new paragraph (not indented), terminate
+      // This catches the common case where the agent forgets a blank line separator
+      const nextLine = lines[nextNonEmpty];
+      if (nextLine && !nextLine.startsWith(' ') && !nextLine.startsWith('\t')) {
+        break;
+      }
+    }
+
+    // Another directive — stop (don't consume it)
+    if (contentLines.length > 0 && DIRECTIVE_RE.test(line)) {
+      break;
+    }
+
+    contentLines.push(line);
+    i++;
+  }
+
+  return { content: contentLines, endIndex: i };
+}
+
+/**
  * Parse a section body into segments of markdown and directives.
  *
  * Directives appear on their own line:
@@ -33,9 +120,15 @@ function parseLines(val: string): [number, number] | undefined {
  *   ::file{file="server/api/collections.ts"}
  *   ::callout{type="warning"}
  *   Content lines until blank line...
+ *   ::suggestion{file="path" lines="start-end"}
+ *   replacement code...
  */
 export function parseDirectives(body: string): Segment[] {
-  const lines = body.split('\n');
+  // Pre-process: strip wrapping code fences around directives
+  // Agents sometimes wrap directives in ```\n::directive{}\ncontent\n```
+  const sanitized = sanitizeDirectives(body);
+
+  const lines = sanitized.split('\n');
   const segments: Segment[] = [];
   let markdownBuf: string[] = [];
 
@@ -53,7 +146,6 @@ export function parseDirectives(body: string): Segment[] {
     const match = DIRECTIVE_RE.exec(line);
 
     if (!match) {
-      // Check for inline ::file{} directives within a markdown line
       markdownBuf.push(line);
       i++;
       continue;
@@ -62,7 +154,7 @@ export function parseDirectives(body: string): Segment[] {
     flushMarkdown();
 
     const directive = match[1];
-    const attrs = parseAttrs(match[2]);
+    const attrs = parseAttrs(match[2] ?? '');
 
     switch (directive) {
       case 'diff':
@@ -90,54 +182,55 @@ export function parseDirectives(body: string): Segment[] {
 
       case 'callout': {
         const calloutType = (attrs.type ?? 'info') as 'info' | 'warning' | 'breaking' | 'security' | 'perf';
-        const contentLines: string[] = [];
         i++;
-        // Collect content until blank line or next directive
-        while (i < lines.length) {
-          if (lines[i].trim() === '' && i + 1 < lines.length && DIRECTIVE_RE.test(lines[i + 1])) {
-            break;
-          }
-          if (lines[i].trim() === '' && contentLines.length > 0) {
-            // Check if next non-empty line is a directive
-            let nextNonEmpty = i + 1;
-            while (nextNonEmpty < lines.length && lines[nextNonEmpty].trim() === '') nextNonEmpty++;
-            if (nextNonEmpty >= lines.length || DIRECTIVE_RE.test(lines[nextNonEmpty])) break;
-          }
-          contentLines.push(lines[i]);
-          i++;
-        }
+        const { content, endIndex } = collectBlockContent(lines, i);
+        i = endIndex;
         segments.push({
           type: 'callout',
           calloutType,
-          content: contentLines.join('\n').trim(),
+          content: content.join('\n').trim(),
         });
         break;
       }
 
       case 'suggestion': {
-        const sugContentLines: string[] = [];
         i++;
-        // Collect content until blank line or next directive
-        while (i < lines.length) {
-          if (lines[i].trim() === '' && i + 1 < lines.length && DIRECTIVE_RE.test(lines[i + 1])) {
-            break;
-          }
-          if (lines[i].trim() === '' && sugContentLines.length > 0) {
-            let nextNonEmpty = i + 1;
-            while (nextNonEmpty < lines.length && lines[nextNonEmpty].trim() === '') nextNonEmpty++;
-            if (nextNonEmpty >= lines.length || DIRECTIVE_RE.test(lines[nextNonEmpty])) break;
-          }
-          sugContentLines.push(lines[i]);
-          i++;
-        }
+        const { content, endIndex } = collectBlockContent(lines, i);
+        i = endIndex;
         segments.push({
           type: 'suggestion',
           file: attrs.file ?? '',
           lines: attrs.lines ? parseLines(attrs.lines) : undefined,
-          content: sugContentLines.join('\n').trimEnd(),
+          content: content.join('\n').trimEnd(),
         });
         break;
       }
+
+      case 'finding': {
+        i++;
+        // Collect until ::endfinding or end of input
+        const bodyLines: string[] = [];
+        const END_RE = /^\s*::endfinding\b/;
+        while (i < lines.length && !END_RE.test(lines[i])) {
+          bodyLines.push(lines[i]);
+          i++;
+        }
+        if (i < lines.length && END_RE.test(lines[i])) i++; // skip ::endfinding
+        segments.push({
+          type: 'finding',
+          title: attrs.title ?? 'Finding',
+          severity: attrs.severity ?? 'info',
+          category: attrs.category ?? 'correctness',
+          fixPrompt: attrs.fixPrompt || undefined,
+          body: bodyLines.join('\n').trim(),
+        });
+        break;
+      }
+
+      case 'endfinding':
+        // Stray endfinding without a matching finding — skip
+        i++;
+        break;
 
       default:
         // Unknown directive, treat as markdown
@@ -149,6 +242,49 @@ export function parseDirectives(body: string): Segment[] {
 
   flushMarkdown();
   return segments;
+}
+
+/**
+ * Sanitize common agent mistakes before parsing:
+ * - Directives wrapped in code fences: ```\n::suggestion{...}\ncode\n```
+ * - Directives with trailing text on the same line
+ */
+function sanitizeDirectives(body: string): string {
+  const lines = body.split('\n');
+  const result: string[] = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    // Detect a code fence that immediately precedes a directive
+    // Pattern: ```\n::directive{...}\n...\n```
+    const fenceMatch = /^\s*(`{3,}|~{3,})\s*$/.exec(line);
+    if (fenceMatch) {
+      const fence = fenceMatch[1];
+      // Look ahead: is the next line a directive?
+      if (i + 1 < lines.length && DIRECTIVE_RE.test(lines[i + 1])) {
+        // Skip the opening fence
+        i++;
+        // Collect until closing fence
+        while (i < lines.length) {
+          const closeFence = /^\s*(`{3,}|~{3,})\s*$/.exec(lines[i]);
+          if (closeFence && closeFence[1][0] === fence[0] && closeFence[1].length >= fence.length) {
+            i++; // skip closing fence
+            break;
+          }
+          result.push(lines[i]);
+          i++;
+        }
+        continue;
+      }
+    }
+
+    result.push(line);
+    i++;
+  }
+
+  return result.join('\n');
 }
 
 /**

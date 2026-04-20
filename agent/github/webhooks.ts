@@ -1,15 +1,16 @@
 import { Webhooks } from '@octokit/webhooks';
 import { config } from '../config.js';
-import { postWalkthroughComment } from './client.js';
+import { postAnalysisComment, type CommentState } from './client.js';
+import { getLatestWalkthrough } from '../db/walkthroughs.js';
 import { cleanupClone } from '../repo/manager.js';
 import { deleteChatSessionsForPr } from '../db/chat-sessions.js';
 
 let webhooksInstance: Webhooks | null = null;
 
 function registerHandlers(wh: Webhooks) {
-  // When a PR is opened or updated, post/update the walkthrough link comment
+  // When a PR is opened or updated, post/update the analysis link comment
   wh.on(
-    ['pull_request.opened', 'pull_request.synchronize'],
+    ['pull_request.opened', 'pull_request.reopened', 'pull_request.synchronize'],
     async ({ payload }) => {
       const { repository, pull_request: pr, installation } = payload;
       if (!installation) {
@@ -24,7 +25,35 @@ function registerHandlers(wh: Webhooks) {
       console.log(`PR event: ${owner}/${repo}#${prNumber} (${payload.action})`);
 
       try {
-        await postWalkthroughComment(installation.id, owner, repo, prNumber);
+        // Check if an analysis already exists — post the right state
+        const existing = await getLatestWalkthrough(owner, repo, prNumber);
+        let state: CommentState = { status: 'ready' };
+
+        if (existing) {
+          if (existing.status === 'complete' && existing.data) {
+            const findings = existing.data.findings ?? [];
+            state = {
+              status: 'complete',
+              summary: {
+                verdict: existing.data.verdict,
+                verdictRationale: existing.data.verdictRationale,
+                findingCounts: {
+                  critical: findings.filter((f: any) => f.severity === 'critical').length,
+                  high: findings.filter((f: any) => f.severity === 'high').length,
+                  medium: findings.filter((f: any) => f.severity === 'medium').length,
+                  low: findings.filter((f: any) => f.severity === 'low').length,
+                  info: findings.filter((f: any) => f.severity === 'info').length,
+                },
+              },
+            };
+          } else if (existing.status === 'running' || existing.status === 'pending') {
+            state = { status: 'running' };
+          } else if (existing.status === 'failed') {
+            state = { status: 'failed' };
+          }
+        }
+
+        await postAnalysisComment(installation.id, owner, repo, prNumber, state);
       } catch (err) {
         console.error(`Failed to post comment on ${owner}/${repo}#${prNumber}:`, err);
       }

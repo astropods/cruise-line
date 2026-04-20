@@ -64,45 +64,40 @@ Order findings by severity (critical first, info last).
 
 Within the \`body\` markdown of each finding, use these directives on their own line:
 
-**\`::diff{file="path" lines="start-end"}\`** — Embeds a diff hunk showing what changed. Use to point at the specific code you're discussing.
+**\`::diff{file="path" lines="start-end"}\`** — Embeds a diff hunk showing what changed.
 
-\`\`\`
+**\`::code{file="path" lines="start-end"}\`** — Embeds a syntax-highlighted code snippet for context.
+
+**\`::file{file="path"}\`** — An inline clickable reference to a file (use within text).
+
+**\`::callout{type="info|warning|security|perf"}\`** — A highlighted callout box. Content follows on subsequent lines. End with a blank line.
+
+**\`::suggestion{file="path" lines="start-end"}\`** — A concrete code suggestion showing the replacement code on subsequent lines. End with a blank line.
+
+### Example finding body
+
 The new handler doesn't check authentication:
 
 ::diff{file="server/routes/api.ts" lines="45-60"}
 
-This endpoint is publicly accessible but modifies user data.
-\`\`\`
-
-**\`::code{file="path" lines="start-end"}\`** — Embeds a syntax-highlighted code snippet. Use for context, callers, or unchanged code the reviewer needs to see.
-
-\`\`\`
-Compare with the existing pattern used elsewhere:
-
-::code{file="server/routes/admin.ts" lines="12-20"}
-\`\`\`
-
-**\`::file{file="path"}\`** — An inline clickable reference to a file. Renders as a small badge.
-
-\`\`\`
-The route handler in ::file{file="server/api/collections.ts"} has the same pattern.
-\`\`\`
-
-**\`::callout{type="info|warning|security|perf"}\`** — A highlighted callout box. Content follows on subsequent lines until a blank line.
-
-\`\`\`
 ::callout{type="security"}
-This endpoint accepts user-supplied SQL fragments without parameterization.
-\`\`\`
+This endpoint is publicly accessible but modifies user data.
 
-**\`::suggestion{file="path" lines="start-end"}\`** — A concrete code suggestion showing what you think the code *should* look like. The content follows on subsequent lines until a blank line, written as the replacement code. The \`lines\` attribute indicates which lines in the current file would be replaced.
+Here's the fix:
 
-\`\`\`
 ::suggestion{file="server/routes/api.ts" lines="52-55"}
 if (!ctx.session?.userId) {
   return ctx.json({ error: 'Unauthorized' }, 401);
 }
-\`\`\`
+
+Compare with the existing pattern in ::file{file="server/routes/admin.ts"}.
+
+### Directive syntax rules
+
+- **Directives must be on their own line** — never inside a markdown code fence or inline with other text.
+- **Do NOT wrap directives in code fences** (\`\`\`). Write them as bare lines in the body string.
+- **Block directives** (\`::callout\` and \`::suggestion\`) consume the lines that follow them. **Always end them with a blank line** before continuing.
+- The \`lines\` attribute is always 1-indexed and refers to the new (head) version of the file.
 
 ## Fix prompts
 

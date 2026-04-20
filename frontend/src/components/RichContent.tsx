@@ -1,8 +1,12 @@
+import { useMemo } from 'react';
 import { Md } from './Md';
 import { parseDirectives, processInlineFileRefs } from '../lib/parseDirectives';
+import { resolveFilePath } from '../lib/resolvePath';
 import { InlineDiff } from './InlineDiff';
 import { InlineCode } from './InlineCode';
 import { InlineSuggestion } from './InlineSuggestion';
+import { LazyFileEmbed } from './LazyFileEmbed';
+import { InlineFinding } from './InlineFinding';
 import { FilePill } from './FilePill';
 import { Callout } from './Callout';
 import type { FileContent } from '../api';
@@ -10,7 +14,7 @@ import type { FileContent } from '../api';
 interface RichContentProps {
   /** Markdown text that may contain ::diff{}, ::code{}, ::file{}, ::callout{} directives */
   content: string;
-  /** File contents for rendering code/diff embeds. If empty, embeds are skipped. */
+  /** File contents for rendering code/diff embeds. Missing files are fetched on demand. */
   files?: Record<string, FileContent>;
   /** Additional CSS class on the markdown wrapper */
   className?: string;
@@ -18,10 +22,17 @@ interface RichContentProps {
 
 /**
  * Renders markdown content with embedded interactive directives.
- * Used by both the walkthrough SectionRenderer and the chat panel.
+ * Used by both the analysis FindingRenderer and the chat panel.
  */
 export function RichContent({ content, files = {}, className = 'cruise-markdown' }: RichContentProps) {
   const segments = parseDirectives(content);
+  const knownPaths = useMemo(() => Object.keys(files), [files]);
+
+  /** Look up a file by path, handling mismatches (leading ./, absolute paths, etc.) */
+  function resolveFile(path: string): { resolvedPath: string; fc: FileContent | undefined } {
+    const resolvedPath = resolveFilePath(path, knownPaths);
+    return { resolvedPath, fc: files[resolvedPath] };
+  }
 
   return (
     <>
@@ -35,7 +46,8 @@ export function RichContent({ content, files = {}, className = 'cruise-markdown'
                     a: ({ href, children }) => {
                       if (href?.startsWith('::file::')) {
                         const file = href.replace('::file::', '');
-                        return <FilePill file={file} />;
+                        const { resolvedPath } = resolveFile(file);
+                        return <FilePill file={resolvedPath} />;
                       }
                       return (
                         <a href={href} target="_blank" rel="noopener noreferrer">
@@ -51,12 +63,12 @@ export function RichContent({ content, files = {}, className = 'cruise-markdown'
             );
 
           case 'diff': {
-            const fc = files[segment.file];
-            if (!fc) return <div key={i} className="my-2"><FilePill file={segment.file} /></div>;
+            const { resolvedPath, fc } = resolveFile(segment.file);
+            if (!fc) return <LazyFileEmbed key={i} type="diff" file={resolvedPath} lines={segment.lines} />;
             return (
               <InlineDiff
                 key={i}
-                file={segment.file}
+                file={resolvedPath}
                 lines={segment.lines}
                 fileContent={fc}
               />
@@ -64,24 +76,26 @@ export function RichContent({ content, files = {}, className = 'cruise-markdown'
           }
 
           case 'code': {
-            const fc = files[segment.file];
-            if (!fc) return <div key={i} className="my-2"><FilePill file={segment.file} /></div>;
+            const { resolvedPath, fc } = resolveFile(segment.file);
+            if (!fc) return <LazyFileEmbed key={i} type="code" file={resolvedPath} lines={segment.lines} />;
             return (
               <InlineCode
                 key={i}
-                file={segment.file}
+                file={resolvedPath}
                 lines={segment.lines}
                 fileContent={fc}
               />
             );
           }
 
-          case 'file':
+          case 'file': {
+            const { resolvedPath } = resolveFile(segment.file);
             return (
               <div key={i} className="my-2">
-                <FilePill file={segment.file} />
+                <FilePill file={resolvedPath} />
               </div>
             );
+          }
 
           case 'callout':
             return (
@@ -93,18 +107,31 @@ export function RichContent({ content, files = {}, className = 'cruise-markdown'
             );
 
           case 'suggestion': {
-            const fc = files[segment.file];
-            if (!fc) return <div key={i} className="my-2"><FilePill file={segment.file} /></div>;
+            const { resolvedPath, fc } = resolveFile(segment.file);
+            if (!fc) return <LazyFileEmbed key={i} type="suggestion" file={resolvedPath} lines={segment.lines} suggestion={segment.content} />;
             return (
               <InlineSuggestion
                 key={i}
-                file={segment.file}
+                file={resolvedPath}
                 lines={segment.lines}
                 suggestion={segment.content}
                 fileContent={fc}
               />
             );
           }
+
+          case 'finding':
+            return (
+              <InlineFinding
+                key={i}
+                title={segment.title}
+                severity={segment.severity}
+                category={segment.category}
+                body={segment.body}
+                fixPrompt={segment.fixPrompt}
+                files={files}
+              />
+            );
 
           default:
             return null;

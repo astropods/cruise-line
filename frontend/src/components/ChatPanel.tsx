@@ -1,4 +1,8 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import {
+  PaperPlaneRight, Plus, GitPullRequest, ShieldCheck, TreeStructure, Lightning, Anchor,
+  FileText, MagnifyingGlass, FolderOpen, Terminal, PencilSimple, FileArrowUp, type Icon,
+} from '@phosphor-icons/react';
 import { RichContent } from './RichContent';
 import { useChat, type ChatEntry } from '../hooks/useChat';
 import type { FileContent } from '../api';
@@ -11,6 +15,13 @@ interface ChatPanelProps {
   onSwitchToWalkthrough: () => void;
   initialMessage?: string;
 }
+
+const SAMPLE_PROMPTS = [
+  { icon: GitPullRequest, label: 'Summarize this PR in plain English' },
+  { icon: ShieldCheck, label: 'Are there any security concerns?' },
+  { icon: TreeStructure, label: 'How does this change affect the existing architecture?' },
+  { icon: Lightning, label: 'What are the performance implications?' },
+];
 
 export function ChatPanel({ owner, repo, prNumber, files, onSwitchToWalkthrough, initialMessage }: ChatPanelProps) {
   const [input, setInput] = useState('');
@@ -41,40 +52,47 @@ export function ChatPanel({ owner, repo, prNumber, files, onSwitchToWalkthrough,
     if (!isStreaming) inputRef.current?.focus();
   }, [isStreaming]);
 
-  function handleSubmit() {
+  const handleSubmit = useCallback(() => {
     if (!input.trim() || isStreaming) return;
     sendMessage(input.trim());
     setInput('');
-  }
+  }, [input, isStreaming, sendMessage]);
+
+  const handleSamplePrompt = useCallback((prompt: string) => {
+    if (isStreaming) return;
+    sendMessage(prompt);
+  }, [isStreaming, sendMessage]);
 
   function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+    if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSubmit();
     }
   }
 
+  // Auto-resize textarea
   useEffect(() => {
     const el = inputRef.current;
     if (el) {
       el.style.height = 'auto';
-      el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+      const maxHeight = 160;
+      el.style.height = `${Math.min(el.scrollHeight, maxHeight)}px`;
+      el.style.overflowY = el.scrollHeight > maxHeight ? 'auto' : 'hidden';
     }
   }, [input]);
 
+  const isEmpty = historyLoaded && entries.length === 0 && !isStreaming;
+
   return (
     <div className="flex flex-col h-full">
-      <div className="flex-1 overflow-auto px-8 py-6">
+      <div className={`flex-1 overflow-auto px-8 py-6 ${isEmpty ? 'flex items-center justify-center' : ''}`}>
+        {isEmpty ? (
+          <EmptyState onPromptClick={handleSamplePrompt} />
+        ) : (
         <div className="max-w-[800px] mx-auto space-y-1">
           {!historyLoaded && (
             <div className="text-center text-[var(--text-secondary)] text-sm py-12">
               Loading conversation...
-            </div>
-          )}
-
-          {historyLoaded && entries.length === 0 && !isStreaming && (
-            <div className="text-center text-[var(--text-secondary)] text-sm py-12">
-              Ask a question about this pull request. Claude can read the codebase to answer.
             </div>
           )}
 
@@ -84,26 +102,22 @@ export function ChatPanel({ owner, repo, prNumber, files, onSwitchToWalkthrough,
 
           {/* Thinking indicator */}
           {isStreaming && (entries.length === 0 || entries[entries.length - 1]?.type === 'user') && (
-            <div className="flex gap-3 pt-2">
-              <div className="w-6 h-6 rounded-full bg-[var(--accent)]/20 flex items-center justify-center flex-shrink-0 mt-1">
-                <span className="text-xs text-[var(--accent)]">C</span>
-              </div>
-              <div className="flex gap-1 py-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-[var(--text-secondary)] animate-bounce" style={{ animationDelay: '0ms' }} />
-                <span className="w-1.5 h-1.5 rounded-full bg-[var(--text-secondary)] animate-bounce" style={{ animationDelay: '150ms' }} />
-                <span className="w-1.5 h-1.5 rounded-full bg-[var(--text-secondary)] animate-bounce" style={{ animationDelay: '300ms' }} />
-              </div>
+            <div className="flex gap-1 py-3">
+              <span className="w-1.5 h-1.5 rounded-full bg-[var(--text-secondary)] animate-bounce" style={{ animationDelay: '0ms' }} />
+              <span className="w-1.5 h-1.5 rounded-full bg-[var(--text-secondary)] animate-bounce" style={{ animationDelay: '150ms' }} />
+              <span className="w-1.5 h-1.5 rounded-full bg-[var(--text-secondary)] animate-bounce" style={{ animationDelay: '300ms' }} />
             </div>
           )}
 
           <div ref={messagesEndRef} />
         </div>
+        )}
       </div>
 
       {/* Input bar */}
       <div className="border-t border-[var(--border)] bg-[var(--bg-secondary)]">
         <div className="max-w-[800px] mx-auto px-8 py-4">
-          <div className="flex gap-3">
+          <div className="flex items-end gap-3">
             <textarea
               ref={inputRef}
               value={input}
@@ -112,26 +126,29 @@ export function ChatPanel({ owner, repo, prNumber, files, onSwitchToWalkthrough,
               placeholder="Ask about this PR..."
               rows={1}
               disabled={isStreaming}
-              className="flex-1 px-4 py-2.5 text-sm rounded-lg bg-[var(--bg-primary)] border border-[var(--border)] text-[var(--text-primary)] placeholder-[var(--text-secondary)] resize-none focus:outline-none focus:border-[var(--accent)] disabled:opacity-50"
+              className="flex-1 px-4 py-2.5 text-sm rounded-lg bg-[var(--bg-primary)] border border-[var(--border)] text-[var(--text-primary)] placeholder-[var(--text-secondary)] resize-none focus:outline-none focus:border-[var(--accent)] disabled:opacity-50 overflow-hidden"
             />
             <button
               onClick={handleSubmit}
               disabled={!input.trim() || isStreaming}
-              className="px-4 py-2.5 rounded-lg bg-[var(--accent)] text-white text-sm hover:bg-[var(--accent-hover)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex-shrink-0"
+              className="w-10 h-10 flex items-center justify-center rounded-lg bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex-shrink-0"
             >
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                <path d="M.989 8 .064 2.68a1.342 1.342 0 0 1 1.85-1.462l13.402 5.744a1.13 1.13 0 0 1 0 2.076L1.913 14.782a1.343 1.343 0 0 1-1.85-1.463L.99 8Zm.603-5.428L2.38 7.25h4.87a.75.75 0 0 1 0 1.5H2.38l-.788 4.678L13.929 8Z"/>
-              </svg>
+              <PaperPlaneRight size={16} weight="bold" />
             </button>
           </div>
           <div className="flex items-center justify-between mt-2">
-            <span className="text-xs text-[var(--text-secondary)] opacity-50">Ctrl+Enter to send</span>
-            <button
-              onClick={resetSession}
-              className="text-xs text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors"
-            >
-              Reset conversation
-            </button>
+            <span className="text-xs text-[var(--text-secondary)] opacity-40">
+              Enter to send, Shift+Enter for new line
+            </span>
+            {entries.length > 0 && (
+              <button
+                onClick={resetSession}
+                className="inline-flex items-center gap-1 text-xs text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors"
+              >
+                <Plus size={12} weight="bold" />
+                New chat
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -139,22 +156,41 @@ export function ChatPanel({ owner, repo, prNumber, files, onSwitchToWalkthrough,
   );
 }
 
-const TOOL_ICONS: Record<string, string> = {
-  Read: '\uD83D\uDCC4',
-  Grep: '\uD83D\uDD0D',
-  Glob: '\uD83D\uDCC2',
-  Bash: '\u25B8',
-  Edit: '\u270F\uFE0F',
-  Write: '\uD83D\uDCDD',
-};
+function EmptyState({ onPromptClick }: { onPromptClick: (prompt: string) => void }) {
+  return (
+    <div className="flex flex-col items-center justify-center w-full">
+      <div className="w-16 h-16 rounded-2xl bg-[var(--accent)]/10 flex items-center justify-center mb-6">
+        <Anchor size={32} weight="duotone" className="text-[var(--accent)]" />
+      </div>
+      <h3 className="text-lg font-semibold text-[var(--text-bright)] mb-2">
+        Ask about this PR
+      </h3>
+      <p className="text-sm text-[var(--text-secondary)] mb-8 max-w-[360px] text-center">
+        Claude can read the codebase to answer questions about the changes, architecture, and implications.
+      </p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full max-w-[520px]">
+        {SAMPLE_PROMPTS.map((prompt) => (
+          <button
+            key={prompt.label}
+            onClick={() => onPromptClick(prompt.label)}
+            className="flex items-center gap-2.5 px-4 py-3 rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] text-left text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--accent)]/50 transition-colors"
+          >
+            <prompt.icon size={16} className="flex-shrink-0 text-[var(--accent)]/60" />
+            <span className="line-clamp-2">{prompt.label}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
 
-const TOOL_LABELS: Record<string, string> = {
-  Read: 'Reading file',
-  Grep: 'Searching',
-  Glob: 'Finding files',
-  Bash: 'Running command',
-  Edit: 'Editing file',
-  Write: 'Writing file',
+const TOOL_CONFIG: Record<string, { icon: Icon; label: string }> = {
+  Read: { icon: FileText, label: 'Reading file' },
+  Grep: { icon: MagnifyingGlass, label: 'Searching' },
+  Glob: { icon: FolderOpen, label: 'Finding files' },
+  Bash: { icon: Terminal, label: 'Running command' },
+  Edit: { icon: PencilSimple, label: 'Editing file' },
+  Write: { icon: FileArrowUp, label: 'Writing file' },
 };
 
 function EntryView({ entry, files }: { entry: ChatEntry; files: Record<string, FileContent> }) {
@@ -169,43 +205,34 @@ function EntryView({ entry, files }: { entry: ChatEntry; files: Record<string, F
   }
 
   if (entry.type === 'tool_call') {
-    const icon = TOOL_ICONS[entry.toolName ?? ''] ?? '\u2022';
-    const label = TOOL_LABELS[entry.toolName ?? ''] ?? entry.toolName ?? 'Tool';
+    const config = TOOL_CONFIG[entry.toolName ?? ''];
+    const ToolIcon = config?.icon ?? Terminal;
+    // Strip the tool name prefix (e.g. "Read: /path" → "/path", "Bash: git log" → "git log")
+    let detail = entry.content ?? '';
+    detail = detail.replace(/^(?:Read|Grep|Glob|Bash|Edit|Write):\s*/, '');
+    // Strip absolute repo clone paths, keeping only the relative path within the repo
+    detail = detail.replace(/^\/.*?\.cruise-data\/repos\/[^/]+\/[^/]+\/\d+\//, '')
+                   .replace(/^\/.*?\/repos\/[^/]+\/[^/]+\//, '');
 
     return (
-      <div className="ml-9 my-1 flex items-start gap-2 px-3 py-1.5 rounded-md bg-[var(--bg-tertiary)]/50 text-xs">
-        <span className="flex-shrink-0 mt-0.5 opacity-70">{icon}</span>
-        <div className="min-w-0">
-          <span className="text-[var(--text-secondary)]">{label}</span>
-          {entry.content && (
-            <span className="ml-1.5 font-mono text-[var(--accent)]/80 break-all">
-              {entry.content}
-            </span>
-          )}
-        </div>
+      <div className="my-0.5 flex items-center gap-1.5 px-1 py-0.5 text-xs text-[var(--text-secondary)]/60">
+        <ToolIcon size={11} className="flex-shrink-0" />
+        {detail && (
+          <span className="font-mono truncate">{detail}</span>
+        )}
       </div>
     );
   }
 
   if (entry.type === 'error') {
     return (
-      <div className="flex gap-3 pt-2">
-        <div className="w-6 h-6 rounded-full bg-red-500/20 flex items-center justify-center flex-shrink-0 mt-1">
-          <span className="text-xs text-red-400">!</span>
-        </div>
-        <div className="flex-1 text-sm text-red-400">{entry.content}</div>
-      </div>
+      <div className="pt-2 text-sm text-red-400">{entry.content}</div>
     );
   }
 
   return (
-    <div className="flex gap-3 pt-2">
-      <div className="w-6 h-6 rounded-full bg-[var(--accent)]/20 flex items-center justify-center flex-shrink-0 mt-1">
-        <span className="text-xs text-[var(--accent)]">C</span>
-      </div>
-      <div className="flex-1 min-w-0">
-        <RichContent content={entry.content} files={files} className="cruise-chat-markdown" />
-      </div>
+    <div className="pt-2">
+      <RichContent content={entry.content} files={files} className="cruise-chat-markdown" />
     </div>
   );
 }

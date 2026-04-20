@@ -1,8 +1,10 @@
-import { useMemo } from 'react';
+import { useMemo, useCallback } from 'react';
 import { parseDiff, Diff, Hunk, tokenize, markEdits } from 'react-diff-view';
 import refractor from 'refractor';
+import { ChatText } from '@phosphor-icons/react';
 import type { FileContent } from '../api';
 import { useSlideout } from '../contexts/SlideoutContext';
+import { useCommentsContext } from '../contexts/CommentsContext';
 import 'react-diff-view/style/index.css';
 
 const REFRACTOR_LANG_MAP: Record<string, string> = {
@@ -23,6 +25,16 @@ interface InlineDiffProps {
 
 export function InlineDiff({ file, lines, fileContent }: InlineDiffProps) {
   const { openFile, githubFileUrl } = useSlideout();
+  const { setActiveCommentLine } = useCommentsContext();
+  const canComment = !!lines;
+
+  const handleComment = useCallback(() => {
+    if (!lines) return;
+    openFile(file, lines);
+    setTimeout(() => {
+      setActiveCommentLine({ path: file, line: lines[0], side: 'RIGHT' });
+    }, 300);
+  }, [file, lines, openFile, setActiveCommentLine]);
 
   const parsed = useMemo(() => {
     if (!fileContent?.patch) return null;
@@ -74,12 +86,24 @@ export function InlineDiff({ file, lines, fileContent }: InlineDiffProps) {
           {file}
           {lines && <span className="opacity-50 ml-2">L{lines[0]}–{lines[1]}</span>}
         </a>
-        <button
-          onClick={() => openFile(file, lines)}
-          className="text-xs text-[var(--accent)] hover:underline"
-        >
-          View full file
-        </button>
+        <div className="flex items-center gap-2">
+          {canComment && (
+            <button
+              onClick={handleComment}
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs text-[var(--text-secondary)] hover:text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors"
+              title="Comment on this code"
+            >
+              <ChatText size={12} />
+              Comment
+            </button>
+          )}
+          <button
+            onClick={() => openFile(file, lines)}
+            className="text-xs text-[var(--accent)] hover:underline"
+          >
+            View full file
+          </button>
+        </div>
       </div>
 
       {/* Diff content */}

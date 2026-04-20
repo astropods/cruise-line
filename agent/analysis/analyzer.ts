@@ -6,6 +6,7 @@ import { SYSTEM_PROMPT, buildUserPrompt } from './prompt.js';
 import { walkthroughJsonSchema, type Walkthrough, type ClaudeWalkthroughOutput, type FileContent } from './types.js';
 import { updateWalkthroughStatus } from '../db/walkthroughs.js';
 import { ensureClone } from '../repo/manager.js';
+import { postAnalysisComment } from '../github/client.js';
 import { jobManager } from './jobs.js';
 import type { PrMetadata } from '../github/types.js';
 
@@ -133,21 +134,50 @@ export async function analyzePr(
 
     addProgress(walkthroughId, 'status', 'Fetching base branch for diff...');
 
-    // Fetch base branch for diff context
+    // The clone is --single-branch, so the base branch isn't tracked.
+    // Explicitly fetch the base ref into a remote tracking branch.
     const fetchProc = Bun.spawn(
-      ['git', 'fetch', 'origin', prMetadata.baseRef, '--depth=50'],
+      ['git', 'fetch', 'origin', `+refs/heads/${prMetadata.baseRef}:refs/remotes/origin/${prMetadata.baseRef}`],
       { cwd: repoDir, stdout: 'pipe', stderr: 'pipe' },
     );
     await fetchProc.exited;
 
-    const diffProc = Bun.spawn(
+    // Try multiple diff strategies — three-dot (merge base) first, then two-dot fallback
+    let diffOutput = '';
+    for (const diffCmd of [
       ['git', 'diff', `origin/${prMetadata.baseRef}...HEAD`],
-      { cwd: repoDir, stdout: 'pipe', stderr: 'pipe' },
-    );
-    const diffOutput = await new Response(diffProc.stdout).text();
+      ['git', 'diff', `origin/${prMetadata.baseRef}..HEAD`],
+      ['git', 'diff', `origin/${prMetadata.baseRef}`, 'HEAD'],
+    ]) {
+      const diffProc = Bun.spawn(diffCmd, { cwd: repoDir, stdout: 'pipe', stderr: 'pipe' });
+      const exitCode = await diffProc.exited;
+      const output = await new Response(diffProc.stdout).text();
+      if (exitCode === 0 && output.trim()) {
+        diffOutput = output;
+        break;
+      }
+    }
 
-    addProgress(walkthroughId, 'status', `Diff ready (${diffOutput.split('\n').length} lines). Starting analysis...`);
+    const diffLines = diffOutput.split('\n').length;
+    if (!diffOutput.trim()) {
+      console.warn(`Empty diff for ${prMetadata.owner}/${prMetadata.repo}#${prMetadata.number} — base: ${prMetadata.baseRef}`);
+      addProgress(walkthroughId, 'status', 'No diff found — the agent will use tools to examine changes.');
+    } else {
+      addProgress(walkthroughId, 'status', `Diff ready (${diffLines} lines).`);
+    }
+
+    addProgress(walkthroughId, 'status', 'Agent is reviewing the code...');
     await updateWalkthroughStatus(walkthroughId, 'running');
+
+    // Update PR comment to show analysis is running
+    try {
+      await postAnalysisComment(
+        prMetadata.installationId, prMetadata.owner, prMetadata.repo, prMetadata.number,
+        { status: 'running' },
+      );
+    } catch {
+      // Best-effort
+    }
 
     // Invoke Claude Agent SDK
     const userPrompt = buildUserPrompt(prMetadata, diffOutput, prMetadata.body);
@@ -227,8 +257,28 @@ export async function analyzePr(
     addProgress(walkthroughId, 'status', 'Analysis complete. Saving...');
     await updateWalkthroughStatus(walkthroughId, 'complete', walkthrough);
     console.log(
-      `Walkthrough complete for ${prMetadata.owner}/${prMetadata.repo}#${prMetadata.number}`,
+      `Analysis complete for ${prMetadata.owner}/${prMetadata.repo}#${prMetadata.number}`,
     );
+
+    // Update the PR comment with analysis results
+    try {
+      const findingCounts = {
+        critical: claudeOutput.findings.filter((f) => f.severity === 'critical').length,
+        high: claudeOutput.findings.filter((f) => f.severity === 'high').length,
+        medium: claudeOutput.findings.filter((f) => f.severity === 'medium').length,
+        low: claudeOutput.findings.filter((f) => f.severity === 'low').length,
+        info: claudeOutput.findings.filter((f) => f.severity === 'info').length,
+      };
+      await postAnalysisComment(
+        prMetadata.installationId,
+        prMetadata.owner,
+        prMetadata.repo,
+        prMetadata.number,
+        { status: 'complete', summary: { verdict: claudeOutput.verdict, verdictRationale: claudeOutput.verdictRationale, findingCounts } },
+      );
+    } catch (err) {
+      console.error('Failed to update PR comment with analysis results:', err);
+    }
   } catch (error) {
     console.error(
       `Analysis failed for ${prMetadata.owner}/${prMetadata.repo}#${prMetadata.number}:`,
@@ -240,5 +290,18 @@ export async function analyzePr(
       undefined,
       error instanceof Error ? error.message : String(error),
     );
+
+    // Update the PR comment to show failure
+    try {
+      await postAnalysisComment(
+        prMetadata.installationId,
+        prMetadata.owner,
+        prMetadata.repo,
+        prMetadata.number,
+        { status: 'failed' },
+      );
+    } catch {
+      // Best-effort
+    }
   }
 }

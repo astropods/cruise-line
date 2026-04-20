@@ -1,4 +1,10 @@
 import { useCallback, useState } from 'react';
+import {
+  WarningOctagon, WarningCircle, Warning, ArrowDown, Lightbulb,
+  Bug, ShieldCheck, Wrench, Lightning, PaintBrush,
+  Copy, Check, ChatText,
+  type Icon,
+} from '@phosphor-icons/react';
 import { RichContent } from './RichContent';
 import { FilePill } from './FilePill';
 import { useSlideout } from '../contexts/SlideoutContext';
@@ -11,20 +17,20 @@ interface FindingRendererProps {
   index: number;
 }
 
-const severityConfig: Record<Severity, { label: string; color: string; bg: string; border: string }> = {
-  critical: { label: 'Critical', color: 'text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/30' },
-  high: { label: 'High', color: 'text-orange-400', bg: 'bg-orange-500/10', border: 'border-orange-500/30' },
-  medium: { label: 'Medium', color: 'text-yellow-400', bg: 'bg-yellow-500/10', border: 'border-yellow-500/30' },
-  low: { label: 'Low', color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/30' },
-  info: { label: 'Info', color: 'text-[var(--text-secondary)]', bg: 'bg-[var(--text-secondary)]/5', border: 'border-[var(--text-secondary)]/20' },
+const severityConfig: Record<Severity, { label: string; icon: Icon; color: string; bg: string; border: string }> = {
+  critical: { label: 'Critical', icon: WarningOctagon, color: 'text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/30' },
+  high: { label: 'High', icon: WarningCircle, color: 'text-orange-400', bg: 'bg-orange-500/10', border: 'border-orange-500/30' },
+  medium: { label: 'Medium', icon: Warning, color: 'text-yellow-400', bg: 'bg-yellow-500/10', border: 'border-yellow-500/30' },
+  low: { label: 'Low', icon: ArrowDown, color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/30' },
+  info: { label: 'Info', icon: Lightbulb, color: 'text-[var(--text-secondary)]', bg: 'bg-[var(--text-secondary)]/5', border: 'border-[var(--text-secondary)]/20' },
 };
 
-const categoryLabels: Record<FindingCategory, string> = {
-  correctness: 'Correctness',
-  security: 'Security',
-  maintainability: 'Maintainability',
-  performance: 'Performance',
-  style: 'Style',
+const categoryConfig: Record<FindingCategory, { label: string; icon: Icon }> = {
+  correctness: { label: 'Correctness', icon: Bug },
+  security: { label: 'Security', icon: ShieldCheck },
+  maintainability: { label: 'Maintainability', icon: Wrench },
+  performance: { label: 'Performance', icon: Lightning },
+  style: { label: 'Style', icon: PaintBrush },
 };
 
 /**
@@ -39,11 +45,11 @@ function extractCommentTarget(body: string): { file: string; line: number } | nu
 
 export function FindingRenderer({ finding, files, index }: FindingRendererProps) {
   const sev = severityConfig[finding.severity] ?? severityConfig.info;
+  const cat = categoryConfig[finding.category] ?? categoryConfig.correctness;
   const { openFile } = useSlideout();
   const { setActiveCommentLine } = useCommentsContext();
   const [copied, setCopied] = useState(false);
 
-  // Determine if this finding can be posted as a comment
   const commentTarget = extractCommentTarget(finding.body);
   const canComment = commentTarget && files[commentTarget.file]?.patch;
 
@@ -69,6 +75,9 @@ export function FindingRenderer({ finding, files, index }: FindingRendererProps)
     });
   }, [finding.fixPrompt]);
 
+  const SevIcon = sev.icon;
+  const CatIcon = cat.icon;
+
   return (
     <section
       id={`section-${index}`}
@@ -82,11 +91,13 @@ export function FindingRenderer({ finding, files, index }: FindingRendererProps)
             {finding.title}
           </h2>
           <div className="flex items-center gap-2 flex-wrap">
-            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${sev.color} ${sev.bg} ${sev.border}`}>
+            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium border ${sev.color} ${sev.bg} ${sev.border}`}>
+              <SevIcon size={12} weight="bold" />
               {sev.label}
             </span>
-            <span className="text-xs text-[var(--text-secondary)] bg-[var(--bg-tertiary)] px-2 py-0.5 rounded">
-              {categoryLabels[finding.category] ?? finding.category}
+            <span className="inline-flex items-center gap-1 text-xs text-[var(--text-secondary)] bg-[var(--bg-tertiary)] px-2 py-0.5 rounded">
+              <CatIcon size={12} />
+              {cat.label}
             </span>
             {finding.files.length > 0 && (
               <div className="flex items-center gap-1 ml-1">
@@ -111,17 +122,12 @@ export function FindingRenderer({ finding, files, index }: FindingRendererProps)
                   >
                     {copied ? (
                       <>
-                        <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" className="text-green-400">
-                          <path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"/>
-                        </svg>
+                        <Check size={12} weight="bold" className="text-green-400" />
                         <span className="text-green-400">Copied!</span>
                       </>
                     ) : (
                       <>
-                        <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
-                          <path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z"/>
-                          <path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"/>
-                        </svg>
+                        <Copy size={12} />
                         Copy fix prompt
                       </>
                     )}
@@ -133,9 +139,7 @@ export function FindingRenderer({ finding, files, index }: FindingRendererProps)
                     className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs text-[var(--text-secondary)] hover:text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors"
                     title="Open comment input on the relevant line, pre-filled with this finding"
                   >
-                    <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
-                      <path d="M1 2.75C1 1.784 1.784 1 2.75 1h10.5c.966 0 1.75.784 1.75 1.75v7.5A1.75 1.75 0 0 1 13.25 12H9.06l-2.573 2.573A1.458 1.458 0 0 1 4 13.543V12H2.75A1.75 1.75 0 0 1 1 10.25Zm1.5 0a.25.25 0 0 1 .25-.25h10.5a.25.25 0 0 1 .25.25v7.5a.25.25 0 0 1-.25.25h-4.5a.75.75 0 0 0-.53.22l-2.72 2.72v-2.19a.75.75 0 0 0-.75-.75h-2a.25.25 0 0 1-.25-.25Z"/>
-                    </svg>
+                    <ChatText size={12} />
                     Post as comment
                   </button>
                 )}
@@ -163,7 +167,6 @@ function stripDirectives(body: string): string {
     const match = directiveRe.exec(lines[i]);
     if (match) {
       const directive = match[1];
-      // Skip directives that consume following lines (callout, suggestion)
       if (directive === 'callout' || directive === 'suggestion') {
         i++;
         while (i < lines.length) {

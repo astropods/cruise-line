@@ -16,6 +16,7 @@ import { authRoutes } from './routes/auth.js';
 import { walkthroughRoutes } from './routes/walkthroughs.js';
 import { commentRoutes } from './routes/comments.js';
 import { chatRoutes } from './routes/chat.js';
+import { fileRoutes } from './routes/files.js';
 import { setupRoutes } from './routes/setup.js';
 import { errorHandler } from './middleware/error.js';
 
@@ -41,6 +42,7 @@ app.route('/api/webhook', webhookRoutes);
 app.route('/api/walkthroughs', walkthroughRoutes);
 app.route('/api/comments', commentRoutes);
 app.route('/api/chat', chatRoutes);
+app.route('/api/files', fileRoutes);
 app.route('/api/setup', setupRoutes);
 
 if (isDev) {
