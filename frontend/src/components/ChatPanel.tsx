@@ -19,18 +19,15 @@ export function ChatPanel({ owner, repo, prNumber, onSwitchToWalkthrough, initia
   const {
     entries,
     isStreaming,
-    streamingText,
     historyLoaded,
     sendMessage,
     resetSession,
   } = useChat({ owner, repo, pr: prNumber });
 
-  // Auto-scroll
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [entries, streamingText]);
+  }, [entries]);
 
-  // Send initial message once (after history has loaded)
   useEffect(() => {
     if (initialMessage && historyLoaded && !sentInitial.current) {
       sentInitial.current = true;
@@ -38,7 +35,6 @@ export function ChatPanel({ owner, repo, prNumber, onSwitchToWalkthrough, initia
     }
   }, [initialMessage, historyLoaded, sendMessage]);
 
-  // Focus input
   useEffect(() => {
     if (!isStreaming) inputRef.current?.focus();
   }, [isStreaming]);
@@ -66,7 +62,6 @@ export function ChatPanel({ owner, repo, prNumber, onSwitchToWalkthrough, initia
 
   return (
     <div className="flex flex-col h-full">
-      {/* Messages */}
       <div className="flex-1 overflow-auto px-8 py-6">
         <div className="max-w-[800px] mx-auto space-y-1">
           {!historyLoaded && (
@@ -85,21 +80,8 @@ export function ChatPanel({ owner, repo, prNumber, onSwitchToWalkthrough, initia
             <EntryView key={i} entry={entry} />
           ))}
 
-          {/* Streaming text */}
-          {isStreaming && streamingText && (
-            <div className="flex gap-3 pt-2">
-              <div className="w-6 h-6 rounded-full bg-[var(--accent)]/20 flex items-center justify-center flex-shrink-0 mt-1">
-                <span className="text-xs text-[var(--accent)]">C</span>
-              </div>
-              <div className="flex-1 min-w-0 cruise-markdown text-sm">
-                <Md>{streamingText}</Md>
-                <span className="inline-block w-1.5 h-4 bg-[var(--accent)] animate-pulse ml-0.5 align-middle" />
-              </div>
-            </div>
-          )}
-
-          {/* Thinking indicator (no text yet, no recent tool call) */}
-          {isStreaming && !streamingText && entries[entries.length - 1]?.type !== 'tool_call' && (
+          {/* Thinking indicator */}
+          {isStreaming && (entries.length === 0 || entries[entries.length - 1]?.type === 'user') && (
             <div className="flex gap-3 pt-2">
               <div className="w-6 h-6 rounded-full bg-[var(--accent)]/20 flex items-center justify-center flex-shrink-0 mt-1">
                 <span className="text-xs text-[var(--accent)]">C</span>
@@ -155,10 +137,28 @@ export function ChatPanel({ owner, repo, prNumber, onSwitchToWalkthrough, initia
   );
 }
 
+const TOOL_ICONS: Record<string, string> = {
+  Read: '\uD83D\uDCC4',
+  Grep: '\uD83D\uDD0D',
+  Glob: '\uD83D\uDCC2',
+  Bash: '\u25B8',
+  Edit: '\u270F\uFE0F',
+  Write: '\uD83D\uDCDD',
+};
+
+const TOOL_LABELS: Record<string, string> = {
+  Read: 'Reading file',
+  Grep: 'Searching',
+  Glob: 'Finding files',
+  Bash: 'Running command',
+  Edit: 'Editing file',
+  Write: 'Writing file',
+};
+
 function EntryView({ entry }: { entry: ChatEntry }) {
   if (entry.type === 'user') {
     return (
-      <div className="flex justify-end pt-3">
+      <div className="flex justify-end pt-4">
         <div className="max-w-[85%] px-4 py-2.5 rounded-lg bg-[var(--accent)]/15 text-sm text-[var(--text-primary)]">
           {entry.content}
         </div>
@@ -167,10 +167,20 @@ function EntryView({ entry }: { entry: ChatEntry }) {
   }
 
   if (entry.type === 'tool_call') {
+    const icon = TOOL_ICONS[entry.toolName ?? ''] ?? '\u2022';
+    const label = TOOL_LABELS[entry.toolName ?? ''] ?? entry.toolName ?? 'Tool';
+
     return (
-      <div className="flex items-center gap-2 py-0.5 pl-9 text-xs font-mono text-[var(--text-secondary)] opacity-50">
-        <span className="text-yellow-400">&#9656;</span>
-        <span className="truncate">{entry.content}</span>
+      <div className="ml-9 my-1 flex items-start gap-2 px-3 py-1.5 rounded-md bg-[var(--bg-tertiary)]/50 text-xs">
+        <span className="flex-shrink-0 mt-0.5 opacity-70">{icon}</span>
+        <div className="min-w-0">
+          <span className="text-[var(--text-secondary)]">{label}</span>
+          {entry.content && (
+            <span className="ml-1.5 font-mono text-[var(--accent)]/80 break-all">
+              {entry.content}
+            </span>
+          )}
+        </div>
       </div>
     );
   }
@@ -186,7 +196,6 @@ function EntryView({ entry }: { entry: ChatEntry }) {
     );
   }
 
-  // text or result
   return (
     <div className="flex gap-3 pt-2">
       <div className="w-6 h-6 rounded-full bg-[var(--accent)]/20 flex items-center justify-center flex-shrink-0 mt-1">

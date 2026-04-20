@@ -4,6 +4,7 @@ export interface ChatEntry {
   type: 'user' | 'text' | 'tool_call' | 'tool_result' | 'error';
   content: string;
   toolName?: string;
+  toolInput?: Record<string, any>;
   timestamp: Date;
 }
 
@@ -16,7 +17,6 @@ interface UseChatOptions {
 export function useChat({ owner, repo, pr }: UseChatOptions) {
   const [entries, setEntries] = useState<ChatEntry[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
-  const [streamingText, setStreamingText] = useState('');
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -67,7 +67,6 @@ export function useChat({ owner, repo, pr }: UseChatOptions) {
 
     setEntries((prev) => [...prev, { type: 'user', content: text, timestamp: new Date() }]);
     setIsStreaming(true);
-    setStreamingText('');
 
     const controller = new AbortController();
     abortRef.current = controller;
@@ -89,7 +88,6 @@ export function useChat({ owner, repo, pr }: UseChatOptions) {
       const reader = res.body!.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
-      let accumulated = '';
 
       while (true) {
         const { done, value } = await reader.read();
@@ -109,45 +107,31 @@ export function useChat({ owner, repo, pr }: UseChatOptions) {
 
             if (event.type === 'heartbeat') {
               continue;
-            } else if (event.type === 'text_delta') {
-              accumulated += event.text;
-              setStreamingText(accumulated);
-            } else if (event.type === 'tool_start') {
+            } else if (event.type === 'text') {
+              // Complete text block from an assistant turn
               setEntries((prev) => [...prev, {
-                type: 'tool_call',
-                content: event.name,
-                toolName: event.name,
-                timestamp: new Date(),
+                type: 'text', content: event.content, timestamp: new Date(),
               }]);
             } else if (event.type === 'tool_call') {
-              const detail = event.detail ? `: ${event.detail}` : '';
+              // Tool call with full input detail
               setEntries((prev) => [...prev, {
                 type: 'tool_call',
-                content: `${event.name}${detail}`,
+                content: event.detail || event.name,
                 toolName: event.name,
+                toolInput: event.input,
                 timestamp: new Date(),
               }]);
-            } else if (event.type === 'tool_result') {
-              // Tool finished — could show a checkmark or completion indicator
             } else if (event.type === 'done') {
-              // Finalize: use accumulated streaming text if we have it, else the result text
-              const finalText = accumulated || event.text;
-              if (finalText) {
-                setEntries((prev) => [...prev, { type: 'text', content: finalText, timestamp: new Date() }]);
-              }
-              accumulated = '';
-              setStreamingText('');
+              // Turn complete
             } else if (event.type === 'error') {
-              setEntries((prev) => [...prev, { type: 'error', content: event.message, timestamp: new Date() }]);
+              setEntries((prev) => [...prev, {
+                type: 'error', content: event.message, timestamp: new Date(),
+              }]);
             }
           } catch { /* skip malformed */ }
         }
       }
 
-      // If accumulated text wasn't finalized by a done event
-      if (accumulated) {
-        setEntries((prev) => [...prev, { type: 'text', content: accumulated, timestamp: new Date() }]);
-      }
     } catch (err) {
       if ((err as Error).name !== 'AbortError') {
         setEntries((prev) => [...prev, {
@@ -158,7 +142,6 @@ export function useChat({ owner, repo, pr }: UseChatOptions) {
       }
     } finally {
       setIsStreaming(false);
-      setStreamingText('');
       abortRef.current = null;
     }
   }, [owner, repo, pr, isStreaming]);
@@ -170,14 +153,12 @@ export function useChat({ owner, repo, pr }: UseChatOptions) {
         credentials: 'include',
       });
       setEntries([]);
-      setStreamingText('');
     } catch { /* ignore */ }
   }, [owner, repo, pr]);
 
   return {
     entries,
     isStreaming,
-    streamingText,
     historyLoaded,
     sendMessage,
     resetSession,
