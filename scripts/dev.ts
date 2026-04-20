@@ -7,7 +7,8 @@
  * Usage:
  *   Terminal 1: ast dev           (starts Postgres)
  *   Terminal 2: bun run dev       (starts backend on port 3002 with auto-reload)
- *   Terminal 3: cd frontend && bun run dev  (starts Vite on port 5173 with HMR)
+ *   Terminal 3: bun run dev:sandbox  (starts sandbox on port 3000)
+ *   Terminal 4: cd frontend && bun run dev  (starts Vite on port 5173 with HMR)
  *
  * Open http://localhost:5173 in browser.
  */
@@ -42,6 +43,10 @@ process.env.PORT ??= '3002';
 
 // Default app URL for dev
 process.env.APP_URL ??= 'http://localhost:5173';
+
+// Sandbox runs locally in dev
+process.env.KNOWLEDGE_CHAT_SANDBOX_HOST ??= 'localhost';
+process.env.KNOWLEDGE_CHAT_SANDBOX_PORT ??= '3000';
 
 // Now import and start the server
 await import('../agent/index.js');

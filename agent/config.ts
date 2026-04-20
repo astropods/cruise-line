@@ -41,6 +41,14 @@ export const config = {
     maxConcurrentJobs: Number(optionalEnv('MAX_CONCURRENT_JOBS', '3')),
   },
 
+  sandbox: {
+    host: optionalEnv('KNOWLEDGE_CHAT_SANDBOX_HOST', 'localhost'),
+    port: Number(optionalEnv('KNOWLEDGE_CHAT_SANDBOX_PORT', '3000')),
+    get url(): string {
+      return `http://${config.sandbox.host}:${config.sandbox.port}`;
+    },
+  },
+
   session: {
     /** Auto-generated on first run and stored in DB. No env var needed. */
     secret: '',

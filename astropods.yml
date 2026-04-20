@@ -41,3 +41,15 @@ knowledge:
       - name: POSTGRES_DB
         datatype: string
         default: cruise_line
+  chat-sandbox:
+    container:
+      build:
+        context: .
+        dockerfile: sandbox/Dockerfile
+      port: 3000
+      volume: /data
+    persistent: true
+    inputs:
+      - name: DATA_ROOT
+        datatype: string
+        default: /data
