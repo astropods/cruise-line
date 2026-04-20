@@ -15,18 +15,18 @@ import { streamSSE } from 'hono/streaming';
 import { query, getSessionMessages } from '@anthropic-ai/claude-agent-sdk';
 import { existsSync } from 'fs';
 import { symlink, readlink, lstat, mkdir, rm } from 'fs/promises';
-import { join } from 'path';
+import { join, resolve } from 'path';
 
 const app = new Hono();
 
-const DATA_ROOT = process.env.DATA_ROOT ?? '/data';
+const DATA_ROOT = resolve(process.env.DATA_ROOT ?? '/data');
 const REPOS_ROOT = join(DATA_ROOT, 'repos');
 const SESSIONS_ROOT = join(DATA_ROOT, 'sessions');
 const PORT = Number(process.env.PORT ?? 3000);
 
 /** Validate that a repo path is within our repos directory */
 function validateRepoPath(repoPath: string): boolean {
-  const normalized = join(repoPath, '.'); // normalize
+  const normalized = resolve(repoPath);
   return normalized.startsWith(REPOS_ROOT);
 }
 

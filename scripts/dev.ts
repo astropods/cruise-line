@@ -46,7 +46,7 @@ process.env.APP_URL ??= 'http://localhost:5173';
 
 // Sandbox runs locally in dev
 process.env.KNOWLEDGE_CHAT_SANDBOX_HOST ??= 'localhost';
-process.env.KNOWLEDGE_CHAT_SANDBOX_PORT ??= '3000';
+process.env.KNOWLEDGE_CHAT_SANDBOX_PORT ??= '3001';
 
 // Now import and start the server
 await import('../agent/index.js');

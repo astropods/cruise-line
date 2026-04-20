@@ -94,9 +94,15 @@ body {
   color: var(--text-secondary);
   font-style: italic;
 }
-.cruise-markdown ul, .cruise-markdown ol {
+.cruise-markdown ul {
   padding-left: 1.6em;
   margin: 0.8em 0 1.2em;
+  list-style-type: disc;
+}
+.cruise-markdown ol {
+  padding-left: 1.6em;
+  margin: 0.8em 0 1.2em;
+  list-style-type: decimal;
 }
 .cruise-markdown li {
   margin: 0.4em 0;
@@ -184,11 +190,11 @@ body {
 .cruise-chat-markdown {
   color: var(--text-primary);
   font-size: 0.875rem;
-  line-height: 1.65;
+  line-height: 1.7;
   letter-spacing: -0.006em;
 }
 .cruise-chat-markdown p {
-  margin: 0 0 0.6em;
+  margin: 0 0 0.85em;
 }
 .cruise-chat-markdown p:last-child {
   margin-bottom: 0;
@@ -196,7 +202,7 @@ body {
 .cruise-chat-markdown code {
   background: var(--bg-tertiary);
   border-radius: 3px;
-  padding: 0.1em 0.35em;
+  padding: 0.15em 0.4em;
   font-size: 0.85em;
   font-family: var(--font-mono);
   color: var(--accent);
@@ -204,11 +210,11 @@ body {
 .cruise-chat-markdown pre {
   background: var(--bg-tertiary);
   border-radius: 6px;
-  padding: 0.6em 0.8em;
+  padding: 0.75em 1em;
   overflow-x: auto;
-  margin: 0.5em 0;
+  margin: 0.85em 0;
   font-size: 0.8rem;
-  line-height: 1.5;
+  line-height: 1.55;
 }
 .cruise-chat-markdown pre code {
   background: none;
@@ -220,26 +226,67 @@ body {
   color: var(--text-bright);
   font-weight: 600;
 }
-.cruise-chat-markdown ul, .cruise-chat-markdown ol {
-  padding-left: 1.4em;
-  margin: 0.4em 0;
+.cruise-chat-markdown em {
+  color: var(--text-secondary);
+  font-style: italic;
+}
+.cruise-chat-markdown ul {
+  padding-left: 1.5em;
+  margin: 0.6em 0 0.85em;
+  list-style-type: disc;
+}
+.cruise-chat-markdown ol {
+  padding-left: 1.5em;
+  margin: 0.6em 0 0.85em;
+  list-style-type: decimal;
 }
 .cruise-chat-markdown li {
-  margin: 0.2em 0;
+  margin: 0.3em 0;
+  line-height: 1.6;
 }
-.cruise-chat-markdown h1, .cruise-chat-markdown h2, .cruise-chat-markdown h3 {
+.cruise-chat-markdown li::marker {
+  color: var(--text-secondary);
+}
+.cruise-chat-markdown h1 {
   color: var(--text-bright);
   font-weight: 600;
-  margin: 0.8em 0 0.3em;
-  font-size: 0.95rem;
+  margin: 1.2em 0 0.5em;
+  font-size: 1.05rem;
+}
+.cruise-chat-markdown h2 {
+  color: var(--text-bright);
+  font-weight: 600;
+  margin: 1em 0 0.4em;
+  font-size: 0.975rem;
+}
+.cruise-chat-markdown h3 {
+  color: var(--text-bright);
+  font-weight: 600;
+  margin: 0.85em 0 0.35em;
+  font-size: 0.925rem;
+}
+.cruise-chat-markdown hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 1.25em 0;
+}
+.cruise-chat-markdown blockquote {
+  border-left: 3px solid var(--border);
+  padding-left: 1em;
+  margin: 0.85em 0;
+  color: var(--text-secondary);
+  font-style: italic;
 }
 .cruise-chat-markdown a {
   color: var(--accent);
   text-decoration: none;
 }
+.cruise-chat-markdown a:hover {
+  text-decoration: underline;
+}
 .cruise-chat-markdown table {
   border-collapse: collapse;
-  margin: 0.5em 0;
+  margin: 0.85em 0;
   font-size: 0.8125rem;
   width: 100%;
   display: block;
@@ -247,13 +294,18 @@ body {
 }
 .cruise-chat-markdown th, .cruise-chat-markdown td {
   border: 1px solid var(--border);
-  padding: 0.35em 0.7em;
+  padding: 0.4em 0.75em;
   text-align: left;
 }
 .cruise-chat-markdown th {
   background: var(--bg-tertiary);
   font-weight: 600;
   color: var(--text-bright);
+}
+.cruise-chat-markdown img {
+  max-width: 100%;
+  border-radius: 6px;
+  margin: 0.85em 0;
 }
 
 /* ============================================

@@ -6,7 +6,7 @@
   "description": "Auto generate a guided walkthrough of Github pull requests.",
   "scripts": {
     "dev": "bun --watch scripts/dev.ts",
-    "dev:sandbox": "DATA_ROOT=.cruise-data bun --watch sandbox/index.ts",
+    "dev:sandbox": "DATA_ROOT=.cruise-data PORT=3001 bun --watch sandbox/index.ts",
     "start": "bun agent/index.ts",
     "build:frontend": "cd frontend && bun install && bun run build"
   },
