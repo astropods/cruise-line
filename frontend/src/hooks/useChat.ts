@@ -122,7 +122,17 @@ export function useChat({ owner, repo, pr }: UseChatOptions) {
                 timestamp: new Date(),
               }]);
             } else if (event.type === 'done') {
-              // Turn complete
+              // Turn complete — result may contain final text as fallback
+              if (event.text) {
+                // Only add if we didn't already get text blocks
+                setEntries((prev) => {
+                  const lastText = prev.findLast((e) => e.type === 'text');
+                  if (!lastText || lastText.content !== event.text) {
+                    return [...prev, { type: 'text', content: event.text, timestamp: new Date() }];
+                  }
+                  return prev;
+                });
+              }
             } else if (event.type === 'error') {
               setEntries((prev) => [...prev, {
                 type: 'error', content: event.message, timestamp: new Date(),

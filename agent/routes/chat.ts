@@ -94,45 +94,41 @@ chatRoutes.post('/:owner/:repo/:pr/message', async (c) => {
       }
 
       for await (const msg of query({ prompt: message.trim(), options })) {
-        if (msg.type === 'assistant' && msg.content) {
-          // Complete assistant turn — contains text blocks and tool_use blocks in order
-          const blocks = Array.isArray(msg.content) ? msg.content : [msg.content];
+        const m = msg as any;
 
+        if (m.type === 'assistant') {
+          // Assistant turn: content is at msg.message.content (array of blocks)
+          const blocks = m.message?.content ?? [];
           for (const block of blocks) {
-            if (typeof block === 'string') {
+            if (block.type === 'text' && block.text) {
               await stream.writeSSE({
-                data: JSON.stringify({ type: 'text', content: block }),
+                data: JSON.stringify({ type: 'text', content: block.text }),
               });
-            } else if (block && typeof block === 'object' && 'type' in block) {
-              if (block.type === 'text' && 'text' in block) {
-                await stream.writeSSE({
-                  data: JSON.stringify({ type: 'text', content: (block as any).text }),
-                });
-              } else if (block.type === 'tool_use') {
-                const tb = block as { name: string; input: Record<string, any> };
-                await stream.writeSSE({
-                  data: JSON.stringify({
-                    type: 'tool_call',
-                    name: tb.name,
-                    detail: formatToolDetail(tb.name, tb.input),
-                    input: tb.input,
-                  }),
-                });
-              }
+            } else if (block.type === 'tool_use') {
+              await stream.writeSSE({
+                data: JSON.stringify({
+                  type: 'tool_call',
+                  name: block.name,
+                  detail: formatToolDetail(block.name, block.input ?? {}),
+                  input: block.input,
+                }),
+              });
             }
           }
-        } else if (msg.type === 'result') {
-          if (msg.subtype === 'success') {
+        } else if (m.type === 'result') {
+          if (m.subtype === 'success') {
+            // result.result contains the final text if present
             await stream.writeSSE({
               data: JSON.stringify({
                 type: 'done',
-                numTurns: (msg as any).num_turns,
-                costUsd: (msg as any).total_cost_usd,
+                text: m.result ?? '',
+                numTurns: m.num_turns,
+                costUsd: m.total_cost_usd,
               }),
             });
           } else {
             await stream.writeSSE({
-              data: JSON.stringify({ type: 'error', message: `Stopped: ${msg.subtype}` }),
+              data: JSON.stringify({ type: 'error', message: `Stopped: ${m.subtype}` }),
             });
           }
         }
