@@ -9,4 +9,6 @@ export interface PrMetadata {
   baseSha: string;
   headSha: string;
   installationId: number;
+  /** PR description body (markdown). May be empty. */
+  body?: string;
 }

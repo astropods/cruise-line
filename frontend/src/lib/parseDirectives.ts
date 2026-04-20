@@ -3,7 +3,8 @@ export type Segment =
   | { type: 'diff'; file: string; lines?: [number, number] }
   | { type: 'code'; file: string; lines?: [number, number] }
   | { type: 'file'; file: string }
-  | { type: 'callout'; calloutType: 'info' | 'warning' | 'breaking'; content: string };
+  | { type: 'callout'; calloutType: 'info' | 'warning' | 'breaking' | 'security' | 'perf'; content: string }
+  | { type: 'suggestion'; file: string; lines?: [number, number]; content: string };
 
 const DIRECTIVE_RE = /^::(\w+)\{([^}]*)\}\s*$/;
 const ATTR_RE = /(\w+)="([^"]*)"/g;
@@ -88,7 +89,7 @@ export function parseDirectives(body: string): Segment[] {
         break;
 
       case 'callout': {
-        const calloutType = (attrs.type ?? 'info') as 'info' | 'warning' | 'breaking';
+        const calloutType = (attrs.type ?? 'info') as 'info' | 'warning' | 'breaking' | 'security' | 'perf';
         const contentLines: string[] = [];
         i++;
         // Collect content until blank line or next directive
@@ -109,6 +110,31 @@ export function parseDirectives(body: string): Segment[] {
           type: 'callout',
           calloutType,
           content: contentLines.join('\n').trim(),
+        });
+        break;
+      }
+
+      case 'suggestion': {
+        const sugContentLines: string[] = [];
+        i++;
+        // Collect content until blank line or next directive
+        while (i < lines.length) {
+          if (lines[i].trim() === '' && i + 1 < lines.length && DIRECTIVE_RE.test(lines[i + 1])) {
+            break;
+          }
+          if (lines[i].trim() === '' && sugContentLines.length > 0) {
+            let nextNonEmpty = i + 1;
+            while (nextNonEmpty < lines.length && lines[nextNonEmpty].trim() === '') nextNonEmpty++;
+            if (nextNonEmpty >= lines.length || DIRECTIVE_RE.test(lines[nextNonEmpty])) break;
+          }
+          sugContentLines.push(lines[i]);
+          i++;
+        }
+        segments.push({
+          type: 'suggestion',
+          file: attrs.file ?? '',
+          lines: attrs.lines ? parseLines(attrs.lines) : undefined,
+          content: sugContentLines.join('\n').trimEnd(),
         });
         break;
       }

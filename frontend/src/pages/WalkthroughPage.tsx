@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useParams } from 'react-router';
 import { useWalkthrough } from '../hooks/useWalkthrough';
 import { useAuth } from '../hooks/useAuth';
 import { SlideoutProvider } from '../contexts/SlideoutContext';
 import { CommentsProvider } from '../contexts/CommentsContext';
-import { SectionRenderer } from '../components/SectionRenderer';
+import { FindingRenderer } from '../components/FindingRenderer';
+import { VerdictBanner } from '../components/VerdictBanner';
 import { FileSlideout } from '../components/FileSlideout';
 import { MiniNav } from '../components/MiniNav';
 import { ProgressBar } from '../components/ProgressBar';
@@ -14,6 +15,7 @@ import { ChatPanel } from '../components/ChatPanel';
 import { ChatInputBar } from '../components/ChatInputBar';
 import { PageLoading, ErrorState } from '../components/LoadingStates';
 import { Md } from '../components/Md';
+import type { Severity } from '../api';
 
 type ViewMode = 'walkthrough' | 'chat';
 
@@ -63,9 +65,17 @@ export function WalkthroughPage() {
     );
   }
 
-  if (!walkthrough || !walkthrough.sections?.length) {
-    return <ErrorState message="Walkthrough has no content" onRetry={generate} />;
+  if (!walkthrough || !walkthrough.findings?.length) {
+    return <ErrorState message="Analysis has no content" onRetry={generate} />;
   }
+
+  const findingCounts = {
+    critical: walkthrough.findings.filter((f) => f.severity === 'critical').length,
+    high: walkthrough.findings.filter((f) => f.severity === 'high').length,
+    medium: walkthrough.findings.filter((f) => f.severity === 'medium').length,
+    low: walkthrough.findings.filter((f) => f.severity === 'low').length,
+    info: walkthrough.findings.filter((f) => f.severity === 'info').length,
+  };
 
   return (
     <SlideoutProvider
@@ -115,7 +125,7 @@ export function WalkthroughPage() {
                         : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                     }`}
                   >
-                    Walkthrough
+                    Analysis
                   </button>
                   <button
                     onClick={() => { setViewMode('chat'); setChatInitialMessage(undefined); }}
@@ -150,19 +160,24 @@ export function WalkthroughPage() {
             >
               <ProgressBar />
               <main className="max-w-[800px] mx-auto px-8 py-12 pb-24">
-                <div className="mb-20 cruise-markdown text-[1.125rem] leading-[1.8] text-[var(--text-secondary)]">
+                <div className="mb-10 cruise-markdown text-[1.125rem] leading-[1.8] text-[var(--text-secondary)]">
                   <Md>{walkthrough.summary}</Md>
                 </div>
-                {walkthrough.sections.map((section, i) => (
-                  <SectionRenderer
+                <VerdictBanner
+                  verdict={walkthrough.verdict}
+                  rationale={walkthrough.verdictRationale}
+                  findingCounts={findingCounts}
+                />
+                {walkthrough.findings.map((finding, i) => (
+                  <FindingRenderer
                     key={i}
-                    section={section}
+                    finding={finding}
                     files={walkthrough.files}
                     index={i}
                   />
                 ))}
               </main>
-              <MiniNav sections={walkthrough.sections} />
+              <MiniNav findings={walkthrough.findings} />
               <ChatInputBar onSubmit={startChat} />
             </div>
 
@@ -220,7 +235,7 @@ function HeaderMenu({ onRegenerate, prUrl }: { onRegenerate: () => void; prUrl: 
               <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
                 <path d="M1.705 8.005a.75.75 0 0 1 .834.656 5.5 5.5 0 0 0 9.592 2.97l-1.204-1.204a.25.25 0 0 1 .177-.427h3.646a.25.25 0 0 1 .25.25v3.646a.25.25 0 0 1-.427.177l-1.38-1.38A7.002 7.002 0 0 1 1.05 8.84a.75.75 0 0 1 .656-.834ZM8 2.5a5.487 5.487 0 0 0-4.131 1.869l1.204 1.204A.25.25 0 0 1 4.896 6H1.25A.25.25 0 0 1 1 5.75V2.104a.25.25 0 0 1 .427-.177l1.38 1.38A7.002 7.002 0 0 1 14.95 7.16a.75.75 0 0 1-1.49.178A5.5 5.5 0 0 0 8 2.5Z"/>
               </svg>
-              Regenerate walkthrough
+              Regenerate analysis
             </button>
             <a
               href={prUrl}

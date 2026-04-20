@@ -2,6 +2,7 @@ import { Md } from './Md';
 import { parseDirectives, processInlineFileRefs } from '../lib/parseDirectives';
 import { InlineDiff } from './InlineDiff';
 import { InlineCode } from './InlineCode';
+import { InlineSuggestion } from './InlineSuggestion';
 import { FilePill } from './FilePill';
 import { Callout } from './Callout';
 import type { FileContent } from '../api';
@@ -90,6 +91,20 @@ export function RichContent({ content, files = {}, className = 'cruise-markdown'
                 content={segment.content}
               />
             );
+
+          case 'suggestion': {
+            const fc = files[segment.file];
+            if (!fc) return <div key={i} className="my-2"><FilePill file={segment.file} /></div>;
+            return (
+              <InlineSuggestion
+                key={i}
+                file={segment.file}
+                lines={segment.lines}
+                suggestion={segment.content}
+                fileContent={fc}
+              />
+            );
+          }
 
           default:
             return null;

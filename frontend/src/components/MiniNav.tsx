@@ -1,12 +1,20 @@
 import { useState, useEffect } from 'react';
 import { useSlideout } from '../contexts/SlideoutContext';
-import type { Section } from '../api';
+import type { Finding, Severity } from '../api';
 
 interface MiniNavProps {
-  sections: Section[];
+  findings: Finding[];
 }
 
-export function MiniNav({ sections }: MiniNavProps) {
+const severityDot: Record<Severity, string> = {
+  critical: 'bg-red-400',
+  high: 'bg-orange-400',
+  medium: 'bg-yellow-400',
+  low: 'bg-blue-400',
+  info: 'bg-[var(--text-secondary)]/40',
+};
+
+export function MiniNav({ findings }: MiniNavProps) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
   const { activeSlideout } = useSlideout();
@@ -14,7 +22,7 @@ export function MiniNav({ sections }: MiniNavProps) {
   const collapsed = !!activeSlideout;
 
   useEffect(() => {
-    const elements = sections.map((_, i) =>
+    const elements = findings.map((_, i) =>
       document.getElementById(`section-${i}`)
     ).filter(Boolean) as HTMLElement[];
 
@@ -34,7 +42,7 @@ export function MiniNav({ sections }: MiniNavProps) {
 
     elements.forEach((el) => observer.observe(el));
     return () => observer.disconnect();
-  }, [sections]);
+  }, [findings]);
 
   // Close menu when slideout closes
   useEffect(() => {
@@ -47,7 +55,7 @@ export function MiniNav({ sections }: MiniNavProps) {
     setMenuOpen(false);
   }
 
-  if (sections.length <= 1) return null;
+  if (findings.length <= 1) return null;
 
   // Collapsed mode: floating pill
   if (collapsed) {
@@ -57,25 +65,26 @@ export function MiniNav({ sections }: MiniNavProps) {
           onClick={() => setMenuOpen(!menuOpen)}
           className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--accent)] transition-colors shadow-lg"
         >
-          <span className="text-[var(--accent)] font-medium">{activeIndex + 1}/{sections.length}</span>
-          <span className="truncate max-w-[280px]">{sections[activeIndex]?.title}</span>
+          <span className="text-[var(--accent)] font-medium">{activeIndex + 1}/{findings.length}</span>
+          <span className="truncate max-w-[280px]">{findings[activeIndex]?.title}</span>
         </button>
 
         {menuOpen && (
           <>
             <div className="fixed inset-0 z-20" onClick={() => setMenuOpen(false)} />
-            <div className="absolute bottom-full left-0 mb-2 w-56 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] shadow-xl z-30 py-1 max-h-[50vh] overflow-auto">
-              {sections.map((section, i) => (
+            <div className="absolute bottom-full left-0 mb-2 w-64 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] shadow-xl z-30 py-1 max-h-[50vh] overflow-auto">
+              {findings.map((finding, i) => (
                 <button
                   key={i}
                   onClick={() => scrollTo(i)}
-                  className={`w-full text-left px-3 py-2 text-xs transition-colors ${
+                  className={`w-full text-left px-3 py-2 text-xs transition-colors flex items-center gap-2 ${
                     i === activeIndex
                       ? 'text-[var(--accent)] bg-[var(--accent)]/5'
                       : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]'
                   }`}
                 >
-                  {section.title}
+                  <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${severityDot[finding.severity]}`} />
+                  <span className="truncate">{finding.title}</span>
                 </button>
               ))}
             </div>
@@ -89,7 +98,7 @@ export function MiniNav({ sections }: MiniNavProps) {
   return (
     <nav className="fixed left-4 top-1/2 -translate-y-1/2 z-30 hidden xl:block max-w-[18rem]">
       <div className="flex flex-col gap-0.5">
-        {sections.map((section, i) => (
+        {findings.map((finding, i) => (
           <button
             key={i}
             onClick={() => scrollTo(i)}
@@ -99,13 +108,13 @@ export function MiniNav({ sections }: MiniNavProps) {
           >
             <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 transition-all ${
               i === activeIndex
-                ? 'bg-[var(--accent)] scale-125'
-                : 'bg-[var(--text-secondary)]/40 group-hover:bg-[var(--text-secondary)]'
+                ? `${severityDot[finding.severity]} scale-125`
+                : `${severityDot[finding.severity]} group-hover:scale-110`
             }`} />
             <span className={`text-xs text-left truncate transition-colors ${
               i === activeIndex ? 'text-[var(--accent)]' : 'text-[var(--text-secondary)]'
             }`}>
-              {section.title}
+              {finding.title}
             </span>
           </button>
         ))}

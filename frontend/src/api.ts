@@ -19,6 +19,20 @@ export interface FileContent {
   patch?: string;
 }
 
+export type Severity = 'critical' | 'high' | 'medium' | 'low' | 'info';
+export type FindingCategory = 'correctness' | 'security' | 'maintainability' | 'performance' | 'style';
+export type Verdict = 'approve' | 'request_changes' | 'needs_discussion';
+
+export interface Finding {
+  title: string;
+  severity: Severity;
+  category: FindingCategory;
+  body: string;
+  files: string[];
+  /** A prompt the developer can paste into Claude Code to fix this issue */
+  fixPrompt?: string;
+}
+
 export interface Walkthrough {
   pr: {
     repo: string;
@@ -29,10 +43,13 @@ export interface Walkthrough {
     headSha: string;
   };
   summary: string;
+  verdict: Verdict;
+  verdictRationale: string;
   files: Record<string, FileContent>;
-  sections: Section[];
+  findings: Finding[];
 }
 
+/** @deprecated Use Finding instead */
 export interface Section {
   title: string;
   body: string;

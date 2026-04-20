@@ -381,16 +381,18 @@ body {
   z-index: 1;
 }
 
-/* Commentable diff gutter — show + on hover */
+/* Commentable diff gutter — show + on hover (new-side gutter only) */
 .cruise-commentable-diff .diff-gutter {
-  cursor: pointer;
   position: relative;
 }
-.cruise-commentable-diff .diff-gutter:hover {
+.cruise-commentable-diff .diff-gutter:nth-child(2) {
+  cursor: pointer;
+}
+.cruise-commentable-diff .diff-gutter:nth-child(2):hover {
   color: var(--accent) !important;
   opacity: 1 !important;
 }
-.cruise-commentable-diff .diff-gutter:hover::after {
+.cruise-commentable-diff .diff-gutter:nth-child(2):hover::after {
   content: '+';
   position: absolute;
   inset: 0;

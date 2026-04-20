@@ -2,15 +2,23 @@ import { createContext, useContext, useState, type ReactNode } from 'react';
 import { useComments } from '../hooks/useComments';
 import type { PRComment } from '../api';
 
+export interface ActiveCommentLine {
+  path: string;
+  line: number;
+  side: 'LEFT' | 'RIGHT';
+  /** Pre-fill the comment input with this text */
+  prefill?: string;
+}
+
 interface CommentsContextValue {
   getCommentsForLine: (path: string, line: number) => PRComment[];
   commentCountForFile: (path: string) => number;
   addComment: (path: string, line: number, side: 'LEFT' | 'RIGHT', body: string) => Promise<PRComment>;
   replyTo: (commentId: number, body: string) => Promise<PRComment>;
-  activeCommentLine: { path: string; line: number; side: 'LEFT' | 'RIGHT' } | null;
+  activeCommentLine: ActiveCommentLine | null;
   /** When set, shows a reply input under a specific comment */
   replyingTo: number | null;
-  setActiveCommentLine: (line: { path: string; line: number; side: 'LEFT' | 'RIGHT' } | null) => void;
+  setActiveCommentLine: (line: ActiveCommentLine | null) => void;
   setReplyingTo: (commentId: number | null) => void;
   loading: boolean;
   userAvatarUrl: string;
@@ -42,9 +50,7 @@ export function CommentsProvider({ children, owner, repo, pr, commitId, userAvat
   const { getCommentsForLine, commentCountForFile, addComment, replyTo, loading } = useComments({
     owner, repo, pr, commitId,
   });
-  const [activeCommentLine, setActiveCommentLine] = useState<{
-    path: string; line: number; side: 'LEFT' | 'RIGHT';
-  } | null>(null);
+  const [activeCommentLine, setActiveCommentLine] = useState<ActiveCommentLine | null>(null);
   const [replyingTo, setReplyingTo] = useState<number | null>(null);
 
   return (

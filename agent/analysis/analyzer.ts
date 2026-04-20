@@ -65,15 +65,21 @@ async function getFilePatch(repoDir: string, baseRef: string, filePath: string):
 }
 
 /**
- * Extract all file paths referenced by directives in section bodies.
+ * Extract all file paths referenced by directives in finding bodies,
+ * plus files listed in finding metadata.
  */
 function extractFileReferences(output: ClaudeWalkthroughOutput): Set<string> {
   const files = new Set<string>();
-  const regex = /::(?:diff|code|file)\{[^}]*file="([^"]+)"[^}]*\}/g;
-  for (const section of output.sections) {
+  const regex = /::(?:diff|code|file|suggestion)\{[^}]*file="([^"]+)"[^}]*\}/g;
+  for (const finding of output.findings) {
+    // Files from directives in body
     let match;
-    while ((match = regex.exec(section.body)) !== null) {
+    while ((match = regex.exec(finding.body)) !== null) {
       files.add(match[1]);
+    }
+    // Files listed in finding metadata
+    for (const f of finding.files) {
+      files.add(f);
     }
   }
   return files;
@@ -144,7 +150,7 @@ export async function analyzePr(
     await updateWalkthroughStatus(walkthroughId, 'running');
 
     // Invoke Claude Agent SDK
-    const userPrompt = buildUserPrompt(prMetadata, diffOutput);
+    const userPrompt = buildUserPrompt(prMetadata, diffOutput, prMetadata.body);
     let claudeOutput: ClaudeWalkthroughOutput | undefined;
 
     for await (const message of query({
@@ -194,13 +200,17 @@ export async function analyzePr(
     }
 
     if (!claudeOutput) {
-      throw new Error('Claude did not return a structured walkthrough');
+      throw new Error('Claude did not return a structured analysis');
     }
 
     // Fix escaped newlines from structured output
     claudeOutput.summary = claudeOutput.summary.replace(/\\n/g, '\n');
-    for (const section of claudeOutput.sections) {
-      section.body = section.body.replace(/\\n/g, '\n');
+    claudeOutput.verdictRationale = claudeOutput.verdictRationale.replace(/\\n/g, '\n');
+    for (const finding of claudeOutput.findings) {
+      finding.body = finding.body.replace(/\\n/g, '\n');
+      if (finding.fixPrompt) {
+        finding.fixPrompt = finding.fixPrompt.replace(/\\n/g, '\n');
+      }
     }
 
     addProgress(walkthroughId, 'status', 'Reading file contents...');
@@ -214,7 +224,7 @@ export async function analyzePr(
       files,
     };
 
-    addProgress(walkthroughId, 'status', 'Walkthrough complete. Saving...');
+    addProgress(walkthroughId, 'status', 'Analysis complete. Saving...');
     await updateWalkthroughStatus(walkthroughId, 'complete', walkthrough);
     console.log(
       `Walkthrough complete for ${prMetadata.owner}/${prMetadata.repo}#${prMetadata.number}`,

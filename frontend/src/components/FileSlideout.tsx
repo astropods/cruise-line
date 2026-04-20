@@ -142,16 +142,28 @@ function middleTruncate(str: string, maxLen: number): string {
 }
 
 function SlideoutContent({ filePath, fileContent, focusLines }: { filePath: string; fileContent: FileContent | undefined; focusLines?: [number, number] }) {
-  if (fileContent?.patch) {
-    return <SlideoutDiffView filePath={filePath} fileContent={fileContent} focusLines={focusLines} />;
-  }
-  if (fileContent?.after) {
-    return <SlideoutCodeView filePath={filePath} fileContent={fileContent} focusLines={focusLines} />;
-  }
+  const isInDiff = !!fileContent?.patch;
+
   return (
-    <div className="p-8 text-center text-[var(--text-secondary)]">
-      File content not available
-    </div>
+    <>
+      {fileContent && !isInDiff && (
+        <div className="flex items-center gap-2 px-4 py-2 bg-[var(--text-secondary)]/5 border-b border-[var(--border)] text-xs text-[var(--text-secondary)]">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" className="flex-shrink-0 opacity-60">
+            <path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"/>
+          </svg>
+          This file is not part of the pull request diff — shown for context only
+        </div>
+      )}
+      {fileContent?.patch ? (
+        <SlideoutDiffView filePath={filePath} fileContent={fileContent} focusLines={focusLines} />
+      ) : fileContent?.after ? (
+        <SlideoutCodeView filePath={filePath} fileContent={fileContent} focusLines={focusLines} />
+      ) : (
+        <div className="p-8 text-center text-[var(--text-secondary)]">
+          File content not available
+        </div>
+      )}
+    </>
   );
 }
 
@@ -342,6 +354,7 @@ function SlideoutDiffView({ filePath, fileContent, focusLines }: { filePath: str
               {isActiveInput && (
                 <CommentInput
                   userAvatarUrl={userAvatarUrl}
+                  prefill={activeCommentLine?.prefill}
                   onSubmit={async (body) => {
                     await addComment(filePath, lineNum, side, body);
                     setActiveCommentLine(null);
@@ -395,7 +408,6 @@ function SlideoutDiffView({ filePath, fileContent, focusLines }: { filePath: str
 }
 
 function SlideoutCodeView({ filePath, fileContent, focusLines }: { filePath: string; fileContent: FileContent; focusLines?: [number, number] }) {
-  const { getCommentsForLine, addComment, activeCommentLine, setActiveCommentLine, userAvatarUrl } = useCommentsContext();
   const lines = (fileContent.after ?? '').split('\n');
   const focusRef = useRef<HTMLDivElement>(null);
 
@@ -437,56 +449,27 @@ function SlideoutCodeView({ filePath, fileContent, focusLines }: { filePath: str
         const lineNum = i + 1;
         const inFocus = focusLines && lineNum >= focusLines[0] && lineNum <= focusLines[1];
         const isFirst = focusLines && lineNum === focusLines[0];
-        const lineComments = getCommentsForLine(filePath, lineNum);
-        const isActiveInput = activeCommentLine?.path === filePath && activeCommentLine?.line === lineNum;
 
         return (
-          <div key={i}>
-            <div
-              ref={isFirst ? focusRef : undefined}
-              className="flex group"
-              data-slideout-focus={inFocus ? true : undefined}
-              style={{
-                background: inFocus ? 'rgba(88,166,255,0.06)' : 'transparent',
-                boxShadow: inFocus ? 'inset 3px 0 0 var(--accent)' : 'none',
-              }}
+          <div
+            key={i}
+            ref={isFirst ? focusRef : undefined}
+            className="flex"
+            data-slideout-focus={inFocus ? true : undefined}
+            style={{
+              background: inFocus ? 'rgba(88,166,255,0.06)' : 'transparent',
+              boxShadow: inFocus ? 'inset 3px 0 0 var(--accent)' : 'none',
+            }}
+          >
+            <span
+              className="select-none w-12 flex-shrink-0 text-right pr-4 text-xs text-[var(--text-secondary)]/40"
+              style={{ lineHeight: '1.5em' }}
             >
-              <span
-                className="select-none w-12 flex-shrink-0 text-right pr-4 text-xs text-[var(--text-secondary)]/40 cursor-pointer hover:text-[var(--accent)] relative"
-                style={{ lineHeight: '1.5em' }}
-                onClick={() => setActiveCommentLine({ path: filePath, line: lineNum, side: 'RIGHT' })}
-              >
-                <span className="group-hover:invisible">{lineNum}</span>
-                <span className="absolute inset-0 hidden group-hover:flex items-center justify-center text-[var(--accent)] font-bold">+</span>
-              </span>
-              <span className="flex-1 px-4 whitespace-pre text-[var(--text-primary)]">
-                {line}
-              </span>
-            </div>
-            {(() => {
-              const topLevel = lineComments.filter((c) => !c.inReplyToId);
-              const repliesMap = new Map<number, typeof lineComments>();
-              for (const c of lineComments) {
-                if (c.inReplyToId) {
-                  const arr = repliesMap.get(c.inReplyToId) ?? [];
-                  arr.push(c);
-                  repliesMap.set(c.inReplyToId, arr);
-                }
-              }
-              return topLevel.map((c) => (
-                <InlineComment key={c.id} comment={c} replies={repliesMap.get(c.id)} />
-              ));
-            })()}
-            {isActiveInput && (
-              <CommentInput
-                userAvatarUrl={userAvatarUrl}
-                onSubmit={async (body) => {
-                  await addComment(filePath, lineNum, 'RIGHT', body);
-                  setActiveCommentLine(null);
-                }}
-                onCancel={() => setActiveCommentLine(null)}
-              />
-            )}
+              {lineNum}
+            </span>
+            <span className="flex-1 px-4 whitespace-pre text-[var(--text-primary)]">
+              {line}
+            </span>
           </div>
         );
       })}

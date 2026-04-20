@@ -32,6 +32,7 @@ export async function getPrMetadata(
     baseSha: pr.base.sha,
     headSha: pr.head.sha,
     installationId,
+    body: pr.body ?? undefined,
   };
 }
 

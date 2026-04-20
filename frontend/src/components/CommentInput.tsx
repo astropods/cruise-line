@@ -4,15 +4,24 @@ interface CommentInputProps {
   onSubmit: (body: string) => Promise<void>;
   onCancel: () => void;
   userAvatarUrl?: string;
+  /** Pre-fill the textarea with this text */
+  prefill?: string;
 }
 
-export function CommentInput({ onSubmit, onCancel, userAvatarUrl }: CommentInputProps) {
-  const [body, setBody] = useState('');
+export function CommentInput({ onSubmit, onCancel, userAvatarUrl, prefill }: CommentInputProps) {
+  const [body, setBody] = useState(prefill ?? '');
   const [submitting, setSubmitting] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    textareaRef.current?.focus();
+    const el = textareaRef.current;
+    if (el) {
+      el.focus();
+      // Move cursor to end when pre-filled
+      if (prefill) {
+        el.selectionStart = el.selectionEnd = el.value.length;
+      }
+    }
   }, []);
 
   // Auto-resize textarea

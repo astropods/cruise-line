@@ -1,7 +1,7 @@
 import { Md } from './Md';
 
 interface CalloutProps {
-  type: 'info' | 'warning' | 'breaking';
+  type: 'info' | 'warning' | 'breaking' | 'security' | 'perf';
   content: string;
 }
 
@@ -23,6 +23,18 @@ const styles: Record<string, { border: string; bg: string; icon: string; label: 
     bg: 'bg-red-500/5',
     icon: '\uD83D\uDEA8',
     label: 'Breaking Change',
+  },
+  security: {
+    border: 'border-l-red-500',
+    bg: 'bg-red-500/5',
+    icon: '\uD83D\uDD12',
+    label: 'Security',
+  },
+  perf: {
+    border: 'border-l-orange-500',
+    bg: 'bg-orange-500/5',
+    icon: '\u26A1',
+    label: 'Performance',
   },
 };
 
