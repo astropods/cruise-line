@@ -62,6 +62,21 @@ chatRoutes.post('/:owner/:repo/:pr/message', async (c) => {
     owner, repo, prNumber, pr.headSha, pr.headRef, installationId,
   );
 
+  // Reset working tree to clean state before each message —
+  // ensures the conversation always sees the actual PR code,
+  // even if a previous Bash command modified files
+  const resetProc = Bun.spawn(
+    ['git', 'checkout', '.'],
+    { cwd: repoDir, stdout: 'pipe', stderr: 'pipe' },
+  );
+  await resetProc.exited;
+  // Also clean any untracked files
+  const cleanProc = Bun.spawn(
+    ['git', 'clean', '-fd'],
+    { cwd: repoDir, stdout: 'pipe', stderr: 'pipe' },
+  );
+  await cleanProc.exited;
+
   const walkthrough = await getLatestWalkthrough(owner, repo, prNumber);
   const summary = walkthrough?.data?.summary ?? undefined;
   const systemPrompt = buildChatSystemPrompt(owner, repo, prNumber, pr.title, summary);
