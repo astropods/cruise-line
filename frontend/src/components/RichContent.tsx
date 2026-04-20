@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { Md } from './Md';
-import { parseDirectives, processInlineFileRefs } from '../lib/parseDirectives';
+import { parseDirectives, processInlineFileRefs, processRuleRefs } from '../lib/parseDirectives';
 import { resolveFilePath } from '../lib/resolvePath';
 import { InlineDiff } from './InlineDiff';
 import { InlineCode } from './InlineCode';
@@ -11,6 +11,11 @@ import { FilePill } from './FilePill';
 import { Callout } from './Callout';
 import type { FileContent } from '../api';
 
+export interface RuleRef {
+  ruleNumber: number;
+  rule: string;
+}
+
 interface RichContentProps {
   /** Markdown text that may contain ::diff{}, ::code{}, ::file{}, ::callout{} directives */
   content: string;
@@ -18,13 +23,17 @@ interface RichContentProps {
   files?: Record<string, FileContent>;
   /** Additional CSS class on the markdown wrapper */
   className?: string;
+  /** Callback when a "Rule #N" reference is clicked */
+  onRuleClick?: (ruleNumber: number) => void;
+  /** Rules list for showing rule text on hover */
+  rules?: RuleRef[];
 }
 
 /**
  * Renders markdown content with embedded interactive directives.
  * Used by both the analysis FindingRenderer and the chat panel.
  */
-export function RichContent({ content, files = {}, className = 'cruise-markdown' }: RichContentProps) {
+export function RichContent({ content, files = {}, className = 'cruise-markdown', onRuleClick, rules = [] }: RichContentProps) {
   const segments = parseDirectives(content);
   const knownPaths = useMemo(() => Object.keys(files), [files]);
 
@@ -49,6 +58,25 @@ export function RichContent({ content, files = {}, className = 'cruise-markdown'
                         const { resolvedPath } = resolveFile(file);
                         return <FilePill file={resolvedPath} />;
                       }
+                      if (href?.startsWith('::rule::')) {
+                        const ruleNum = parseInt(href.replace('::rule::', ''), 10);
+                        const ruleText = rules.find((r) => r.ruleNumber === ruleNum)?.rule;
+                        return (
+                          <span className="relative inline-block group">
+                            <button
+                              onClick={() => onRuleClick?.(ruleNum)}
+                              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-[var(--accent)]/10 text-[var(--accent)] text-xs font-medium hover:bg-[var(--accent)]/20 transition-colors cursor-pointer"
+                            >
+                              {children}
+                            </button>
+                            {ruleText && (
+                              <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] shadow-xl text-xs text-[var(--text-primary)] w-64 hidden group-hover:block z-50 pointer-events-none">
+                                {ruleText}
+                              </span>
+                            )}
+                          </span>
+                        );
+                      }
                       return (
                         <a href={href} target="_blank" rel="noopener noreferrer">
                           {children}
@@ -57,7 +85,7 @@ export function RichContent({ content, files = {}, className = 'cruise-markdown'
                     },
                   }}
                 >
-                  {processInlineFileRefs(segment.content)}
+                  {processRuleRefs(processInlineFileRefs(segment.content))}
                 </Md>
               </div>
             );

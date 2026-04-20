@@ -135,6 +135,41 @@ export function fetchUser() {
   return apiFetch<UserInfo>('/api/auth/me');
 }
 
+// --- Review Rules ---
+
+export interface ReviewRule {
+  id: number;
+  ruleNumber: number;
+  rule: string;
+  createdAt: string;
+}
+
+export function fetchRules(owner: string, repo: string) {
+  return apiFetch<{ rules: ReviewRule[] }>(`/api/rules/${owner}/${repo}`);
+}
+
+export function addRuleApi(owner: string, repo: string, rule: string) {
+  return apiFetch<{ rule: ReviewRule }>(`/api/rules/${owner}/${repo}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rule }),
+  });
+}
+
+export function deleteRuleApi(owner: string, repo: string, ruleId: number) {
+  return apiFetch<{ ok: boolean }>(`/api/rules/${owner}/${repo}/${ruleId}`, {
+    method: 'DELETE',
+  });
+}
+
+export function updateRuleApi(owner: string, repo: string, ruleId: number, rule: string) {
+  return apiFetch<{ rule: ReviewRule }>(`/api/rules/${owner}/${repo}/${ruleId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rule }),
+  });
+}
+
 // --- PR Comments ---
 
 export interface PRComment {

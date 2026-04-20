@@ -298,3 +298,14 @@ export function processInlineFileRefs(markdown: string): string {
     (_, file) => `[${file}](::file::${file})`,
   );
 }
+
+/**
+ * Process "Rule #N" references within markdown text,
+ * replacing them with clickable links that the Md component renders as rule pills.
+ */
+export function processRuleRefs(markdown: string): string {
+  return markdown.replace(
+    /\bRule #(\d+)\b/g,
+    (match, num) => `[${match}](::rule::${num})`,
+  );
+}

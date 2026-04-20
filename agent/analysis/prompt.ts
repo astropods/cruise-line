@@ -128,7 +128,7 @@ In \`server/routes/api.ts\`, the POST /collections handler (line 45-60) doesn't 
 - Keep it scannable — short paragraphs, not walls of text.
 - The \`lines\` attribute is always 1-indexed and refers to the new (head) version of the file.`;
 
-export function buildUserPrompt(pr: PrMetadata, diffContent: string, prBody?: string): string {
+export function buildUserPrompt(pr: PrMetadata, diffContent: string, prBody?: string, rules?: Array<{ ruleNumber: number; rule: string }>): string {
   const maxDiffLength = 100_000;
   const truncatedDiff =
     diffContent.length > maxDiffLength
@@ -149,6 +149,18 @@ export function buildUserPrompt(pr: PrMetadata, diffContent: string, prBody?: st
 
 ## PR Description
 ${prBody.trim()}`;
+  }
+
+  if (rules && rules.length > 0) {
+    prompt += `
+
+## Repository Review Rules
+
+The team has configured these review rules for this repository. These are **supplementary guidance** — you should still perform your full analysis independently. Rules highlight areas the team cares about, but don't limit your review to only these topics.
+
+When a finding is related to a rule, mention it naturally (e.g. "This violates Rule #3" or "Per Rule #1, this endpoint should..."). Not every finding needs to reference a rule, and not every rule will be relevant to every PR.
+
+${rules.map((r) => `**Rule #${r.ruleNumber}:** ${r.rule}`).join('\n')}`;
   }
 
   prompt += `

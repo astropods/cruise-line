@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useParams } from 'react-router';
 import { useWalkthrough } from '../hooks/useWalkthrough';
 import { useAuth } from '../hooks/useAuth';
@@ -16,8 +16,11 @@ import { ChatPanel } from '../components/ChatPanel';
 import { ChatInputBar } from '../components/ChatInputBar';
 import { PageLoading, ErrorState } from '../components/LoadingStates';
 import { Md } from '../components/Md';
-import { DotsThree, ArrowsClockwise, ArrowSquareOut } from '@phosphor-icons/react';
-import type { Severity } from '../api';
+import { RulesPanel } from '../components/RulesPanel';
+import { DotsThree, ArrowsClockwise, ArrowSquareOut, ListNumbers } from '@phosphor-icons/react';
+import type { Severity, ReviewRule } from '../api';
+import { fetchRules } from '../api';
+import type { RuleRef } from '../components/RichContent';
 
 type ViewMode = 'walkthrough' | 'chat';
 
@@ -40,6 +43,29 @@ export function WalkthroughPage() {
 
   const [viewMode, setViewMode] = useState<ViewMode>('walkthrough');
   const [chatInitialMessage, setChatInitialMessage] = useState<string | undefined>();
+  const [showRules, setShowRules] = useState(false);
+  const [rulesPrefill, setRulesPrefill] = useState<string | undefined>();
+  const [repoRules, setRepoRules] = useState<RuleRef[]>([]);
+
+  // Fetch rules for hover tooltips
+  const loadRules = useCallback(async () => {
+    try {
+      const res = await fetchRules(owner!, repo!);
+      setRepoRules(res.rules.map((r) => ({ ruleNumber: r.ruleNumber, rule: r.rule })));
+    } catch {}
+  }, [owner, repo]);
+
+  useEffect(() => { loadRules(); }, [loadRules]);
+
+  function openRulesWithPrefill(prefill: string) {
+    setRulesPrefill(prefill);
+    setShowRules(true);
+  }
+
+  function openRulesAtRule(_ruleNumber: number) {
+    setRulesPrefill(undefined);
+    setShowRules(true);
+  }
 
   const prUrl = `${githubUrl}/${owner}/${repo}/pull/${pr}`;
 
@@ -142,7 +168,7 @@ export function WalkthroughPage() {
                   </button>
                 </div>
 
-                <HeaderMenu onRegenerate={generate} prUrl={prUrl} />
+                <HeaderMenu onRegenerate={generate} prUrl={prUrl} onOpenRules={() => setShowRules(true)} />
               </div>
             </div>
           </header>
@@ -182,6 +208,9 @@ export function WalkthroughPage() {
                     finding={finding}
                     files={walkthrough.files}
                     index={i}
+                    onSaveAsRule={openRulesWithPrefill}
+                    onRuleClick={openRulesAtRule}
+                    rules={repoRules}
                   />
                 ))}
               </main>
@@ -203,6 +232,8 @@ export function WalkthroughPage() {
                 prNumber={prNumber}
                 files={walkthrough.files}
                 onSwitchToWalkthrough={() => setViewMode('walkthrough')}
+                onRuleClick={openRulesAtRule}
+                rules={repoRules}
                 initialMessage={chatInitialMessage}
               />
             </div>
@@ -217,6 +248,16 @@ export function WalkthroughPage() {
         {/* File side panel */}
         <FileSlideout files={walkthrough.files} />
       </div>
+
+      {/* Rules management modal */}
+      {showRules && (
+        <RulesPanel
+          owner={owner!}
+          repo={repo!}
+          prefill={rulesPrefill}
+          onClose={() => { setShowRules(false); setRulesPrefill(undefined); loadRules(); }}
+        />
+      )}
       </CommentsProvider>
     </SlideoutProvider>
   );
@@ -257,7 +298,7 @@ function AutoStartAnalysis({ status, generate, owner, repo, pr, progress, github
   );
 }
 
-function HeaderMenu({ onRegenerate, prUrl }: { onRegenerate: () => void; prUrl: string }) {
+function HeaderMenu({ onRegenerate, prUrl, onOpenRules }: { onRegenerate: () => void; prUrl: string; onOpenRules: () => void }) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -273,6 +314,13 @@ function HeaderMenu({ onRegenerate, prUrl }: { onRegenerate: () => void; prUrl: 
         <>
           <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
           <div className="absolute right-0 top-full mt-1 w-48 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] shadow-xl z-30 py-1">
+            <button
+              onClick={() => { onOpenRules(); setOpen(false); }}
+              className="w-full text-left px-3 py-2 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] transition-colors flex items-center gap-2"
+            >
+              <ListNumbers size={14} />
+              Review rules
+            </button>
             <button
               onClick={() => { onRegenerate(); setOpen(false); }}
               className="w-full text-left px-3 py-2 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] transition-colors flex items-center gap-2"

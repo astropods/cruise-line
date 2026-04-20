@@ -5,6 +5,7 @@ import { config } from '../config.js';
 import { SYSTEM_PROMPT, buildUserPrompt } from './prompt.js';
 import { walkthroughJsonSchema, type Walkthrough, type ClaudeWalkthroughOutput, type FileContent } from './types.js';
 import { updateWalkthroughStatus } from '../db/walkthroughs.js';
+import { listRules } from '../db/rules.js';
 import { ensureClone } from '../repo/manager.js';
 import { postAnalysisComment } from '../github/client.js';
 import { jobManager } from './jobs.js';
@@ -179,8 +180,12 @@ export async function analyzePr(
       // Best-effort
     }
 
+    // Fetch repo review rules
+    const repoRules = await listRules(prMetadata.owner, prMetadata.repo);
+    const rules = repoRules.map((r) => ({ ruleNumber: r.ruleNumber, rule: r.rule }));
+
     // Invoke Claude Agent SDK
-    const userPrompt = buildUserPrompt(prMetadata, diffOutput, prMetadata.body);
+    const userPrompt = buildUserPrompt(prMetadata, diffOutput, prMetadata.body, rules.length > 0 ? rules : undefined);
     let claudeOutput: ClaudeWalkthroughOutput | undefined;
 
     for await (const message of query({

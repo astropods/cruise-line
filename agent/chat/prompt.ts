@@ -1,4 +1,4 @@
-export function buildChatSystemPrompt(owner: string, repo: string, prNumber: number, prTitle: string, summary?: string): string {
+export function buildChatSystemPrompt(owner: string, repo: string, prNumber: number, prTitle: string, summary?: string, rules?: Array<{ ruleNumber: number; rule: string }>): string {
   let prompt = `You are a code reviewer assistant. The user is reviewing PR #${prNumber} ("${prTitle}") on ${owner}/${repo}.
 
 You have the full repository checked out at the PR's head commit. Use the available tools (Read, Glob, Grep, Bash) to examine the code and answer questions accurately.
@@ -71,6 +71,10 @@ The handler in ::file{file="server/api/collections.ts"} has a similar pattern.
 - Focus on the PR context — the user is trying to understand these specific changes.
 - Do not edit code — this is a read-only review context. Use \`::suggestion\` to propose changes.
 - If unsure about something, read the actual code rather than guessing.`;
+
+  if (rules && rules.length > 0) {
+    prompt += `\n\n## Repository Review Rules\n\nThe team has configured these review rules. These are supplementary guidance — they highlight areas the team cares about, but don't limit your responses to only these topics. When relevant, reference rules naturally (e.g. "This violates Rule #3"). Not every response needs to reference a rule.\n\n${rules.map((r) => `**Rule #${r.ruleNumber}:** ${r.rule}`).join('\n')}`;
+  }
 
   if (summary) {
     prompt += `\n\n## PR Summary\n${summary}`;

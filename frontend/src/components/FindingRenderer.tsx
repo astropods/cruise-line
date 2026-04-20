@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import {
   WarningOctagon, WarningCircle, Warning, ArrowDown, Lightbulb,
   Bug, ShieldCheck, Wrench, Lightning, PaintBrush,
-  Copy, Check, ChatText,
+  Copy, Check, ChatText, BookmarkSimple,
   type Icon,
 } from '@phosphor-icons/react';
 import { RichContent } from './RichContent';
@@ -10,11 +10,16 @@ import { FilePill } from './FilePill';
 import { useSlideout } from '../contexts/SlideoutContext';
 import { useCommentsContext } from '../contexts/CommentsContext';
 import type { Finding, FileContent, Severity, FindingCategory } from '../api';
+import type { RuleRef } from './RichContent';
+import { normalizePath } from '../lib/resolvePath';
 
 interface FindingRendererProps {
   finding: Finding;
   files: Record<string, FileContent>;
   index: number;
+  onSaveAsRule?: (ruleText: string) => void;
+  onRuleClick?: (ruleNumber: number) => void;
+  rules?: RuleRef[];
 }
 
 const severityConfig: Record<Severity, { label: string; icon: Icon; color: string; bg: string; border: string }> = {
@@ -43,7 +48,7 @@ function extractCommentTarget(body: string): { file: string; line: number } | nu
   return { file: match[1], line: parseInt(match[2], 10) };
 }
 
-export function FindingRenderer({ finding, files, index }: FindingRendererProps) {
+export function FindingRenderer({ finding, files, index, onSaveAsRule, onRuleClick, rules }: FindingRendererProps) {
   const sev = severityConfig[finding.severity] ?? severityConfig.info;
   const cat = categoryConfig[finding.category] ?? categoryConfig.correctness;
   const { openFile } = useSlideout();
@@ -85,12 +90,13 @@ export function FindingRenderer({ finding, files, index }: FindingRendererProps)
       className="mb-12"
     >
       {/* Finding header */}
-      <div className="flex items-start gap-3 mb-6 pb-4 border-b border-[var(--border)]">
-        <div className="flex-1 min-w-0">
-          <h2 className="text-[1.4rem] font-semibold text-[var(--text-bright)] tracking-tight leading-tight mb-2">
-            {finding.title}
-          </h2>
-          <div className="flex items-center gap-2 flex-wrap">
+      <div className="mb-6 pb-4 border-b border-[var(--border)]">
+        <h2 className="text-[1.4rem] font-semibold text-[var(--text-bright)] tracking-tight leading-tight mb-2">
+          {finding.title}
+        </h2>
+        <div className="flex items-start gap-3">
+          {/* Left: metadata — wraps freely */}
+          <div className="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
             <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium border ${sev.color} ${sev.bg} ${sev.border}`}>
               <SevIcon size={12} weight="bold" />
               {sev.label}
@@ -99,57 +105,77 @@ export function FindingRenderer({ finding, files, index }: FindingRendererProps)
               <CatIcon size={12} />
               {cat.label}
             </span>
-            {finding.files.length > 0 && (
-              <div className="flex items-center gap-1 ml-1">
-                {finding.files.slice(0, 3).map((f) => (
-                  <FilePill key={f} file={f} />
-                ))}
-                {finding.files.length > 3 && (
-                  <span className="text-xs text-[var(--text-secondary)]">
-                    +{finding.files.length - 3} more
-                  </span>
-                )}
-              </div>
-            )}
-            {/* Action buttons — pushed to the right */}
-            {(canComment || finding.fixPrompt) && (
-              <div className="flex items-center gap-1 ml-auto">
-                {finding.fixPrompt && (
-                  <button
-                    onClick={handleCopyFixPrompt}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs text-[var(--text-secondary)] hover:text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors"
-                    title="Copy a prompt you can paste into Claude Code to fix this issue"
-                  >
-                    {copied ? (
-                      <>
-                        <Check size={12} weight="bold" className="text-green-400" />
-                        <span className="text-green-400">Copied!</span>
-                      </>
-                    ) : (
-                      <>
-                        <Copy size={12} />
-                        Copy fix prompt
-                      </>
-                    )}
-                  </button>
-                )}
-                {canComment && (
-                  <button
-                    onClick={handlePostAsComment}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs text-[var(--text-secondary)] hover:text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors"
-                    title="Open comment input on the relevant line, pre-filled with this finding"
-                  >
-                    <ChatText size={12} />
-                    Post as comment
-                  </button>
-                )}
-              </div>
-            )}
+            {(() => {
+              const seen = new Set<string>();
+              const unique = finding.files.filter((f) => {
+                const norm = normalizePath(f);
+                if (seen.has(norm)) return false;
+                seen.add(norm);
+                return true;
+              });
+              return (
+                <>
+                  {unique.slice(0, 3).map((f) => (
+                    <FilePill key={f} file={f} />
+                  ))}
+                  {unique.length > 3 && (
+                    <span className="text-xs text-[var(--text-secondary)]">
+                      +{unique.length - 3} more
+                    </span>
+                  )}
+                </>
+              );
+            })()}
           </div>
+
+          {/* Right: action buttons — single row, never wraps */}
+          {(canComment || finding.fixPrompt || onSaveAsRule) && (
+            <div className="flex items-center gap-1 flex-shrink-0">
+              {finding.fixPrompt && (
+                <button
+                  onClick={handleCopyFixPrompt}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs text-[var(--text-secondary)] hover:text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors whitespace-nowrap"
+                  title="Copy a prompt you can paste into Claude Code to fix this issue"
+                >
+                  {copied ? (
+                    <>
+                      <Check size={12} weight="bold" className="text-green-400" />
+                      <span className="text-green-400">Copied!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy size={12} />
+                      Copy fix prompt
+                    </>
+                  )}
+                </button>
+              )}
+              {canComment && (
+                <button
+                  onClick={handlePostAsComment}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs text-[var(--text-secondary)] hover:text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors whitespace-nowrap"
+                  title="Open comment input on the relevant line, pre-filled with this finding"
+                >
+                  <ChatText size={12} />
+                  Post as comment
+                </button>
+              )}
+              {onSaveAsRule && finding.severity !== 'info' && (
+                <button
+                  onClick={() => onSaveAsRule(finding.title)}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs text-[var(--text-secondary)] hover:text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors whitespace-nowrap"
+                  title="Save as a review rule for this repo"
+                >
+                  <BookmarkSimple size={12} />
+                  Save as rule
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
-      <RichContent content={finding.body} files={files} />
+      <RichContent content={finding.body} files={files} onRuleClick={onRuleClick} rules={rules} />
     </section>
   );
 }

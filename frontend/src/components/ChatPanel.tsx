@@ -14,6 +14,8 @@ interface ChatPanelProps {
   files: Record<string, FileContent>;
   onSwitchToWalkthrough: () => void;
   initialMessage?: string;
+  onRuleClick?: (ruleNumber: number) => void;
+  rules?: Array<{ ruleNumber: number; rule: string }>;
 }
 
 const SAMPLE_PROMPTS = [
@@ -23,7 +25,7 @@ const SAMPLE_PROMPTS = [
   { icon: Lightning, label: 'What are the performance implications?' },
 ];
 
-export function ChatPanel({ owner, repo, prNumber, files, onSwitchToWalkthrough, initialMessage }: ChatPanelProps) {
+export function ChatPanel({ owner, repo, prNumber, files, onSwitchToWalkthrough, initialMessage, onRuleClick, rules }: ChatPanelProps) {
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -97,7 +99,7 @@ export function ChatPanel({ owner, repo, prNumber, files, onSwitchToWalkthrough,
           )}
 
           {entries.map((entry, i) => (
-            <EntryView key={i} entry={entry} files={files} />
+            <EntryView key={i} entry={entry} files={files} onRuleClick={onRuleClick} rules={rules} />
           ))}
 
           {/* Thinking indicator */}
@@ -193,7 +195,7 @@ const TOOL_CONFIG: Record<string, { icon: Icon; label: string }> = {
   Write: { icon: FileArrowUp, label: 'Writing file' },
 };
 
-function EntryView({ entry, files }: { entry: ChatEntry; files: Record<string, FileContent> }) {
+function EntryView({ entry, files, onRuleClick, rules }: { entry: ChatEntry; files: Record<string, FileContent>; onRuleClick?: (ruleNumber: number) => void; rules?: Array<{ ruleNumber: number; rule: string }> }) {
   if (entry.type === 'user') {
     return (
       <div className="flex justify-end pt-4">
@@ -232,7 +234,7 @@ function EntryView({ entry, files }: { entry: ChatEntry; files: Record<string, F
 
   return (
     <div className="pt-2">
-      <RichContent content={entry.content} files={files} className="cruise-chat-markdown" />
+      <RichContent content={entry.content} files={files} className="cruise-chat-markdown" onRuleClick={onRuleClick} rules={rules} />
     </div>
   );
 }

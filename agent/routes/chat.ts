@@ -6,6 +6,7 @@ import { AppError } from '../middleware/error.js';
 import { ensureClone } from '../repo/manager.js';
 import { getOrCreateChatSession, getChatSession, touchChatSession, deleteChatSession } from '../db/chat-sessions.js';
 import { getLatestWalkthrough } from '../db/walkthroughs.js';
+import { listRules } from '../db/rules.js';
 import { getInstallationForRepo, getPrMetadata } from '../github/client.js';
 import { buildChatSystemPrompt } from '../chat/prompt.js';
 import type { SessionPayload } from '../github/oauth.js';
@@ -44,7 +45,9 @@ chatRoutes.post('/:owner/:repo/:pr/message', async (c) => {
 
   const walkthrough = await getLatestWalkthrough(owner, repo, prNumber);
   const summary = walkthrough?.data?.summary ?? undefined;
-  const systemPrompt = buildChatSystemPrompt(owner, repo, prNumber, pr.title, summary);
+  const repoRules = await listRules(owner, repo);
+  const rules = repoRules.map((r) => ({ ruleNumber: r.ruleNumber, rule: r.rule }));
+  const systemPrompt = buildChatSystemPrompt(owner, repo, prNumber, pr.title, summary, rules.length > 0 ? rules : undefined);
 
   // Proxy the query to the sandbox container
   const sandboxRes = await fetch(`${config.sandbox.url}/query`, {
