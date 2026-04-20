@@ -168,8 +168,17 @@ chatRoutes.get('/:owner/:repo/:pr/session', async (c) => {
   let messages: any[] = [];
 
   try {
-    const raw = await getSessionMessages(chatSession.session_id, { dir: repoDir });
-    messages = (raw ?? []).map(formatSessionMessage).filter(Boolean);
+    // Check if the repo dir exists before trying to read session files
+    const { existsSync } = await import('fs');
+    if (existsSync(repoDir)) {
+      // Add a timeout to prevent hanging if SDK has issues
+      const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 5000));
+      const fetch = getSessionMessages(chatSession.session_id, { dir: repoDir });
+      const raw = await Promise.race([fetch, timeout]);
+      if (raw) {
+        messages = raw.map(formatSessionMessage).filter(Boolean);
+      }
+    }
   } catch { /* Session files may not exist yet */ }
 
   return c.json({

@@ -1,16 +1,18 @@
 import { useState, useRef, useEffect } from 'react';
-import { Md } from './Md';
+import { RichContent } from './RichContent';
 import { useChat, type ChatEntry } from '../hooks/useChat';
+import type { FileContent } from '../api';
 
 interface ChatPanelProps {
   owner: string;
   repo: string;
   prNumber: number;
+  files: Record<string, FileContent>;
   onSwitchToWalkthrough: () => void;
   initialMessage?: string;
 }
 
-export function ChatPanel({ owner, repo, prNumber, onSwitchToWalkthrough, initialMessage }: ChatPanelProps) {
+export function ChatPanel({ owner, repo, prNumber, files, onSwitchToWalkthrough, initialMessage }: ChatPanelProps) {
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -77,7 +79,7 @@ export function ChatPanel({ owner, repo, prNumber, onSwitchToWalkthrough, initia
           )}
 
           {entries.map((entry, i) => (
-            <EntryView key={i} entry={entry} />
+            <EntryView key={i} entry={entry} files={files} />
           ))}
 
           {/* Thinking indicator */}
@@ -155,7 +157,7 @@ const TOOL_LABELS: Record<string, string> = {
   Write: 'Writing file',
 };
 
-function EntryView({ entry }: { entry: ChatEntry }) {
+function EntryView({ entry, files }: { entry: ChatEntry; files: Record<string, FileContent> }) {
   if (entry.type === 'user') {
     return (
       <div className="flex justify-end pt-4">
@@ -201,8 +203,8 @@ function EntryView({ entry }: { entry: ChatEntry }) {
       <div className="w-6 h-6 rounded-full bg-[var(--accent)]/20 flex items-center justify-center flex-shrink-0 mt-1">
         <span className="text-xs text-[var(--accent)]">C</span>
       </div>
-      <div className="flex-1 min-w-0 cruise-markdown text-sm">
-        <Md>{entry.content}</Md>
+      <div className="flex-1 min-w-0">
+        <RichContent content={entry.content} files={files} className="cruise-chat-markdown" />
       </div>
     </div>
   );

@@ -179,6 +179,7 @@ export function WalkthroughPage() {
                 owner={owner!}
                 repo={repo!}
                 prNumber={prNumber}
+                files={walkthrough.files}
                 onSwitchToWalkthrough={() => setViewMode('walkthrough')}
                 initialMessage={chatInitialMessage}
               />

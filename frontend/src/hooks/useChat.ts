@@ -27,9 +27,9 @@ export function useChat({ owner, repo, pr }: UseChatOptions) {
         const res = await fetch(`/api/chat/${owner}/${repo}/${pr}/session`, {
           credentials: 'include',
         });
-        if (!res.ok) return;
+        if (!res.ok) { setHistoryLoaded(true); return; }
         const data = await res.json();
-        if (!data.messages?.length) return;
+        if (!data.messages?.length) { setHistoryLoaded(true); return; }
 
         const restored: ChatEntry[] = [];
         for (const msg of data.messages) {
