@@ -20,24 +20,28 @@ export const config = {
 
   db: {
     /**
-     * Astropods injects different env vars depending on provider vs custom container:
-     *   Built-in provider: POSTGRES_HOST, POSTGRES_PORT, POSTGRES_DB
-     *   Custom container:  KNOWLEDGE_{NAME}_HOST, KNOWLEDGE_{NAME}_PORT
-     * Falls back to Docker service name 'knowledge-cruise-db' if neither is set.
+     * Astropods provider injects: POSTGRES_HOST, POSTGRES_PORT, POSTGRES_DB, POSTGRES_USER, POSTGRES_PASSWORD
+     * Custom container injects: KNOWLEDGE_{NAME}_HOST, KNOWLEDGE_{NAME}_PORT
+     * Falls back to Docker service name 'knowledge-cruise-db' for local dev.
      */
     host: optionalEnv('POSTGRES_HOST',
       optionalEnv('KNOWLEDGE_CRUISE_DB_HOST', 'knowledge-cruise-db')),
     port: Number(optionalEnv('POSTGRES_PORT',
       optionalEnv('KNOWLEDGE_CRUISE_DB_PORT', '5432'))),
     database: optionalEnv('POSTGRES_DB', 'cruise_line'),
+    user: optionalEnv('POSTGRES_USER', 'postgres'),
+    password: process.env.POSTGRES_PASSWORD ?? '',
     get url(): string {
-      return process.env.DATABASE_URL ??
-        `postgres://postgres@${config.db.host}:${config.db.port}/${config.db.database}`;
+      if (process.env.DATABASE_URL) return process.env.DATABASE_URL;
+      const userInfo = config.db.password
+        ? `${config.db.user}:${config.db.password}`
+        : config.db.user;
+      return `postgres://${userInfo}@${config.db.host}:${config.db.port}/${config.db.database}`;
     },
   },
 
   claude: {
-    model: optionalEnv('CLAUDE_MODEL', 'claude-opus-4-5'),
+    model: optionalEnv('CLAUDE_MODEL', 'claude-opus-4-6'),
     maxConcurrentJobs: Number(optionalEnv('MAX_CONCURRENT_JOBS', '3')),
   },
 

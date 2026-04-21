@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://astropods.ai/schema/package.json
 spec: package/v1
-name: cruise-line
+name: "@astropods/cruise-line"
 
 meta:
   visibility: private
@@ -16,12 +16,17 @@ agent:
     # No manual configuration needed — just deploy and visit /setup.
     - name: CLAUDE_MODEL
       datatype: string
-      default: "claude-sonnet-4-5"
-      description: Claude model for analysis
+      display-as: select
+      options:
+        - claude-opus-4-6
+        - claude-sonnet-4-6
+        - claude-haiku-4-5
+      default: "claude-opus-4-6"
+      description: Claude model used for PR analysis. Opus is the most thorough, Haiku is the fastest.
     - name: MAX_CONCURRENT_JOBS
-      datatype: string
+      datatype: number
       default: "3"
-      description: Max concurrent walkthrough generation jobs
+      description: Maximum concurrent analysis jobs
 
 models:
   anthropic:
@@ -29,18 +34,8 @@ models:
 
 knowledge:
   cruise-db:
-    container:
-      image: pgvector/pgvector:pg17
-      port: 5432
-      volume: /var/lib/postgresql/data
+    provider: postgres
     persistent: true
-    inputs:
-      - name: POSTGRES_HOST_AUTH_METHOD
-        datatype: string
-        default: trust
-      - name: POSTGRES_DB
-        datatype: string
-        default: cruise_line
   chat-sandbox:
     container:
       build:
@@ -49,7 +44,3 @@ knowledge:
       port: 3000
       volume: /data
     persistent: true
-    inputs:
-      - name: DATA_ROOT
-        datatype: string
-        default: /data
