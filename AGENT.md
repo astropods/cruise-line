@@ -15,4 +15,8 @@ integrations:
   - "github"
 ---
 
+<p align="center">
+  <img src="https://github.com/astropods/cruise-line/blob/main/cruise-line-logo.png?raw=true" width="200" alt="Cruise Line" />
+</p>
+
 Cruise Line analyzes GitHub pull requests for correctness, security, maintainability, performance, and code quality. It produces structured findings with severity levels, concrete fix suggestions, and one-click actions to post comments or copy prompts for Claude Code.
