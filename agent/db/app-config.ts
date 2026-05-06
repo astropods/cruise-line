@@ -55,6 +55,12 @@ export async function getGitHubAppConfig(): Promise<GitHubAppConfig | null> {
   };
 }
 
+export async function deleteGitHubAppConfig(): Promise<void> {
+  await sql`DELETE FROM app_config WHERE key LIKE ${CONFIG_PREFIX + '%'}`;
+  // Also clear the GitHub URL settings so the next setup starts fresh
+  await sql`DELETE FROM app_config WHERE key IN ('github_base_url', 'github_html_url')`;
+}
+
 export async function isGitHubAppConfigured(): Promise<boolean> {
   const config = await getGitHubAppConfig();
   return config !== null;

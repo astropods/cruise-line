@@ -3,6 +3,7 @@ import { config, updateGitHubConfig, isGitHubConfigured } from '../config.js';
 import {
   saveGitHubAppConfig,
   getGitHubAppConfig,
+  deleteGitHubAppConfig,
   saveGitHubUrls,
   saveAppUrl,
 } from '../db/app-config.js';
@@ -173,4 +174,26 @@ setupRoutes.get('/install/callback', (c) => {
   const installationId = c.req.query('installation_id');
   console.log(`GitHub App installed, installation_id: ${installationId}`);
   return c.redirect(`${config.appUrl}/setup?installed=true`);
+});
+
+/**
+ * DELETE /api/setup/github
+ * Disconnect the current GitHub App so a new one can be connected.
+ */
+setupRoutes.delete('/github', async (c) => {
+  await deleteGitHubAppConfig();
+
+  // Clear runtime config
+  config.github.appId = '';
+  config.github.privateKey = '';
+  config.github.webhookSecret = '';
+  config.github.clientId = '';
+  config.github.clientSecret = '';
+
+  // Reset GitHub URLs to defaults
+  config.github.baseUrl = 'https://api.github.com';
+  config.github.htmlUrl = 'https://github.com';
+
+  console.log('GitHub App disconnected');
+  return c.json({ ok: true });
 });

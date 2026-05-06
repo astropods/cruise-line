@@ -34,7 +34,13 @@ models:
 
 knowledge:
   cruise-db:
-    provider: postgres
+    container:
+      image: pgvector/pgvector:pg17
+      port: 5432
+      volume: /var/lib/postgresql/data
+      environment:
+        POSTGRES_HOST_AUTH_METHOD: trust
+        POSTGRES_DB: cruise_line
     persistent: true
   chat-sandbox:
     container:

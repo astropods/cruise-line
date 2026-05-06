@@ -98,8 +98,20 @@ export function SetupPage() {
           </div>
 
           {status?.configured || success ? (
-            <div className="text-sm text-green-400">
-              Connected{status?.appSlug ? ` as "${status.appSlug}"` : ''}.
+            <div>
+              <div className="text-sm text-green-400 mb-3">
+                Connected{status?.appSlug ? ` as "${status.appSlug}"` : ''}.
+              </div>
+              <button
+                onClick={async () => {
+                  if (!confirm('Disconnect the current GitHub App? You will need to create a new one.')) return;
+                  await fetch('/api/setup/github', { method: 'DELETE', credentials: 'include' });
+                  window.location.href = '/setup';
+                }}
+                className="text-xs text-[var(--text-secondary)] hover:text-red-400 transition-colors"
+              >
+                Disconnect and reconnect to a different GitHub
+              </button>
             </div>
           ) : (
             <>
