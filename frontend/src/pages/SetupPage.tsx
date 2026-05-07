@@ -5,6 +5,7 @@ interface SetupStatus {
   configured: boolean;
   appSlug: string | null;
   githubUrl: string;
+  installUrl: string | null;
 }
 
 export function SetupPage() {
@@ -14,6 +15,7 @@ export function SetupPage() {
   const [githubUrl, setGithubUrl] = useState('https://github.com');
   const [isGhe, setIsGhe] = useState(false);
   const [appUrl, setAppUrl] = useState('');
+  const [org, setOrg] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
 
@@ -49,6 +51,7 @@ export function SetupPage() {
         body: JSON.stringify({
           githubUrl: isGhe ? githubUrl : 'https://github.com',
           appUrl: appUrl || undefined,
+          org: org || undefined,
         }),
       });
       const data = (await res.json()) as { manifestUrl: string; manifest: string };
@@ -135,6 +138,23 @@ export function SetupPage() {
                 </div>
               )}
 
+              {/* Organization */}
+              <div className="mb-4">
+                <label className="block text-sm text-[var(--text-secondary)] mb-1.5">
+                  Organization <span className="text-[var(--text-secondary)]/50">(optional)</span>
+                </label>
+                <input
+                  type="text"
+                  value={org}
+                  onChange={(e) => setOrg(e.target.value)}
+                  placeholder="my-org"
+                  className="w-full px-3 py-2 rounded-md bg-[var(--bg-primary)] border border-[var(--border)] text-[var(--text-primary)] text-sm placeholder-[var(--text-secondary)]"
+                />
+                <p className="mt-1.5 text-xs text-[var(--text-secondary)]">
+                  Enter the exact GitHub organization name (e.g. <code className="text-[var(--accent)]">my-company</code>) to create the app under that org. Leave blank for your personal account.
+                </p>
+              </div>
+
               {/* GHE toggle */}
               <label className="flex items-center gap-2 mb-4 text-sm text-[var(--text-secondary)] cursor-pointer">
                 <input
@@ -195,7 +215,7 @@ export function SetupPage() {
                 Choose which repositories Cruise Line can access.
               </p>
               <a
-                href={installUrl ?? `${status?.githubUrl ?? 'https://github.com'}/apps/${status?.appSlug ?? 'cruise-line'}/installations/new`}
+                href={installUrl ?? status?.installUrl ?? `${status?.githubUrl ?? 'https://github.com'}/apps/${status?.appSlug ?? 'cruise-line'}/installations/new`}
                 className="inline-block px-5 py-2.5 text-sm font-medium rounded-lg bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] transition-colors"
               >
                 Install on repos

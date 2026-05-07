@@ -19,11 +19,20 @@ setupRoutes.get('/status', async (c) => {
   const configured = isGitHubConfigured();
   const dbConfig = await getGitHubAppConfig();
 
+  // Build the install URL based on owner type
+  let installUrl: string | null = null;
+  if (dbConfig) {
+    installUrl = dbConfig.ownerType === 'Organization'
+      ? `${config.github.htmlUrl}/organizations/${dbConfig.ownerLogin}/settings/apps/${dbConfig.appSlug}/installations`
+      : `${config.github.htmlUrl}/apps/${dbConfig.appSlug}/installations/new`;
+  }
+
   return c.json({
     configured,
     appSlug: dbConfig?.appSlug ?? null,
     appUrl: config.appUrl,
     githubUrl: config.github.htmlUrl,
+    installUrl,
   });
 });
 
@@ -33,7 +42,7 @@ setupRoutes.get('/status', async (c) => {
  * Redirects the user to GitHub with a pre-filled app manifest.
  */
 setupRoutes.post('/github', async (c) => {
-  const body = await c.req.json<{ githubUrl?: string; appUrl?: string }>().catch(() => ({}));
+  const body = await c.req.json<{ githubUrl?: string; appUrl?: string; org?: string }>().catch(() => ({}));
 
   // Detect app URL from the incoming request if not explicitly set
   if (body.appUrl) {
@@ -93,8 +102,10 @@ setupRoutes.post('/github', async (c) => {
     ],
   };
 
-  // GitHub's manifest creation URL
-  const manifestUrl = `${config.github.htmlUrl}/settings/apps/new`;
+  // GitHub's manifest creation URL — use org path if an organization is specified
+  const manifestUrl = body.org
+    ? `${config.github.htmlUrl}/organizations/${encodeURIComponent(body.org)}/settings/apps/new`
+    : `${config.github.htmlUrl}/settings/apps/new`;
 
   // Return the manifest and URL so the frontend can POST a form to GitHub
   return c.json({
@@ -139,6 +150,7 @@ setupRoutes.get('/github/callback', async (c) => {
     client_id: string;
     client_secret: string;
     html_url: string;
+    owner: { login: string; type: string };
   };
 
   const appConfig = {
@@ -148,6 +160,8 @@ setupRoutes.get('/github/callback', async (c) => {
     webhookSecret: data.webhook_secret,
     clientId: data.client_id,
     clientSecret: data.client_secret,
+    ownerLogin: data.owner.login,
+    ownerType: data.owner.type,
   };
 
   // Save to database
@@ -159,8 +173,12 @@ setupRoutes.get('/github/callback', async (c) => {
   // Recreate the webhook handler with the new secret
   refreshWebhooks();
 
+  // Build the correct install URL — org apps need the org settings path
+  const installUrl = data.owner.type === 'Organization'
+    ? `${config.github.htmlUrl}/organizations/${data.owner.login}/settings/apps/${data.slug}/installations`
+    : `${data.html_url}/installations/new`;
+
   // Redirect to setup page with success
-  const installUrl = `${data.html_url}/installations/new`;
   return c.redirect(
     `${config.appUrl}/setup?success=true&install_url=${encodeURIComponent(installUrl)}`,
   );

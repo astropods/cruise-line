@@ -67,7 +67,7 @@ export function InlineSuggestion({ file, lines, suggestion, fileContent }: Inlin
     if (!lines) return;
     openFile(file, lines);
     // Format as a GitHub suggestion comment
-    const prefill = `\`\`\`suggestion\n${suggestion}\n\`\`\``;
+    const prefill = `\uD83D\uDEA2 \`\`\`suggestion\n${suggestion}\n\`\`\``;
     setTimeout(() => {
       setActiveCommentLine({
         path: file,

@@ -61,7 +61,7 @@ export function FindingRenderer({ finding, files, index, onSaveAsRule, onRuleCli
   const handlePostAsComment = useCallback(() => {
     if (!commentTarget || !canComment) return;
     openFile(commentTarget.file, [commentTarget.line, commentTarget.line]);
-    const prefill = `**${finding.title}**\n\n${stripDirectives(finding.body)}`;
+    const prefill = `\uD83D\uDEA2 **${finding.title}**\n\n${stripDirectives(finding.body)}`;
     setTimeout(() => {
       setActiveCommentLine({
         path: commentTarget.file,

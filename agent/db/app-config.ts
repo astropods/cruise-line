@@ -7,6 +7,8 @@ export interface GitHubAppConfig {
   webhookSecret: string;
   clientId: string;
   clientSecret: string;
+  ownerLogin: string;
+  ownerType: string;
 }
 
 const CONFIG_PREFIX = 'github_app.';
@@ -52,6 +54,8 @@ export async function getGitHubAppConfig(): Promise<GitHubAppConfig | null> {
     webhookSecret,
     clientId,
     clientSecret,
+    ownerLogin: map.get('ownerLogin') ?? '',
+    ownerType: map.get('ownerType') ?? 'User',
   };
 }
 

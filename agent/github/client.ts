@@ -67,6 +67,7 @@ export type CommentState =
   | { status: 'ready' }
   | { status: 'running' }
   | { status: 'complete'; summary: AnalysisSummary }
+  | { status: 'stale'; summary: AnalysisSummary }
   | { status: 'failed' };
 
 const MARKER = '<!-- cruise-line-analysis -->';
@@ -105,6 +106,28 @@ ${state.summary.verdictRationale}
 ${total > 0 ? `**${total} finding${total === 1 ? '' : 's'}:** ${counts.join(' \u00B7 ')}` : 'No findings.'}
 
 [\u2192 View full analysis](${analysisUrl})`;
+    }
+
+    case 'stale': {
+      const sv = VERDICT_LABELS[state.summary.verdict] ?? VERDICT_LABELS.needs_discussion;
+      const sCounts: string[] = [];
+      if (state.summary.findingCounts.critical > 0) sCounts.push(`${state.summary.findingCounts.critical} critical`);
+      if (state.summary.findingCounts.high > 0) sCounts.push(`${state.summary.findingCounts.high} high`);
+      if (state.summary.findingCounts.medium > 0) sCounts.push(`${state.summary.findingCounts.medium} medium`);
+      if (state.summary.findingCounts.low > 0) sCounts.push(`${state.summary.findingCounts.low} low`);
+      if (state.summary.findingCounts.info > 0) sCounts.push(`${state.summary.findingCounts.info} info`);
+      const sTotal = Object.values(state.summary.findingCounts).reduce((a, b) => a + b, 0);
+
+      return `${MARKER}
+## ${sv.emoji} Cruise Line \u2014 ${sv.label}
+
+> \u26A0\uFE0F **Stale** \u2014 New commits have been pushed since this analysis was run. Click below to re-analyze.
+
+${state.summary.verdictRationale}
+
+${sTotal > 0 ? `**${sTotal} finding${sTotal === 1 ? '' : 's'}:** ${sCounts.join(' \u00B7 ')}` : 'No findings.'}
+
+[\u2192 Re-run analysis](${analysisUrl})`;
     }
 
     case 'failed':

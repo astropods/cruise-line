@@ -110,7 +110,7 @@ export function useWalkthrough(owner: string, repo: string, pr: number) {
   }, [owner, repo, pr, stopPolling, load]);
 
   const generate = useCallback(async () => {
-    const needsForce = state.status === 'complete';
+    const needsForce = state.status === 'complete' || state.status === 'failed';
     setState((s) => ({ ...s, status: 'pending', error: null, progress: [] }));
     try {
       await generateWalkthrough(owner, repo, pr, needsForce);

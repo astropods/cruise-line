@@ -27,25 +27,28 @@ function registerHandlers(wh: Webhooks) {
       try {
         // Check if an analysis already exists — post the right state
         const existing = await getLatestWalkthrough(owner, repo, prNumber);
+        const currentHeadSha = pr.head.sha;
         let state: CommentState = { status: 'ready' };
 
         if (existing) {
           if (existing.status === 'complete' && existing.data) {
             const findings = existing.data.findings ?? [];
-            state = {
-              status: 'complete',
-              summary: {
-                verdict: existing.data.verdict,
-                verdictRationale: existing.data.verdictRationale,
-                findingCounts: {
-                  critical: findings.filter((f: any) => f.severity === 'critical').length,
-                  high: findings.filter((f: any) => f.severity === 'high').length,
-                  medium: findings.filter((f: any) => f.severity === 'medium').length,
-                  low: findings.filter((f: any) => f.severity === 'low').length,
-                  info: findings.filter((f: any) => f.severity === 'info').length,
-                },
+            const summary = {
+              verdict: existing.data.verdict,
+              verdictRationale: existing.data.verdictRationale,
+              findingCounts: {
+                critical: findings.filter((f: any) => f.severity === 'critical').length,
+                high: findings.filter((f: any) => f.severity === 'high').length,
+                medium: findings.filter((f: any) => f.severity === 'medium').length,
+                low: findings.filter((f: any) => f.severity === 'low').length,
+                info: findings.filter((f: any) => f.severity === 'info').length,
               },
             };
+            // Mark as stale if the analysis was run against a different SHA
+            const isStale = existing.head_sha !== currentHeadSha;
+            state = isStale
+              ? { status: 'stale', summary }
+              : { status: 'complete', summary };
           } else if (existing.status === 'running' || existing.status === 'pending') {
             state = { status: 'running' };
           } else if (existing.status === 'failed') {
