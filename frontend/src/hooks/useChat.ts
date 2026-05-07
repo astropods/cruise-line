@@ -8,6 +8,13 @@ export interface ChatEntry {
   timestamp: Date;
 }
 
+export interface ArchiveSummary {
+  id: number;
+  sessionCreatedAt: string;
+  archivedAt: string;
+  messageCount: number;
+}
+
 interface UseChatOptions {
   owner: string;
   repo: string;
@@ -18,7 +25,36 @@ export function useChat({ owner, repo, pr }: UseChatOptions) {
   const [entries, setEntries] = useState<ChatEntry[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [historyLoaded, setHistoryLoaded] = useState(false);
+  const [isArchived, setIsArchived] = useState(false);
+  const [archives, setArchives] = useState<ArchiveSummary[]>([]);
+  const [activeArchiveId, setActiveArchiveId] = useState<number | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+
+  function restoreMessages(messages: any[]): ChatEntry[] {
+    const restored: ChatEntry[] = [];
+    for (const msg of messages) {
+      if (msg.type === 'user') {
+        restored.push({ type: 'user', content: msg.content, timestamp: new Date() });
+      } else if (msg.type === 'assistant') {
+        for (const part of msg.parts ?? []) {
+          if (part.type === 'text') {
+            restored.push({ type: 'text', content: part.content, timestamp: new Date() });
+          } else if (part.type === 'tool_call') {
+            const detail = part.detail ? `: ${part.detail}` : '';
+            restored.push({
+              type: 'tool_call',
+              content: `${part.name}${detail}`,
+              toolName: part.name,
+              timestamp: new Date(),
+            });
+          }
+        }
+      } else if (msg.type === 'result' && msg.content) {
+        restored.push({ type: 'text', content: msg.content, timestamp: new Date() });
+      }
+    }
+    return restored;
+  }
 
   // Load conversation history from the server on mount
   useEffect(() => {
@@ -29,30 +65,19 @@ export function useChat({ owner, repo, pr }: UseChatOptions) {
         });
         if (!res.ok) { setHistoryLoaded(true); return; }
         const data = await res.json();
-        if (!data.messages?.length) { setHistoryLoaded(true); return; }
 
-        const restored: ChatEntry[] = [];
-        for (const msg of data.messages) {
-          if (msg.type === 'user') {
-            restored.push({ type: 'user', content: msg.content, timestamp: new Date() });
-          } else if (msg.type === 'assistant') {
-            for (const part of msg.parts ?? []) {
-              if (part.type === 'text') {
-                restored.push({ type: 'text', content: part.content, timestamp: new Date() });
-              } else if (part.type === 'tool_call') {
-                const detail = part.detail ? `: ${part.detail}` : '';
-                restored.push({
-                  type: 'tool_call',
-                  content: `${part.name}${detail}`,
-                  toolName: part.name,
-                  timestamp: new Date(),
-                });
-              }
-            }
-          } else if (msg.type === 'result' && msg.content) {
-            restored.push({ type: 'text', content: msg.content, timestamp: new Date() });
+        // Check if this is archived data
+        if (data.archived) {
+          setIsArchived(true);
+          setArchives(data.archives ?? []);
+          if (data.archives?.length > 0) {
+            setActiveArchiveId(data.archives[0].id);
           }
         }
+
+        if (!data.messages?.length) { setHistoryLoaded(true); return; }
+
+        const restored = restoreMessages(data.messages);
         if (restored.length > 0) {
           setEntries(restored);
         }
@@ -166,11 +191,28 @@ export function useChat({ owner, repo, pr }: UseChatOptions) {
     } catch { /* ignore */ }
   }, [owner, repo, pr]);
 
+  const loadArchive = useCallback(async (archiveId: number) => {
+    try {
+      const res = await fetch(`/api/chat/${owner}/${repo}/${pr}/archives/${archiveId}`, {
+        credentials: 'include',
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      const restored = restoreMessages(data.messages ?? []);
+      setEntries(restored);
+      setActiveArchiveId(archiveId);
+    } catch { /* ignore */ }
+  }, [owner, repo, pr]);
+
   return {
     entries,
     isStreaming,
     historyLoaded,
+    isArchived,
+    archives,
+    activeArchiveId,
     sendMessage,
     resetSession,
+    loadArchive,
   };
 }

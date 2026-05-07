@@ -1,10 +1,11 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import {
   PaperPlaneRight, Plus, GitPullRequest, ShieldCheck, TreeStructure, Lightning, Anchor,
-  FileText, MagnifyingGlass, FolderOpen, Terminal, PencilSimple, FileArrowUp, type Icon,
+  FileText, MagnifyingGlass, FolderOpen, Terminal, PencilSimple, FileArrowUp, Archive, Clock,
+  type Icon,
 } from '@phosphor-icons/react';
 import { RichContent } from './RichContent';
-import { useChat, type ChatEntry } from '../hooks/useChat';
+import { useChat, type ChatEntry, type ArchiveSummary } from '../hooks/useChat';
 import type { FileContent } from '../api';
 
 interface ChatPanelProps {
@@ -35,8 +36,12 @@ export function ChatPanel({ owner, repo, prNumber, files, onSwitchToWalkthrough,
     entries,
     isStreaming,
     historyLoaded,
+    isArchived,
+    archives,
+    activeArchiveId,
     sendMessage,
     resetSession,
+    loadArchive,
   } = useChat({ owner, repo, pr: prNumber });
 
   useEffect(() => {
@@ -83,10 +88,19 @@ export function ChatPanel({ owner, repo, prNumber, files, onSwitchToWalkthrough,
     }
   }, [input]);
 
-  const isEmpty = historyLoaded && entries.length === 0 && !isStreaming;
+  const isEmpty = historyLoaded && entries.length === 0 && !isStreaming && !isArchived;
 
   return (
     <div className="flex flex-col h-full">
+      {/* Archived banner */}
+      {isArchived && (
+        <ArchivedBanner
+          archives={archives}
+          activeArchiveId={activeArchiveId}
+          onSelectArchive={loadArchive}
+        />
+      )}
+
       <div className={`flex-1 overflow-auto px-8 py-6 ${isEmpty ? 'flex items-center justify-center' : ''}`}>
         {isEmpty ? (
           <EmptyState onPromptClick={handleSamplePrompt} />
@@ -116,43 +130,86 @@ export function ChatPanel({ owner, repo, prNumber, files, onSwitchToWalkthrough,
         )}
       </div>
 
-      {/* Input bar */}
-      <div className="border-t border-[var(--border)] bg-[var(--bg-secondary)]">
-        <div className="max-w-[800px] mx-auto px-8 py-4">
-          <div className="flex items-end gap-3">
-            <textarea
-              ref={inputRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Ask about this PR..."
-              rows={1}
-              disabled={isStreaming}
-              className="flex-1 px-4 py-2.5 text-sm rounded-lg bg-[var(--bg-primary)] border border-[var(--border)] text-[var(--text-primary)] placeholder-[var(--text-secondary)] resize-none focus:outline-none focus:border-[var(--accent)] disabled:opacity-50 overflow-hidden"
-            />
-            <button
-              onClick={handleSubmit}
-              disabled={!input.trim() || isStreaming}
-              className="w-10 h-10 flex items-center justify-center rounded-lg bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex-shrink-0"
-            >
-              <PaperPlaneRight size={16} weight="bold" />
-            </button>
-          </div>
-          <div className="flex items-center justify-between mt-2">
-            <span className="text-xs text-[var(--text-secondary)] opacity-40">
-              Enter to send, Shift+Enter for new line
-            </span>
-            {entries.length > 0 && (
-              <button
-                onClick={resetSession}
-                className="inline-flex items-center gap-1 text-xs text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors"
-              >
-                <Plus size={12} weight="bold" />
-                New chat
-              </button>
-            )}
+      {/* Input bar — hidden when viewing archived history */}
+      {isArchived ? (
+        <div className="border-t border-[var(--border)] bg-[var(--bg-secondary)]">
+          <div className="max-w-[800px] mx-auto px-8 py-4 text-center text-sm text-[var(--text-secondary)]">
+            This is an archived conversation from a closed PR. Chat is read-only.
           </div>
         </div>
+      ) : (
+        <div className="border-t border-[var(--border)] bg-[var(--bg-secondary)]">
+          <div className="max-w-[800px] mx-auto px-8 py-4">
+            <div className="flex items-end gap-3">
+              <textarea
+                ref={inputRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Ask about this PR..."
+                rows={1}
+                disabled={isStreaming}
+                className="flex-1 px-4 py-2.5 text-sm rounded-lg bg-[var(--bg-primary)] border border-[var(--border)] text-[var(--text-primary)] placeholder-[var(--text-secondary)] resize-none focus:outline-none focus:border-[var(--accent)] disabled:opacity-50 overflow-hidden"
+              />
+              <button
+                onClick={handleSubmit}
+                disabled={!input.trim() || isStreaming}
+                className="w-10 h-10 flex items-center justify-center rounded-lg bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex-shrink-0"
+              >
+                <PaperPlaneRight size={16} weight="bold" />
+              </button>
+            </div>
+            <div className="flex items-center justify-between mt-2">
+              <span className="text-xs text-[var(--text-secondary)] opacity-40">
+                Enter to send, Shift+Enter for new line
+              </span>
+              {entries.length > 0 && (
+                <button
+                  onClick={resetSession}
+                  className="inline-flex items-center gap-1 text-xs text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors"
+                >
+                  <Plus size={12} weight="bold" />
+                  New chat
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ArchivedBanner({
+  archives,
+  activeArchiveId,
+  onSelectArchive,
+}: {
+  archives: ArchiveSummary[];
+  activeArchiveId: number | null;
+  onSelectArchive: (id: number) => void;
+}) {
+  return (
+    <div className="border-b border-[var(--border)] bg-amber-500/5 px-8 py-3">
+      <div className="max-w-[800px] mx-auto flex items-center gap-3">
+        <Archive size={16} className="text-amber-500 flex-shrink-0" />
+        <span className="text-sm text-amber-500/90 font-medium">Archived chat history</span>
+        {archives.length > 1 && (
+          <div className="ml-auto flex items-center gap-2">
+            <Clock size={12} className="text-[var(--text-secondary)]" />
+            <select
+              value={activeArchiveId ?? ''}
+              onChange={(e) => onSelectArchive(Number(e.target.value))}
+              className="text-xs bg-transparent border border-[var(--border)] rounded px-2 py-1 text-[var(--text-secondary)] focus:outline-none focus:border-[var(--accent)]"
+            >
+              {archives.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {new Date(a.sessionCreatedAt).toLocaleDateString()} ({a.messageCount} messages)
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
     </div>
   );

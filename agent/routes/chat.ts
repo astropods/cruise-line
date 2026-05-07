@@ -5,6 +5,7 @@ import { requireAuth, requireRepoAccess } from '../middleware/session.js';
 import { AppError } from '../middleware/error.js';
 import { ensureClone } from '../repo/manager.js';
 import { getOrCreateChatSession, getChatSession, touchChatSession, deleteChatSession } from '../db/chat-sessions.js';
+import { getChatArchives } from '../db/chat-archives.js';
 import { getLatestWalkthrough } from '../db/walkthroughs.js';
 import { listRules } from '../db/rules.js';
 import { getInstallationForRepo, getPrMetadata } from '../github/client.js';
@@ -103,6 +104,7 @@ chatRoutes.post('/:owner/:repo/:pr/message', async (c) => {
 /**
  * GET /api/chat/:owner/:repo/:pr/session
  * Proxies session history retrieval to the sandbox.
+ * Falls back to archived history if no active session exists.
  */
 chatRoutes.get('/:owner/:repo/:pr/session', async (c) => {
   const session = c.get('session') as SessionPayload;
@@ -113,7 +115,26 @@ chatRoutes.get('/:owner/:repo/:pr/session', async (c) => {
   if (isNaN(prNumber)) throw new AppError(400, 'Invalid PR number');
 
   const chatSession = await getChatSession(owner, repo, prNumber, session.userId);
+
+  // If no active session, check for archived history
   if (!chatSession) {
+    const archives = await getChatArchives(owner, repo, prNumber, session.userId);
+    if (archives.length > 0) {
+      // Return the most recent archive
+      const archive = archives[0];
+      return c.json({
+        session: null,
+        messages: archive.messages,
+        archived: true,
+        archivedAt: archive.archived_at,
+        archives: archives.map((a) => ({
+          id: a.id,
+          sessionCreatedAt: a.session_created_at,
+          archivedAt: a.archived_at,
+          messageCount: a.messages.length,
+        })),
+      });
+    }
     return c.json({ session: null, messages: [] });
   }
 
@@ -146,6 +167,59 @@ chatRoutes.get('/:owner/:repo/:pr/session', async (c) => {
       lastMessageAt: chatSession.last_message_at,
     },
     messages,
+  });
+});
+
+/**
+ * GET /api/chat/:owner/:repo/:pr/archives
+ * Returns all archived chat sessions for this PR (current user).
+ */
+chatRoutes.get('/:owner/:repo/:pr/archives', async (c) => {
+  const session = c.get('session') as SessionPayload;
+  const owner = c.req.param('owner');
+  const repo = c.req.param('repo');
+  const prNumber = Number(c.req.param('pr'));
+
+  if (isNaN(prNumber)) throw new AppError(400, 'Invalid PR number');
+
+  const archives = await getChatArchives(owner, repo, prNumber, session.userId);
+
+  return c.json({
+    archives: archives.map((a) => ({
+      id: a.id,
+      sessionCreatedAt: a.session_created_at,
+      archivedAt: a.archived_at,
+      messageCount: a.messages.length,
+    })),
+  });
+});
+
+/**
+ * GET /api/chat/:owner/:repo/:pr/archives/:archiveId
+ * Returns a specific archived chat session with full messages.
+ */
+chatRoutes.get('/:owner/:repo/:pr/archives/:archiveId', async (c) => {
+  const session = c.get('session') as SessionPayload;
+  const owner = c.req.param('owner');
+  const repo = c.req.param('repo');
+  const prNumber = Number(c.req.param('pr'));
+  const archiveId = Number(c.req.param('archiveId'));
+
+  if (isNaN(prNumber)) throw new AppError(400, 'Invalid PR number');
+  if (isNaN(archiveId)) throw new AppError(400, 'Invalid archive ID');
+
+  const archives = await getChatArchives(owner, repo, prNumber, session.userId);
+  const archive = archives.find((a) => a.id === archiveId);
+
+  if (!archive) throw new AppError(404, 'Archive not found');
+
+  return c.json({
+    archive: {
+      id: archive.id,
+      sessionCreatedAt: archive.session_created_at,
+      archivedAt: archive.archived_at,
+    },
+    messages: archive.messages,
   });
 });
 

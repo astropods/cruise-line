@@ -2,8 +2,9 @@ import { Webhooks } from '@octokit/webhooks';
 import { config } from '../config.js';
 import { postAnalysisComment, type CommentState } from './client.js';
 import { getLatestWalkthrough } from '../db/walkthroughs.js';
-import { cleanupClone } from '../repo/manager.js';
+import { cleanupClone, getRepoDir } from '../repo/manager.js';
 import { deleteChatSessionsForPr } from '../db/chat-sessions.js';
+import { archiveChatSessionsForPr } from '../chat/archive.js';
 
 let webhooksInstance: Webhooks | null = null;
 
@@ -73,6 +74,10 @@ function registerHandlers(wh: Webhooks) {
     console.log(`PR closed: ${owner}/${repo}#${prNumber}, cleaning up...`);
 
     try {
+      // Archive chat sessions before cleanup so history is preserved
+      const repoDir = getRepoDir(owner, repo, prNumber);
+      await archiveChatSessionsForPr(owner, repo, prNumber, repoDir);
+
       await cleanupClone(owner, repo, prNumber);
       await deleteChatSessionsForPr(owner, repo, prNumber);
     } catch (err) {
