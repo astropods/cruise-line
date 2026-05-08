@@ -35,7 +35,8 @@ export function InlineCode({ file, lines, fileContent }: InlineCodeProps) {
         if (cancelled) return;
         setHighlightedLines(result.tokens.map((lineTokens) =>
           lineTokens.map((token) => {
-            const style = token.color ? ` style="color:${token.color}"` : '';
+            const isValidColor = token.color && /^#[0-9a-fA-F]{3,8}$/.test(token.color);
+            const style = isValidColor ? ` style="color:${token.color}"` : '';
             const escaped = token.content
               .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
             return `<span${style}>${escaped}</span>`;

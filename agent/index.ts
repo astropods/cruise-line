@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { serveStatic } from 'hono/bun';
 import { cors } from 'hono/cors';
+import { secureHeaders } from 'hono/secure-headers';
 import { config, updateGitHubConfig } from './config.js';
 import { initDb } from './db/client.js';
 import {
@@ -10,6 +11,7 @@ import {
   getAppUrl,
 } from './db/app-config.js';
 import { refreshWebhooks } from './github/webhooks.js';
+import { cleanupExpiredRevocations } from './db/sessions.js';
 import { healthRoutes } from './routes/health.js';
 import { webhookRoutes } from './routes/webhook.js';
 import { authRoutes } from './routes/auth.js';
@@ -27,6 +29,22 @@ const app = new Hono();
 
 // Global error handler
 app.onError(errorHandler);
+
+// Security headers (production only — dev skips CSP to avoid Vite HMR conflicts)
+if (!isDev) {
+  app.use('*', secureHeaders({
+    strictTransportSecurity: 'max-age=31536000; includeSubDomains',
+    referrerPolicy: 'strict-origin-when-cross-origin',
+    contentSecurityPolicy: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", 'https:', 'data:'],
+      connectSrc: ["'self'"],
+      frameSrc: ["'none'"],
+    },
+  }));
+}
 
 // CORS for Vite dev server
 if (isDev) {
@@ -91,5 +109,15 @@ Bun.serve({
   fetch: app.fetch,
   idleTimeout: 30, // Heartbeats every 5s keep SSE connections alive within this window
 });
+
+// Periodic cleanup of expired session revocations (hourly)
+const cleanupInterval = setInterval(async () => {
+  try {
+    await cleanupExpiredRevocations();
+  } catch (e) {
+    console.warn('Session cleanup failed:', e);
+  }
+}, 60 * 60 * 1000);
+if (cleanupInterval.unref) cleanupInterval.unref();
 
 console.log(`Cruise Line listening on :${config.port}`);

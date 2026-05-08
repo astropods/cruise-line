@@ -35,7 +35,8 @@ export function InlineSuggestion({ file, lines, suggestion, fileContent }: Inlin
       const renderTokens = (tokens: any) =>
         tokens.map((lineTokens: any[]) =>
           lineTokens.map((token: any) => {
-            const style = token.color ? ` style="color:${token.color}"` : '';
+            const isValidColor = token.color && /^#[0-9a-fA-F]{3,8}$/.test(token.color);
+            const style = isValidColor ? ` style="color:${token.color}"` : '';
             const escaped = token.content
               .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
             return `<span${style}>${escaped}</span>`;

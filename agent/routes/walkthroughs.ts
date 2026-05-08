@@ -10,8 +10,19 @@ import {
 import { getPrMetadata, getInstallationForRepo } from '../github/client.js';
 import { jobManager } from '../analysis/jobs.js';
 import { AppError } from '../middleware/error.js';
+import { rateLimit } from '../middleware/rate-limit.js';
 
 export const walkthroughRoutes = new Hono();
+
+// 5 generation requests per minute per user
+const generateLimiter = rateLimit('generate', {
+  windowMs: 60_000,
+  max: 5,
+  keyFn: (c) => {
+    const session = c.get('session');
+    return session?.userId ? String(session.userId) : 'unknown';
+  },
+});
 
 // All walkthrough routes require authentication and repo access
 walkthroughRoutes.use('/:owner/:repo/:pr/*', requireAuth, requireRepoAccess);
@@ -63,7 +74,7 @@ walkthroughRoutes.get('/:owner/:repo/:pr', async (c) => {
  * POST /api/walkthroughs/:owner/:repo/:pr/generate
  * Triggers walkthrough generation. Idempotent — won't duplicate running jobs.
  */
-walkthroughRoutes.post('/:owner/:repo/:pr/generate', async (c) => {
+walkthroughRoutes.post('/:owner/:repo/:pr/generate', generateLimiter, async (c) => {
   const owner = c.req.param('owner');
   const repo = c.req.param('repo');
   const prNumber = Number(c.req.param('pr'));

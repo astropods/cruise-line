@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { getCookie } from 'hono/cookie';
 import { config } from '../config.js';
 import {
   getAuthorizeUrl,
@@ -7,10 +8,15 @@ import {
   createSessionToken,
   verifySessionToken,
 } from '../github/oauth.js';
+import { revokeSession } from '../db/sessions.js';
 import { SignJWT, jwtVerify } from 'jose';
 import { AppError } from '../middleware/error.js';
+import { rateLimit } from '../middleware/rate-limit.js';
 
 export const authRoutes = new Hono();
+
+// 10 requests per minute per IP for auth endpoints
+const authLimiter = rateLimit('auth', { windowMs: 60_000, max: 10 });
 
 // Encode the CSRF state + return_to into a signed JWT that round-trips via GitHub's state param
 async function encodeState(returnTo: string): Promise<string> {
@@ -32,7 +38,7 @@ async function decodeState(state: string): Promise<{ returnTo: string } | null> 
   }
 }
 
-authRoutes.get('/github', async (c) => {
+authRoutes.get('/github', authLimiter, async (c) => {
   const returnTo = c.req.query('return_to') ?? '/';
   const state = await encodeState(returnTo);
   const redirectUri = `${config.appUrl}/api/auth/callback`;
@@ -41,7 +47,7 @@ authRoutes.get('/github', async (c) => {
   return c.redirect(authorizeUrl);
 });
 
-authRoutes.get('/callback', async (c) => {
+authRoutes.get('/callback', authLimiter, async (c) => {
   const code = c.req.query('code');
   const state = c.req.query('state');
 
@@ -87,9 +93,7 @@ authRoutes.get('/callback', async (c) => {
 });
 
 authRoutes.get('/me', async (c) => {
-  const cookieHeader = c.req.header('cookie') ?? '';
-  const match = cookieHeader.match(new RegExp(`${config.session.cookieName}=([^;]*)`));
-  const token = match ? decodeURIComponent(match[1]) : null;
+  const token = getCookie(c, config.session.cookieName);
 
   if (!token) {
     throw new AppError(401, 'Not authenticated');
@@ -107,7 +111,16 @@ authRoutes.get('/me', async (c) => {
   });
 });
 
-authRoutes.post('/logout', (c) => {
+authRoutes.post('/logout', async (c) => {
+  // Revoke the session so it can't be reused even if the cookie is captured
+  const token = getCookie(c, config.session.cookieName);
+  if (token) {
+    const session = await verifySessionToken(token);
+    if (session?.jti && session?.exp) {
+      await revokeSession(session.jti, new Date(session.exp * 1000));
+    }
+  }
+
   c.header(
     'Set-Cookie',
     `${config.session.cookieName}=; Path=/; HttpOnly; Max-Age=0`,
