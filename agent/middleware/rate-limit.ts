@@ -38,10 +38,12 @@ export function rateLimit(name: string, options: RateLimitOptions) {
   if (cleanup.unref) cleanup.unref();
 
   return async (c: Context, next: Next) => {
+    // Prefer x-real-ip (set authoritatively by reverse proxies) over
+    // x-forwarded-for (client-appendable, trivially spoofable).
+    // If neither is present, all direct clients share one bucket — safe default.
     const key = keyFn
       ? keyFn(c)
-      : c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ||
-        c.req.header('x-real-ip') ||
+      : c.req.header('x-real-ip') ||
         'unknown';
 
     const now = Date.now();
