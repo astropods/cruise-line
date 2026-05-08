@@ -38,6 +38,7 @@ knowledge:
     persistent: true
   chat-sandbox:
     container:
+      image: cruise-line-sandbox
       build:
         context: .
         dockerfile: sandbox/Dockerfile
