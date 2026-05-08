@@ -1,69 +1,22 @@
-import { query } from '@anthropic-ai/claude-agent-sdk';
-import { readFile } from 'fs/promises';
-import { join } from 'path';
 import { config } from '../config.js';
 import { SYSTEM_PROMPT, buildUserPrompt } from './prompt.js';
-import { walkthroughJsonSchema, type Walkthrough, type ClaudeWalkthroughOutput, type FileContent } from './types.js';
+import { walkthroughJsonSchema, type Walkthrough, type ClaudeWalkthroughOutput } from './types.js';
 import { updateWalkthroughStatus } from '../db/walkthroughs.js';
 import { listRules } from '../db/rules.js';
-import { ensureClone } from '../repo/manager.js';
 import { postAnalysisComment } from '../github/client.js';
+import { getInstallationToken } from '../github/app.js';
 import { jobManager } from './jobs.js';
+import {
+  sandboxEnsureClone,
+  sandboxQuery,
+  sandboxCollectFiles,
+  sandboxRepoPath,
+  type SSEEvent,
+} from '../sandbox-client.js';
 import type { PrMetadata } from '../github/types.js';
 
 function addProgress(walkthroughId: number, type: 'status' | 'tool' | 'message', text: string) {
   jobManager.addProgress(walkthroughId, { type, text });
-}
-
-const LANGUAGE_MAP: Record<string, string> = {
-  ts: 'typescript', tsx: 'tsx', js: 'javascript', jsx: 'jsx',
-  py: 'python', rb: 'ruby', go: 'go', rs: 'rust',
-  java: 'java', kt: 'kotlin', swift: 'swift', cs: 'csharp',
-  cpp: 'cpp', c: 'c', h: 'c', hpp: 'cpp',
-  sql: 'sql', sh: 'bash', bash: 'bash', zsh: 'bash',
-  yml: 'yaml', yaml: 'yaml', json: 'json', toml: 'toml',
-  md: 'markdown', css: 'css', scss: 'scss', html: 'html',
-  xml: 'xml', graphql: 'graphql', proto: 'protobuf',
-  dockerfile: 'dockerfile', makefile: 'makefile',
-};
-
-function detectLanguage(filePath: string): string {
-  const ext = filePath.split('.').pop()?.toLowerCase() ?? '';
-  const basename = filePath.split('/').pop()?.toLowerCase() ?? '';
-  if (basename === 'dockerfile') return 'dockerfile';
-  if (basename === 'makefile') return 'makefile';
-  return LANGUAGE_MAP[ext] ?? ext;
-}
-
-async function readFileContent(repoDir: string, filePath: string): Promise<string | undefined> {
-  try {
-    return await readFile(join(repoDir, filePath), 'utf-8');
-  } catch {
-    return undefined;
-  }
-}
-
-/**
- * Get the unified diff patch for a single file using git diff.
- */
-async function getFilePatch(repoDir: string, baseRef: string, filePath: string): Promise<string | undefined> {
-  // Try different ref formats
-  for (const ref of [baseRef, `origin/${baseRef}`, 'FETCH_HEAD']) {
-    try {
-      const proc = Bun.spawn(
-        ['git', 'diff', `${ref}...HEAD`, '--', filePath],
-        { cwd: repoDir, stdout: 'pipe', stderr: 'pipe' },
-      );
-      const exitCode = await proc.exited;
-      if (exitCode === 0) {
-        const output = await new Response(proc.stdout).text();
-        if (output.trim()) return output;
-      }
-    } catch {
-      continue;
-    }
-  }
-  return undefined;
 }
 
 /**
@@ -87,35 +40,6 @@ function extractFileReferences(output: ClaudeWalkthroughOutput): Set<string> {
   return files;
 }
 
-/**
- * Collect file contents and unified diff patches for all referenced files.
- */
-async function collectFiles(
-  repoDir: string,
-  baseRef: string,
-  output: ClaudeWalkthroughOutput,
-): Promise<Record<string, FileContent>> {
-  const files: Record<string, FileContent> = {};
-  const filePaths = extractFileReferences(output);
-
-  await Promise.all(
-    Array.from(filePaths).map(async (filePath) => {
-      const [after, patch] = await Promise.all([
-        readFileContent(repoDir, filePath),
-        getFilePatch(repoDir, baseRef, filePath),
-      ]);
-
-      files[filePath] = {
-        after: after ?? undefined,
-        language: detectLanguage(filePath),
-        patch: patch ?? undefined,
-      };
-    }),
-  );
-
-  return files;
-}
-
 export async function analyzePr(
   walkthroughId: number,
   prMetadata: PrMetadata,
@@ -123,43 +47,23 @@ export async function analyzePr(
   try {
     addProgress(walkthroughId, 'status', 'Preparing repository...');
 
-    // Ensure persistent clone exists and is at the correct SHA
-    const repoDir = await ensureClone(
-      prMetadata.owner,
-      prMetadata.repo,
-      prMetadata.number,
-      prMetadata.headSha,
-      prMetadata.headRef,
-      prMetadata.installationId,
-    );
+    // Clone/update the repo in the sandbox's persistent volume
+    const token = await getInstallationToken(prMetadata.installationId);
+    const host = new URL(config.github.htmlUrl).host;
+    const cloneUrl = `https://x-access-token:${token}@${host}/${prMetadata.owner}/${prMetadata.repo}.git`;
+    const repoPath = sandboxRepoPath(prMetadata.owner, prMetadata.repo, prMetadata.number);
 
-    addProgress(walkthroughId, 'status', 'Fetching base branch for diff...');
+    const cloneResult = await sandboxEnsureClone({
+      cloneUrl,
+      repoPath,
+      headSha: prMetadata.headSha,
+      headRef: prMetadata.headRef,
+      baseRef: prMetadata.baseRef,
+    });
 
-    // The clone is --single-branch, so the base branch isn't tracked.
-    // Explicitly fetch the base ref into a remote tracking branch.
-    const fetchProc = Bun.spawn(
-      ['git', 'fetch', 'origin', `+refs/heads/${prMetadata.baseRef}:refs/remotes/origin/${prMetadata.baseRef}`],
-      { cwd: repoDir, stdout: 'pipe', stderr: 'pipe' },
-    );
-    await fetchProc.exited;
-
-    // Try multiple diff strategies — three-dot (merge base) first, then two-dot fallback
-    let diffOutput = '';
-    for (const diffCmd of [
-      ['git', 'diff', `origin/${prMetadata.baseRef}...HEAD`],
-      ['git', 'diff', `origin/${prMetadata.baseRef}..HEAD`],
-      ['git', 'diff', `origin/${prMetadata.baseRef}`, 'HEAD'],
-    ]) {
-      const diffProc = Bun.spawn(diffCmd, { cwd: repoDir, stdout: 'pipe', stderr: 'pipe' });
-      const exitCode = await diffProc.exited;
-      const output = await new Response(diffProc.stdout).text();
-      if (exitCode === 0 && output.trim()) {
-        diffOutput = output;
-        break;
-      }
-    }
-
+    const diffOutput = cloneResult.diff;
     const diffLines = diffOutput.split('\n').length;
+
     if (!diffOutput.trim()) {
       console.warn(`Empty diff for ${prMetadata.owner}/${prMetadata.repo}#${prMetadata.number} — base: ${prMetadata.baseRef}`);
       addProgress(walkthroughId, 'status', 'No diff found — the agent will use tools to examine changes.');
@@ -184,53 +88,44 @@ export async function analyzePr(
     const repoRules = await listRules(prMetadata.owner, prMetadata.repo);
     const rules = repoRules.map((r) => ({ ruleNumber: r.ruleNumber, rule: r.rule }));
 
-    // Invoke Claude Agent SDK
+    // Build the prompt (agent has DB access for rules, PR metadata)
     const userPrompt = buildUserPrompt(prMetadata, diffOutput, prMetadata.body, rules.length > 0 ? rules : undefined);
+
+    // Run Claude Agent SDK query in the sandbox
     let claudeOutput: ClaudeWalkthroughOutput | undefined;
 
-    for await (const message of query({
+    for await (const event of sandboxQuery({
       prompt: userPrompt,
-      options: {
-        cwd: repoDir,
-        systemPrompt: SYSTEM_PROMPT,
-        model: config.claude.model,
-        allowedTools: ['Read', 'Glob', 'Grep', 'Bash'],
-        permissionMode: 'bypassPermissions',
-        outputFormat: {
-          type: 'json_schema',
-          schema: walkthroughJsonSchema,
-        },
-        maxTurns: 30,
+      systemPrompt: SYSTEM_PROMPT,
+      repoPath: cloneResult.repoDir,
+      model: config.claude.model,
+      maxTurns: 30,
+      outputFormat: {
+        type: 'json_schema',
+        schema: walkthroughJsonSchema,
       },
     })) {
-      // Capture progress
-      if (message.type === 'assistant' && message.content) {
-        const blocks = Array.isArray(message.content) ? message.content : [message.content];
-        for (const block of blocks) {
-          if (typeof block === 'string') {
-            const trimmed = block.trim();
-            if (trimmed) addProgress(walkthroughId, 'message', trimmed.slice(0, 200));
-          } else if (block && typeof block === 'object') {
-            if ('type' in block && block.type === 'text' && 'text' in block) {
-              const trimmed = (block.text as string).trim();
-              if (trimmed) addProgress(walkthroughId, 'message', trimmed.slice(0, 200));
-            } else if ('type' in block && block.type === 'tool_use') {
-              const toolBlock = block as { name?: string; input?: Record<string, unknown> };
-              const toolName = toolBlock.name ?? 'unknown';
-              const input = toolBlock.input ?? {};
-              let detail = '';
-              if ('file_path' in input) detail = String(input.file_path);
-              else if ('path' in input) detail = String(input.path);
-              else if ('pattern' in input) detail = String(input.pattern);
-              else if ('command' in input) detail = String(input.command).slice(0, 80);
-              addProgress(walkthroughId, 'tool', detail ? `${toolName}: ${detail}` : toolName);
-            }
+      // Relay progress events to the job manager
+      switch (event.type) {
+        case 'text':
+          if (event.content.trim()) {
+            addProgress(walkthroughId, 'message', event.content.trim().slice(0, 200));
           }
+          break;
+        case 'tool_call': {
+          const detail = event.detail
+            ? `${event.name}: ${event.detail}`
+            : event.name;
+          addProgress(walkthroughId, 'tool', detail);
+          break;
         }
-      }
-
-      if (message.type === 'result' && message.subtype === 'success') {
-        claudeOutput = (message as any).structured_output as ClaudeWalkthroughOutput;
+        case 'done':
+          if (event.structuredOutput) {
+            claudeOutput = event.structuredOutput as ClaudeWalkthroughOutput;
+          }
+          break;
+        case 'error':
+          throw new Error(event.message);
       }
     }
 
@@ -250,8 +145,13 @@ export async function analyzePr(
 
     addProgress(walkthroughId, 'status', 'Reading file contents...');
 
-    // Read actual file contents for all referenced files
-    const files = await collectFiles(repoDir, prMetadata.baseRef, claudeOutput);
+    // Collect file contents from the sandbox
+    const filePaths = Array.from(extractFileReferences(claudeOutput));
+    const { files } = await sandboxCollectFiles(
+      cloneResult.repoDir,
+      prMetadata.baseRef,
+      filePaths,
+    );
 
     // Assemble the full walkthrough with file contents
     const walkthrough: Walkthrough = {
