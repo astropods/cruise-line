@@ -63,6 +63,8 @@ function isPrivateHost(hostname: string): boolean {
     if (a === 169 && b === 254) return true;
     // 0.0.0.0
     if (a === 0) return true;
+    // 127.0.0.0/8 (loopback) — 127.0.0.1 is already exempted above
+    if (a === 127) return true;
   }
 
   // IPv6 private ranges (simple check)
