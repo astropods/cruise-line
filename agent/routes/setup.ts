@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import type { Context, Next } from 'hono';
 import { config, updateGitHubConfig, isGitHubConfigured } from '../config.js';
 import {
   saveGitHubAppConfig,
@@ -8,8 +9,25 @@ import {
   saveAppUrl,
 } from '../db/app-config.js';
 import { refreshWebhooks } from '../github/webhooks.js';
+import { requireAuth } from '../middleware/session.js';
+import { validateGitHubUrl, validateAppUrl } from '../middleware/validation.js';
+import { rateLimit } from '../middleware/rate-limit.js';
 
 export const setupRoutes = new Hono();
+
+// 5 requests per minute per IP for setup operations
+const setupLimiter = rateLimit('setup', { windowMs: 60_000, max: 5 });
+
+/**
+ * Conditional auth for setup: if GitHub is already configured, require login.
+ * If not configured (first-time setup), allow through since OAuth isn't available yet.
+ */
+async function requireSetupAuth(c: Context, next: Next) {
+  if (isGitHubConfigured()) {
+    return requireAuth(c, next);
+  }
+  await next();
+}
 
 /**
  * GET /api/setup/status
@@ -41,30 +59,22 @@ setupRoutes.get('/status', async (c) => {
  * Initiates the GitHub App Manifest flow.
  * Redirects the user to GitHub with a pre-filled app manifest.
  */
-setupRoutes.post('/github', async (c) => {
+setupRoutes.post('/github', setupLimiter, requireSetupAuth, async (c) => {
   const body = await c.req.json<{ githubUrl?: string; appUrl?: string; org?: string }>().catch(() => ({}));
 
-  // Detect app URL from the incoming request if not explicitly set
+  // Validate and set app URL if provided
   if (body.appUrl) {
-    config.appUrl = body.appUrl.replace(/\/+$/, '');
-  } else if (config.appUrl === 'http://localhost:80') {
-    // Auto-detect from the request
-    const origin = c.req.header('origin') || c.req.header('referer');
-    if (origin) {
-      try {
-        const url = new URL(origin);
-        config.appUrl = url.origin;
-      } catch { /* keep default */ }
-    }
+    config.appUrl = validateAppUrl(body.appUrl);
   }
 
   // Persist the app URL
   await saveAppUrl(config.appUrl);
 
-  // Allow overriding GitHub URL for GHE
+  // Allow overriding GitHub URL for GHE — validated to prevent SSRF
   if (body.githubUrl && body.githubUrl !== 'https://github.com') {
-    config.github.htmlUrl = body.githubUrl.replace(/\/+$/, '');
-    config.github.baseUrl = `${config.github.htmlUrl}/api/v3`;
+    const validatedUrl = validateGitHubUrl(body.githubUrl);
+    config.github.htmlUrl = validatedUrl;
+    config.github.baseUrl = `${validatedUrl}/api/v3`;
   } else {
     config.github.htmlUrl = 'https://github.com';
     config.github.baseUrl = 'https://api.github.com';
@@ -198,7 +208,7 @@ setupRoutes.get('/install/callback', (c) => {
  * DELETE /api/setup/github
  * Disconnect the current GitHub App so a new one can be connected.
  */
-setupRoutes.delete('/github', async (c) => {
+setupRoutes.delete('/github', setupLimiter, requireAuth, async (c) => {
   await deleteGitHubAppConfig();
 
   // Clear runtime config

@@ -1,7 +1,9 @@
 import type { Context, Next } from 'hono';
+import { getCookie } from 'hono/cookie';
 import { config } from '../config.js';
 import { verifySessionToken, type SessionPayload } from '../github/oauth.js';
 import { verifyRepoAccess } from '../github/client.js';
+import { isSessionRevoked } from '../db/sessions.js';
 import { AppError } from './error.js';
 
 // Repo access cache: `${userId}:${owner}/${repo}` -> expiry timestamp
@@ -23,7 +25,12 @@ export async function requireAuth(c: Context, next: Next) {
     throw new AppError(401, 'Invalid or expired session');
   }
 
-  c.set('session', session);
+  // Check if the session has been revoked
+  if (session.jti && await isSessionRevoked(session.jti)) {
+    throw new AppError(401, 'Session has been revoked');
+  }
+
+  c.set('session', session as SessionPayload);
   await next();
 }
 
@@ -58,10 +65,3 @@ export async function requireRepoAccess(c: Context, next: Next) {
   await next();
 }
 
-function getCookie(c: Context, name: string): string | undefined {
-  const header = c.req.header('cookie');
-  if (!header) return undefined;
-
-  const match = header.match(new RegExp(`(?:^|;\\s*)${name}=([^;]*)`));
-  return match ? decodeURIComponent(match[1]) : undefined;
-}

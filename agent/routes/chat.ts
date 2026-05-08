@@ -3,6 +3,17 @@ import { streamSSE } from 'hono/streaming';
 import { config } from '../config.js';
 import { requireAuth, requireRepoAccess } from '../middleware/session.js';
 import { AppError } from '../middleware/error.js';
+import { rateLimit } from '../middleware/rate-limit.js';
+
+// 20 messages per minute per user
+const chatLimiter = rateLimit('chat', {
+  windowMs: 60_000,
+  max: 20,
+  keyFn: (c) => {
+    const session = c.get('session');
+    return session?.userId ? String(session.userId) : 'unknown';
+  },
+});
 import { getInstallationToken } from '../github/app.js';
 import { sandboxEnsureClone, sandboxRepoPath, sandboxQueryRaw, sandboxSessionMessages } from '../sandbox-client.js';
 import { getOrCreateChatSession, getChatSession, touchChatSession, deleteChatSession } from '../db/chat-sessions.js';
@@ -21,7 +32,7 @@ chatRoutes.use('/:owner/:repo/:pr', requireAuth, requireRepoAccess);
  * POST /api/chat/:owner/:repo/:pr/message
  * Proxies the chat query to the sandbox container and streams results back.
  */
-chatRoutes.post('/:owner/:repo/:pr/message', async (c) => {
+chatRoutes.post('/:owner/:repo/:pr/message', chatLimiter, async (c) => {
   const session = c.get('session') as SessionPayload;
   const owner = c.req.param('owner');
   const repo = c.req.param('repo');

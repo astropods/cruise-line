@@ -16,6 +16,10 @@ export interface SessionPayload {
   userId: number;
   login: string;
   avatarUrl: string;
+  /** JWT ID — used for session revocation */
+  jti?: string;
+  /** JWT expiration (epoch seconds) */
+  exp?: number;
 }
 
 /**
@@ -72,10 +76,12 @@ export async function getGitHubUser(
 
 /**
  * Create a signed session JWT cookie value.
+ * Includes a JTI claim for revocation support.
  */
-export async function createSessionToken(payload: SessionPayload): Promise<string> {
+export async function createSessionToken(payload: Omit<SessionPayload, 'jti' | 'exp'>): Promise<string> {
   const key = await getSecretKey();
-  return new SignJWT(payload as unknown as Record<string, unknown>)
+  const jti = crypto.randomUUID();
+  return new SignJWT({ ...payload, jti } as unknown as Record<string, unknown>)
     .setProtectedHeader({ alg: ALGORITHM })
     .setIssuedAt()
     .setExpirationTime('7d')
