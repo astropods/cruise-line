@@ -2,7 +2,7 @@ import { Webhooks } from '@octokit/webhooks';
 import { config } from '../config.js';
 import { postAnalysisComment, type CommentState } from './client.js';
 import { getLatestWalkthrough } from '../db/walkthroughs.js';
-import { cleanupClone } from '../repo/manager.js';
+import { sandboxCleanup, sandboxRepoPath } from '../sandbox-client.js';
 import { deleteChatSessionsForPr } from '../db/chat-sessions.js';
 
 let webhooksInstance: Webhooks | null = null;
@@ -73,7 +73,7 @@ function registerHandlers(wh: Webhooks) {
     console.log(`PR closed: ${owner}/${repo}#${prNumber}, cleaning up...`);
 
     try {
-      await cleanupClone(owner, repo, prNumber);
+      await sandboxCleanup(sandboxRepoPath(owner, repo, prNumber));
       await deleteChatSessionsForPr(owner, repo, prNumber);
     } catch (err) {
       console.error(`Cleanup failed for ${owner}/${repo}#${prNumber}:`, err);

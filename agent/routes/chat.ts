@@ -3,7 +3,8 @@ import { streamSSE } from 'hono/streaming';
 import { config } from '../config.js';
 import { requireAuth, requireRepoAccess } from '../middleware/session.js';
 import { AppError } from '../middleware/error.js';
-import { ensureClone } from '../repo/manager.js';
+import { getInstallationToken } from '../github/app.js';
+import { sandboxEnsureClone, sandboxRepoPath, sandboxQueryRaw, sandboxSessionMessages } from '../sandbox-client.js';
 import { getOrCreateChatSession, getChatSession, touchChatSession, deleteChatSession } from '../db/chat-sessions.js';
 import { getLatestWalkthrough } from '../db/walkthroughs.js';
 import { listRules } from '../db/rules.js';
@@ -38,10 +39,18 @@ chatRoutes.post('/:owner/:repo/:pr/message', async (c) => {
   const installationId = await getInstallationForRepo(owner, repo);
   const pr = await getPrMetadata(installationId, owner, repo, prNumber);
 
-  // Ensure clone exists (main agent manages clones, sandbox only reads them)
-  const repoDir = await ensureClone(
-    owner, repo, prNumber, pr.headSha, pr.headRef, installationId,
-  );
+  // Ensure clone exists in the sandbox's persistent volume
+  const token = await getInstallationToken(installationId);
+  const host = new URL(config.github.htmlUrl).host;
+  const cloneUrl = `https://x-access-token:${token}@${host}/${owner}/${repo}.git`;
+  const repoPath = sandboxRepoPath(owner, repo, prNumber);
+
+  const cloneResult = await sandboxEnsureClone({
+    cloneUrl,
+    repoPath,
+    headSha: pr.headSha,
+    headRef: pr.headRef,
+  });
 
   const walkthrough = await getLatestWalkthrough(owner, repo, prNumber);
   const summary = walkthrough?.data?.summary ?? undefined;
@@ -50,23 +59,14 @@ chatRoutes.post('/:owner/:repo/:pr/message', async (c) => {
   const systemPrompt = buildChatSystemPrompt(owner, repo, prNumber, pr.title, summary, rules.length > 0 ? rules : undefined);
 
   // Proxy the query to the sandbox container
-  const sandboxRes = await fetch(`${config.sandbox.url}/query`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      prompt: message.trim(),
-      systemPrompt,
-      sessionId: chatSession.session_id,
-      repoPath: repoDir,
-      model: config.claude.model,
-      maxTurns: 15,
-    }),
+  const sandboxRes = await sandboxQueryRaw({
+    prompt: message.trim(),
+    systemPrompt,
+    sessionId: chatSession.session_id,
+    repoPath: cloneResult.repoDir,
+    model: config.claude.model,
+    maxTurns: 15,
   });
-
-  if (!sandboxRes.ok) {
-    const body = await sandboxRes.text().catch(() => 'Sandbox error');
-    throw new AppError(502, `Sandbox error: ${body}`);
-  }
 
   // Stream the sandbox SSE response through to the client
   return streamSSE(c, async (stream) => {
@@ -117,26 +117,8 @@ chatRoutes.get('/:owner/:repo/:pr/session', async (c) => {
     return c.json({ session: null, messages: [] });
   }
 
-  const { getRepoDir } = await import('../repo/manager.js');
-  const repoDir = getRepoDir(owner, repo, prNumber);
-
-  let messages: any[] = [];
-
-  try {
-    const sandboxRes = await fetch(`${config.sandbox.url}/session-messages`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        sessionId: chatSession.session_id,
-        repoPath: repoDir,
-      }),
-    });
-
-    if (sandboxRes.ok) {
-      const data = await sandboxRes.json() as { messages: any[] };
-      messages = data.messages ?? [];
-    }
-  } catch { /* Sandbox may not be available */ }
+  const repoPath = sandboxRepoPath(owner, repo, prNumber);
+  const messages = await sandboxSessionMessages(chatSession.session_id, repoPath);
 
   return c.json({
     session: {
