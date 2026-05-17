@@ -209,7 +209,8 @@ export async function getInstallationForRepo(
 }
 
 /**
- * Verify a user has read access to a repository using their OAuth token.
+ * Verify a user is a collaborator (has push access) on a repository.
+ * For public repos this distinguishes maintainers from general viewers.
  */
 export async function verifyRepoAccess(
   userToken: string,
@@ -222,8 +223,8 @@ export async function verifyRepoAccess(
   });
 
   try {
-    await octokit.repos.get({ owner, repo });
-    return true;
+    const { data } = await octokit.repos.get({ owner, repo });
+    return data.permissions?.push === true;
   } catch (err: any) {
     console.error(`Repo access check failed for ${owner}/${repo}:`, err?.status, err?.message);
     return false;
