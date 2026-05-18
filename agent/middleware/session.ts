@@ -35,8 +35,8 @@ export async function requireAuth(c: Context, next: Next) {
 }
 
 /**
- * Middleware that verifies the authenticated user has access to the repo
- * specified in :owner/:repo route params.
+ * Middleware that verifies the authenticated user is a collaborator (push access)
+ * on the repo specified in :owner/:repo route params.
  */
 export async function requireRepoAccess(c: Context, next: Next) {
   const session = c.get('session') as SessionPayload;
@@ -57,8 +57,7 @@ export async function requireRepoAccess(c: Context, next: Next) {
 
   const hasAccess = await verifyRepoAccess(session.githubToken, owner, repo);
   if (!hasAccess) {
-    // Could be expired token or genuinely no access — clear session so user re-authenticates
-    throw new AppError(401, 'Session expired or repository not accessible');
+    throw new AppError(403, 'You must be a collaborator on this repository to access Cruise Line');
   }
 
   accessCache.set(cacheKey, Date.now() + ACCESS_CACHE_TTL);
