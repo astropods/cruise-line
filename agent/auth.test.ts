@@ -96,6 +96,14 @@ describe('verifyRepoAccess', () => {
     expect(await verifyRepoAccess('acme', 'app', 'testuser')).toBe(true);
   });
 
+  it('grants access to maintainers', async () => {
+    mockGetPermissionLevel.mockResolvedValueOnce({
+      data: { permission: 'maintain' },
+    });
+
+    expect(await verifyRepoAccess('acme', 'app', 'testuser')).toBe(true);
+  });
+
   it('grants access to admins', async () => {
     mockGetPermissionLevel.mockResolvedValueOnce({
       data: { permission: 'admin' },

@@ -229,7 +229,7 @@ export async function verifyRepoAccess(
       username,
     });
 
-    return data.permission === 'write' || data.permission === 'admin';
+    return data.permission === 'write' || data.permission === 'maintain' || data.permission === 'admin';
   } catch (err: any) {
     console.error(`Repo access check failed for ${username} on ${owner}/${repo}:`, err?.status, err?.message);
     return false;
