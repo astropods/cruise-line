@@ -1,6 +1,6 @@
 /**
  * Tests for the repo-access permission system:
- *   - verifyRepoAccess (GitHub API permission check)
+ *   - verifyRepoAccess (GitHub App installation-based permission check)
  *   - requireRepoAccess (Hono middleware that gates routes)
  */
 import { describe, it, expect, mock, beforeEach, spyOn } from 'bun:test';
@@ -10,11 +10,13 @@ import { AppError } from './middleware/error.js';
 
 // --- Mocks -----------------------------------------------------------
 
-const mockReposGet = mock();
+const mockGetPermissionLevel = mock();
+const mockGetRepoInstallation = mock();
 
+// Octokit constructor — used by getInstallationForRepo
 mock.module('@octokit/rest', () => ({
   Octokit: class MockOctokit {
-    repos = { get: mockReposGet };
+    apps = { getRepoInstallation: mockGetRepoInstallation };
   },
 }));
 
@@ -26,8 +28,11 @@ mock.module(path.resolve(import.meta.dir, './config.ts'), () => ({
 }));
 
 mock.module(path.resolve(import.meta.dir, './github/app.ts'), () => ({
-  getInstallationToken: mock(),
-  createInstallationOctokit: mock(),
+  generateAppJwt: mock(() => Promise.resolve('fake-jwt')),
+  getInstallationToken: mock(() => Promise.resolve('fake-installation-token')),
+  createInstallationOctokit: mock(() => ({
+    repos: { getCollaboratorPermissionLevel: mockGetPermissionLevel },
+  })),
 }));
 
 mock.module(path.resolve(import.meta.dir, './github/oauth.ts'), () => ({
@@ -65,77 +70,93 @@ function createContext(
   } as any;
 }
 
+// Default: getRepoInstallation always succeeds
+function setupInstallationMock() {
+  mockGetRepoInstallation.mockResolvedValue({ data: { id: 12345 } });
+}
+
 // =====================================================================
-// verifyRepoAccess — unit tests for the GitHub API permission check
+// verifyRepoAccess — unit tests for the GitHub App permission check
 // =====================================================================
 
 describe('verifyRepoAccess', () => {
   beforeEach(() => {
-    mockReposGet.mockReset();
+    mockGetPermissionLevel.mockReset();
+    mockGetRepoInstallation.mockReset();
+    setupInstallationMock();
   });
 
   // --- should grant access ---
 
-  it('grants access to collaborators with push permission', async () => {
-    mockReposGet.mockResolvedValueOnce({
-      data: { permissions: { admin: false, push: true, pull: true } },
+  it('grants access to collaborators with write permission', async () => {
+    mockGetPermissionLevel.mockResolvedValueOnce({
+      data: { permission: 'write' },
     });
 
-    expect(await verifyRepoAccess('tok', 'acme', 'app')).toBe(true);
+    expect(await verifyRepoAccess('acme', 'app', 'testuser')).toBe(true);
+  });
+
+  it('grants access to maintainers', async () => {
+    mockGetPermissionLevel.mockResolvedValueOnce({
+      data: { permission: 'maintain' },
+    });
+
+    expect(await verifyRepoAccess('acme', 'app', 'testuser')).toBe(true);
   });
 
   it('grants access to admins', async () => {
-    mockReposGet.mockResolvedValueOnce({
-      data: { permissions: { admin: true, push: true, pull: true } },
+    mockGetPermissionLevel.mockResolvedValueOnce({
+      data: { permission: 'admin' },
     });
 
-    expect(await verifyRepoAccess('tok', 'acme', 'app')).toBe(true);
+    expect(await verifyRepoAccess('acme', 'app', 'testuser')).toBe(true);
   });
 
   // --- should deny access ---
 
-  it('denies access to users with only read/pull permission (public repo viewer)', async () => {
-    mockReposGet.mockResolvedValueOnce({
-      data: { permissions: { admin: false, push: false, pull: true } },
+  it('denies access to users with only read permission (public repo viewer)', async () => {
+    mockGetPermissionLevel.mockResolvedValueOnce({
+      data: { permission: 'read' },
     });
 
-    expect(await verifyRepoAccess('tok', 'acme', 'app')).toBe(false);
+    expect(await verifyRepoAccess('acme', 'app', 'testuser')).toBe(false);
   });
 
-  it('denies access when permissions field is undefined', async () => {
-    mockReposGet.mockResolvedValueOnce({ data: {} });
+  it('denies access to users with none permission', async () => {
+    mockGetPermissionLevel.mockResolvedValueOnce({
+      data: { permission: 'none' },
+    });
 
-    expect(await verifyRepoAccess('tok', 'acme', 'app')).toBe(false);
+    expect(await verifyRepoAccess('acme', 'app', 'testuser')).toBe(false);
   });
 
-  it('denies access when permissions field is null', async () => {
-    mockReposGet.mockResolvedValueOnce({ data: { permissions: null } });
+  it('denies access when the API returns 404 (no access)', async () => {
+    mockGetPermissionLevel.mockRejectedValueOnce({ status: 404, message: 'Not Found' });
 
-    expect(await verifyRepoAccess('tok', 'acme', 'app')).toBe(false);
+    expect(await verifyRepoAccess('acme', 'private-repo', 'testuser')).toBe(false);
   });
 
-  it('denies access when the API returns 404 (private repo, no access)', async () => {
-    mockReposGet.mockRejectedValueOnce({ status: 404, message: 'Not Found' });
+  it('denies access when getInstallationForRepo fails (app not installed)', async () => {
+    mockGetRepoInstallation.mockReset();
+    mockGetRepoInstallation.mockRejectedValueOnce({ status: 404, message: 'Not Found' });
 
-    expect(await verifyRepoAccess('tok', 'acme', 'private-repo')).toBe(false);
-  });
-
-  it('denies access when the API returns 401 (bad or expired token)', async () => {
-    mockReposGet.mockRejectedValueOnce({ status: 401, message: 'Bad credentials' });
-
-    expect(await verifyRepoAccess('tok', 'acme', 'app')).toBe(false);
+    expect(await verifyRepoAccess('acme', 'app', 'testuser')).toBe(false);
   });
 
   // --- correct API usage ---
 
-  it('forwards owner and repo to the GitHub API call', async () => {
-    mockReposGet.mockResolvedValueOnce({
-      data: { permissions: { admin: false, push: true, pull: true } },
+  it('forwards owner, repo, and username to the GitHub API call', async () => {
+    mockGetPermissionLevel.mockResolvedValueOnce({
+      data: { permission: 'write' },
     });
 
-    await verifyRepoAccess('tok', 'my-org', 'my-repo');
+    await verifyRepoAccess('my-org', 'my-repo', 'someuser');
 
-    expect(mockReposGet).toHaveBeenCalledWith({ owner: 'my-org', repo: 'my-repo' });
+    expect(mockGetPermissionLevel).toHaveBeenCalledWith({
+      owner: 'my-org',
+      repo: 'my-repo',
+      username: 'someuser',
+    });
   });
 });
 
@@ -152,14 +173,16 @@ describe('requireRepoAccess', () => {
   }
 
   beforeEach(() => {
-    mockReposGet.mockReset();
+    mockGetPermissionLevel.mockReset();
+    mockGetRepoInstallation.mockReset();
+    setupInstallationMock();
   });
 
   it('calls next() when the user is a collaborator', async () => {
     const { owner, repo } = uniqueRepo();
     const next = mock().mockResolvedValue(undefined);
-    mockReposGet.mockResolvedValueOnce({
-      data: { permissions: { admin: false, push: true, pull: true } },
+    mockGetPermissionLevel.mockResolvedValueOnce({
+      data: { permission: 'write' },
     });
 
     await requireRepoAccess(createContext({ owner, repo }), next);
@@ -170,8 +193,8 @@ describe('requireRepoAccess', () => {
   it('throws 403 when the user is not a collaborator', async () => {
     const { owner, repo } = uniqueRepo();
     const next = mock();
-    mockReposGet.mockResolvedValueOnce({
-      data: { permissions: { admin: false, push: false, pull: true } },
+    mockGetPermissionLevel.mockResolvedValueOnce({
+      data: { permission: 'read' },
     });
 
     try {
@@ -186,10 +209,10 @@ describe('requireRepoAccess', () => {
     expect(next).not.toHaveBeenCalled();
   });
 
-  it('throws 403 when the API call fails (private repo, no access)', async () => {
+  it('throws 403 when the API call fails (no access)', async () => {
     const { owner, repo } = uniqueRepo();
     const next = mock();
-    mockReposGet.mockRejectedValueOnce({ status: 404, message: 'Not Found' });
+    mockGetPermissionLevel.mockRejectedValueOnce({ status: 404, message: 'Not Found' });
 
     try {
       await requireRepoAccess(createContext({ owner, repo }), next);
@@ -233,8 +256,8 @@ describe('requireRepoAccess', () => {
   it('uses cached result on repeated calls (skips GitHub API)', async () => {
     const { owner, repo } = uniqueRepo();
     const next = mock().mockResolvedValue(undefined);
-    mockReposGet.mockResolvedValueOnce({
-      data: { permissions: { admin: false, push: true, pull: true } },
+    mockGetPermissionLevel.mockResolvedValueOnce({
+      data: { permission: 'write' },
     });
 
     // First call populates cache
@@ -242,7 +265,7 @@ describe('requireRepoAccess', () => {
     // Second call should hit cache — no extra API call
     await requireRepoAccess(createContext({ owner, repo }), next);
 
-    expect(mockReposGet).toHaveBeenCalledTimes(1);
+    expect(mockGetPermissionLevel).toHaveBeenCalledTimes(1);
     expect(next).toHaveBeenCalledTimes(2);
   });
 
@@ -251,43 +274,43 @@ describe('requireRepoAccess', () => {
     const next = mock().mockResolvedValue(undefined);
 
     // First call — denied (read-only)
-    mockReposGet.mockResolvedValueOnce({
-      data: { permissions: { admin: false, push: false, pull: true } },
+    mockGetPermissionLevel.mockResolvedValueOnce({
+      data: { permission: 'read' },
     });
     try {
       await requireRepoAccess(createContext({ owner, repo }), next);
     } catch { /* expected */ }
 
     // Promote the user to collaborator
-    mockReposGet.mockResolvedValueOnce({
-      data: { permissions: { admin: false, push: true, pull: true } },
+    mockGetPermissionLevel.mockResolvedValueOnce({
+      data: { permission: 'write' },
     });
     await requireRepoAccess(createContext({ owner, repo }), next);
 
     // Should have called the API both times (no stale deny cached)
-    expect(mockReposGet).toHaveBeenCalledTimes(2);
+    expect(mockGetPermissionLevel).toHaveBeenCalledTimes(2);
     expect(next).toHaveBeenCalledTimes(1);
   });
 
   it('isolates cache per user', async () => {
     const { owner, repo } = uniqueRepo();
     const next = mock().mockResolvedValue(undefined);
-    const otherSession: SessionPayload = { ...fakeSession, userId: 99 };
+    const otherSession: SessionPayload = { ...fakeSession, userId: 99, login: 'otheruser' };
 
     // User 42 is a collaborator
-    mockReposGet.mockResolvedValueOnce({
-      data: { permissions: { admin: false, push: true, pull: true } },
+    mockGetPermissionLevel.mockResolvedValueOnce({
+      data: { permission: 'write' },
     });
     await requireRepoAccess(createContext({ owner, repo }, fakeSession), next);
 
     // User 99 is not — should still call the API, not reuse user 42's cache
-    mockReposGet.mockResolvedValueOnce({
-      data: { permissions: { admin: false, push: false, pull: true } },
+    mockGetPermissionLevel.mockResolvedValueOnce({
+      data: { permission: 'read' },
     });
     try {
       await requireRepoAccess(createContext({ owner, repo }, otherSession), next);
     } catch { /* expected */ }
 
-    expect(mockReposGet).toHaveBeenCalledTimes(2);
+    expect(mockGetPermissionLevel).toHaveBeenCalledTimes(2);
   });
 });

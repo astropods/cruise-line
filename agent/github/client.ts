@@ -209,24 +209,29 @@ export async function getInstallationForRepo(
 }
 
 /**
- * Verify a user is a collaborator (has push access) on a repository.
- * For public repos this distinguishes maintainers from general viewers.
+ * Verify a user is a collaborator (write or admin) on a repository.
+ * Uses the App installation token so team-based and org-level permissions
+ * are correctly resolved — user-to-server tokens don't always reflect these.
  */
 export async function verifyRepoAccess(
-  userToken: string,
   owner: string,
   repo: string,
+  username: string,
 ): Promise<boolean> {
-  const octokit = new Octokit({
-    baseUrl: config.github.baseUrl,
-    auth: userToken,
-  });
-
   try {
-    const { data } = await octokit.repos.get({ owner, repo });
-    return data.permissions?.push === true;
+    const installationId = await getInstallationForRepo(owner, repo);
+    const token = await getInstallationToken(installationId);
+    const octokit = createInstallationOctokit(token);
+
+    const { data } = await octokit.repos.getCollaboratorPermissionLevel({
+      owner,
+      repo,
+      username,
+    });
+
+    return data.permission === 'write' || data.permission === 'maintain' || data.permission === 'admin';
   } catch (err: any) {
-    console.error(`Repo access check failed for ${owner}/${repo}:`, err?.status, err?.message);
+    console.error(`Repo access check failed for ${username} on ${owner}/${repo}:`, err?.status, err?.message);
     return false;
   }
 }

@@ -55,7 +55,7 @@ export async function requireRepoAccess(c: Context, next: Next) {
     return;
   }
 
-  const hasAccess = await verifyRepoAccess(session.githubToken, owner, repo);
+  const hasAccess = await verifyRepoAccess(owner, repo, session.login);
   if (!hasAccess) {
     throw new AppError(403, 'You must be a collaborator on this repository to access Cruise Line');
   }

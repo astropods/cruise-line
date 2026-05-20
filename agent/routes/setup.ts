@@ -106,6 +106,7 @@ setupRoutes.post('/github', setupLimiter, requireSetupAuth, async (c) => {
       pull_requests: 'write',
       issues: 'write',
       metadata: 'read',
+      members: 'read',
     },
     default_events: [
       'pull_request',
