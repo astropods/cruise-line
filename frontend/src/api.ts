@@ -135,6 +135,11 @@ export function fetchUser() {
   return apiFetch<UserInfo>('/api/auth/me');
 }
 
+export async function logout() {
+  await apiFetch<{ ok: boolean }>('/api/auth/logout', { method: 'POST' });
+  window.location.href = '/';
+}
+
 // --- Review Rules ---
 
 export interface ReviewRule {

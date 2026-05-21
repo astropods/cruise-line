@@ -17,9 +17,9 @@ import { ChatInputBar } from '../components/ChatInputBar';
 import { PageLoading, ErrorState } from '../components/LoadingStates';
 import { Md } from '../components/Md';
 import { RulesPanel } from '../components/RulesPanel';
-import { DotsThree, ArrowsClockwise, ArrowSquareOut, ListNumbers } from '@phosphor-icons/react';
+import { DotsThree, ArrowsClockwise, ArrowSquareOut, ListNumbers, SignOut } from '@phosphor-icons/react';
 import type { Severity, ReviewRule } from '../api';
-import { fetchRules } from '../api';
+import { fetchRules, logout } from '../api';
 import type { RuleRef } from '../components/RichContent';
 
 type ViewMode = 'walkthrough' | 'chat';
@@ -338,6 +338,14 @@ function HeaderMenu({ onRegenerate, prUrl, onOpenRules }: { onRegenerate: () => 
               <ArrowSquareOut size={14} />
               View PR on GitHub
             </a>
+            <div className="my-1 border-t border-[var(--border)]" />
+            <button
+              onClick={() => { logout(); setOpen(false); }}
+              className="w-full text-left px-3 py-2 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] transition-colors flex items-center gap-2"
+            >
+              <SignOut size={14} />
+              Log out
+            </button>
           </div>
         </>
       )}
