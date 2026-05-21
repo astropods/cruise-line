@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   Anchor, FileText, MagnifyingGlass, FolderOpen, Terminal,
-  PencilSimpleLine, CircleNotch, WarningCircle, ArrowsClockwise,
+  PencilSimpleLine, CircleNotch, WarningCircle, ArrowsClockwise, SignOut,
 } from '@phosphor-icons/react';
+import { logout } from '../api';
 import type { ProgressEntry } from '../api';
 import type { Icon } from '@phosphor-icons/react';
 
@@ -167,6 +168,17 @@ export function AnalysisProgress({ owner, repo, pr, status, progress, githubUrl,
             {formatElapsed(elapsed)}
           </div>
         )}
+
+        {/* Logout */}
+        <div className="text-center mt-6">
+          <button
+            onClick={logout}
+            className="inline-flex items-center gap-1.5 text-xs text-[var(--text-secondary)]/50 hover:text-[var(--text-secondary)] transition-colors"
+          >
+            <SignOut size={12} />
+            Log out
+          </button>
+        </div>
       </div>
     </div>
   );

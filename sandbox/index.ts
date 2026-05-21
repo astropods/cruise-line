@@ -12,7 +12,7 @@
 
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
-import { query, getSessionMessages } from '@anthropic-ai/claude-agent-sdk';
+import { query, getSessionMessages, getSessionInfo } from '@anthropic-ai/claude-agent-sdk';
 import { existsSync } from 'fs';
 import { readFile } from 'fs/promises';
 import { symlink, readlink, lstat, mkdir, rm } from 'fs/promises';
@@ -296,7 +296,13 @@ app.post('/query', async (c) => {
   await ensureSymlink(repoDir, sessionDir);
 
   // Determine if this is a new or resumed session (chat mode only)
-  const isResume = sessionId && existsSync(join(sessionDir, 'projects'));
+  let isResume = false;
+  if (sessionId) {
+    try {
+      const info = await getSessionInfo(sessionId, { dir: repoDir });
+      isResume = !!info;
+    } catch { /* session doesn't exist yet */ }
+  }
 
   return streamSSE(c, async (stream) => {
     // Heartbeat to keep connection alive
@@ -311,8 +317,9 @@ app.post('/query', async (c) => {
         cwd: repoDir,
         systemPrompt,
         model: model ?? 'claude-sonnet-4-5',
-        allowedTools: allowedTools ?? ['Read', 'Glob', 'Grep', 'Bash'],
+        tools: allowedTools ?? ['Read', 'Glob', 'Grep', 'Bash'],
         permissionMode: 'bypassPermissions',
+        allowDangerouslySkipPermissions: true,
         maxTurns: maxTurns ?? 15,
       };
 
