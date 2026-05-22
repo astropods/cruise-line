@@ -95,6 +95,26 @@ async function getCurrentSha(dir: string): Promise<string | null> {
   return result.ok ? result.stdout : null;
 }
 
+/** Fetch the PR head ref (or all branches if no prNumber) and checkout the target SHA. */
+async function fetchPrAndCheckout(
+  repoDir: string,
+  headSha: string,
+  prNumber?: number,
+): Promise<{ ok: boolean; error?: string }> {
+  const fetchArgs = prNumber
+    ? ['git', 'fetch', 'origin', '--depth=50', `+refs/pull/${prNumber}/head:refs/remotes/origin/pr-head`]
+    : ['git', 'fetch', 'origin', '--depth=50'];
+  const fetchResult = await exec(fetchArgs, repoDir);
+  if (!fetchResult.ok) {
+    return { ok: false, error: `fetch failed: ${fetchResult.stderr}` };
+  }
+  const checkoutResult = await exec(['git', 'checkout', headSha], repoDir);
+  if (!checkoutResult.ok) {
+    return { ok: false, error: `checkout failed: ${checkoutResult.stderr}` };
+  }
+  return { ok: true };
+}
+
 // Per-PR mutex to prevent concurrent clone operations
 const cloneLocks = new Map<string, Promise<void>>();
 
@@ -188,16 +208,10 @@ app.post('/ensure-clone', async (c) => {
         }
 
         // Try to update — fetch PR ref (works for forks) with branch fallback
-        const fetchArgs = prNumber
-          ? ['git', 'fetch', 'origin', '--depth=50', `+refs/pull/${prNumber}/head:refs/remotes/origin/pr-head`]
-          : ['git', 'fetch', 'origin', '--depth=50'];
-        const fetchResult = await exec(fetchArgs, repoDir);
-        if (fetchResult.ok) {
-          const checkoutResult = await exec(['git', 'checkout', headSha], repoDir);
-          if (checkoutResult.ok) {
-            await ensureSymlink(repoDir, sessionDirFromRepoPath(repoDir));
-            return;
-          }
+        const updateResult = await fetchPrAndCheckout(repoDir, headSha, prNumber);
+        if (updateResult.ok) {
+          await ensureSymlink(repoDir, sessionDirFromRepoPath(repoDir));
+          return;
         }
         // Update failed — fall through to fresh clone
       }
@@ -217,14 +231,11 @@ app.post('/ensure-clone', async (c) => {
         throw new Error(`git clone failed: ${cloneResult.stderr}`);
       }
 
-      // Fetch the PR head — refs/pull/N/head always exists on the base repo
-      if (prNumber) {
-        await exec(
-          ['git', 'fetch', 'origin', '--depth=50', `+refs/pull/${prNumber}/head:refs/remotes/origin/pr-head`],
-          repoDir,
-        );
+      // Fetch the PR head and checkout the target SHA
+      const freshResult = await fetchPrAndCheckout(repoDir, headSha, prNumber);
+      if (!freshResult.ok) {
+        throw new Error(`Post-clone setup failed: ${freshResult.error}`);
       }
-      await exec(['git', 'checkout', headSha], repoDir);
       await ensureSymlink(repoDir, sessionDirFromRepoPath(repoDir));
     });
 
@@ -260,13 +271,8 @@ app.post('/ensure-clone', async (c) => {
         repoDir,
       );
       if (!cloneResult.ok) throw new Error(cloneResult.stderr);
-      if (prNumber) {
-        await exec(
-          ['git', 'fetch', 'origin', '--depth=50', `+refs/pull/${prNumber}/head:refs/remotes/origin/pr-head`],
-          repoDir,
-        );
-      }
-      await exec(['git', 'checkout', headSha], repoDir);
+      const retryResult = await fetchPrAndCheckout(repoDir, headSha, prNumber);
+      if (!retryResult.ok) throw new Error(retryResult.error ?? 'checkout failed');
       await ensureSymlink(repoDir, sessionDirFromRepoPath(repoDir));
       return c.json({ ok: true, repoDir, diff: '' });
     } catch (retryErr) {
