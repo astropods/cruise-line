@@ -148,6 +148,17 @@ export async function createSessionToken(payload: Omit<SessionPayload, 'jti' | '
 }
 
 /**
+ * Set (or clear) the session cookie on a Hono response context.
+ */
+export function setSessionCookie(c: { header: (name: string, value: string) => void }, token: string): void {
+  const secure = config.appUrl.startsWith('https') ? '; Secure' : '';
+  c.header(
+    'Set-Cookie',
+    `${config.session.cookieName}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${7 * 24 * 3600}${secure}`,
+  );
+}
+
+/**
  * Verify and decode a session JWT.
  */
 export async function verifySessionToken(token: string): Promise<SessionPayload | null> {

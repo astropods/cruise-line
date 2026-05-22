@@ -1,5 +1,6 @@
 /**
- * Tests for the repo-access permission system:
+ * Tests for the auth & permission system:
+ *   - requireAuth (session validation + GitHub token refresh)
  *   - verifyRepoAccess (GitHub App installation-based permission check)
  *   - requireRepoAccess (Hono middleware that gates routes)
  */
@@ -12,6 +13,11 @@ import { AppError } from './middleware/error.js';
 
 const mockGetPermissionLevel = mock();
 const mockGetRepoInstallation = mock();
+const mockVerifySessionToken = mock();
+const mockRefreshGitHubToken = mock();
+const mockCreateSessionToken = mock(() => Promise.resolve('fake-session-token'));
+const mockSetSessionCookie = mock();
+const mockIsSessionRevoked = mock();
 
 // Octokit constructor — used by getInstallationForRepo
 mock.module('@octokit/rest', () => ({
@@ -36,20 +42,21 @@ mock.module(path.resolve(import.meta.dir, './github/app.ts'), () => ({
 }));
 
 mock.module(path.resolve(import.meta.dir, './github/oauth.ts'), () => ({
-  verifySessionToken: mock(),
-  refreshGitHubToken: mock(),
-  createSessionToken: mock(() => Promise.resolve('fake-session-token')),
+  verifySessionToken: mockVerifySessionToken,
+  refreshGitHubToken: mockRefreshGitHubToken,
+  createSessionToken: mockCreateSessionToken,
+  setSessionCookie: mockSetSessionCookie,
 }));
 
 mock.module(path.resolve(import.meta.dir, './db/sessions.ts'), () => ({
-  isSessionRevoked: mock(),
+  isSessionRevoked: mockIsSessionRevoked,
 }));
 
 // Suppress console.error from the error-path tests
 spyOn(console, 'error').mockImplementation(() => {});
 
 const { verifyRepoAccess } = await import('./github/client.js');
-const { requireRepoAccess } = await import('./middleware/session.js');
+const { requireAuth, requireRepoAccess } = await import('./middleware/session.js');
 
 // --- Helpers ---------------------------------------------------------
 
@@ -72,10 +79,172 @@ function createContext(
   } as any;
 }
 
+function createAuthContext(cookie?: string) {
+  const headers = new Map<string, string>();
+  return {
+    get: (key: string) => undefined as any,
+    set: (_key: string, _value: unknown) => {},
+    header: (name: string, value: string) => headers.set(name, value),
+    _headers: headers,
+    // getCookie reads from the cookie jar; we simulate via the mock config's cookieName
+    req: {
+      raw: {
+        headers: new Headers(cookie ? { Cookie: `cruise_session=${cookie}` } : {}),
+      },
+    },
+  } as any;
+}
+
 // Default: getRepoInstallation always succeeds
 function setupInstallationMock() {
   mockGetRepoInstallation.mockResolvedValue({ data: { id: 12345 } });
 }
+
+// =====================================================================
+// requireAuth — session validation + GitHub token refresh
+// =====================================================================
+
+describe('requireAuth', () => {
+  beforeEach(() => {
+    mockVerifySessionToken.mockReset();
+    mockRefreshGitHubToken.mockReset();
+    mockCreateSessionToken.mockReset();
+    mockSetSessionCookie.mockReset();
+    mockIsSessionRevoked.mockReset();
+    mockCreateSessionToken.mockResolvedValue('new-session-token');
+    mockIsSessionRevoked.mockResolvedValue(false);
+  });
+
+  it('throws 401 when no cookie is present', async () => {
+    const c = createAuthContext(); // no cookie
+    const next = mock();
+
+    try {
+      await requireAuth(c, next);
+      expect.unreachable('should have thrown');
+    } catch (err) {
+      expect(err).toBeInstanceOf(AppError);
+      expect((err as AppError).statusCode).toBe(401);
+    }
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('throws 401 when session token is invalid', async () => {
+    mockVerifySessionToken.mockResolvedValueOnce(null);
+    const c = createAuthContext('bad-token');
+    const next = mock();
+
+    try {
+      await requireAuth(c, next);
+      expect.unreachable('should have thrown');
+    } catch (err) {
+      expect(err).toBeInstanceOf(AppError);
+      expect((err as AppError).statusCode).toBe(401);
+    }
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('passes through without refresh when token is not expired', async () => {
+    const futureExpiry = Math.floor(Date.now() / 1000) + 3600; // 1 hour from now
+    mockVerifySessionToken.mockResolvedValueOnce({
+      ...fakeSession,
+      refreshToken: 'rt_valid',
+      githubTokenExpiresAt: futureExpiry,
+    });
+    const c = createAuthContext('valid-token');
+    const next = mock().mockResolvedValue(undefined);
+
+    await requireAuth(c, next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(mockRefreshGitHubToken).not.toHaveBeenCalled();
+  });
+
+  it('passes through without refresh for legacy sessions (no refresh token)', async () => {
+    const pastExpiry = Math.floor(Date.now() / 1000) - 3600; // expired 1 hour ago
+    mockVerifySessionToken.mockResolvedValueOnce({
+      ...fakeSession,
+      githubTokenExpiresAt: pastExpiry,
+      // no refreshToken
+    });
+    const c = createAuthContext('legacy-token');
+    const next = mock().mockResolvedValue(undefined);
+
+    await requireAuth(c, next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(mockRefreshGitHubToken).not.toHaveBeenCalled();
+  });
+
+  it('refreshes token when expired and sets a new cookie', async () => {
+    const pastExpiry = Math.floor(Date.now() / 1000) - 3600;
+    mockVerifySessionToken.mockResolvedValueOnce({
+      ...fakeSession,
+      refreshToken: 'rt_old',
+      githubTokenExpiresAt: pastExpiry,
+    });
+    mockRefreshGitHubToken.mockResolvedValueOnce({
+      accessToken: 'ghp_new',
+      refreshToken: 'rt_new',
+      expiresAt: pastExpiry + 36000,
+    });
+
+    const c = createAuthContext('expiring-token');
+    const next = mock().mockResolvedValue(undefined);
+
+    await requireAuth(c, next);
+
+    expect(mockRefreshGitHubToken).toHaveBeenCalledWith('rt_old');
+    expect(mockCreateSessionToken).toHaveBeenCalledTimes(1);
+    expect(mockSetSessionCookie).toHaveBeenCalledTimes(1);
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it('refreshes token within the 5-minute buffer window', async () => {
+    // Token expires in 2 minutes — within the 5-minute buffer
+    const soonExpiry = Math.floor(Date.now() / 1000) + 120;
+    mockVerifySessionToken.mockResolvedValueOnce({
+      ...fakeSession,
+      refreshToken: 'rt_soon',
+      githubTokenExpiresAt: soonExpiry,
+    });
+    mockRefreshGitHubToken.mockResolvedValueOnce({
+      accessToken: 'ghp_refreshed',
+      refreshToken: 'rt_refreshed',
+      expiresAt: soonExpiry + 28800,
+    });
+
+    const c = createAuthContext('soon-expiring-token');
+    const next = mock().mockResolvedValue(undefined);
+
+    await requireAuth(c, next);
+
+    expect(mockRefreshGitHubToken).toHaveBeenCalledWith('rt_soon');
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it('throws 401 when refresh fails', async () => {
+    const pastExpiry = Math.floor(Date.now() / 1000) - 3600;
+    mockVerifySessionToken.mockResolvedValueOnce({
+      ...fakeSession,
+      refreshToken: 'rt_invalid',
+      githubTokenExpiresAt: pastExpiry,
+    });
+    mockRefreshGitHubToken.mockRejectedValueOnce(new Error('Token refresh failed: bad_refresh_token'));
+
+    const c = createAuthContext('expired-token');
+    const next = mock();
+
+    try {
+      await requireAuth(c, next);
+      expect.unreachable('should have thrown');
+    } catch (err) {
+      expect(err).toBeInstanceOf(AppError);
+      expect((err as AppError).statusCode).toBe(401);
+    }
+    expect(next).not.toHaveBeenCalled();
+  });
+});
 
 // =====================================================================
 // verifyRepoAccess — unit tests for the GitHub App permission check
