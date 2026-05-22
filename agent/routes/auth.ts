@@ -62,12 +62,14 @@ authRoutes.get('/callback', authLimiter, async (c) => {
   }
 
   // Exchange code for token
-  const githubToken = await exchangeCodeForToken(code);
-  const user = await getGitHubUser(githubToken);
+  const tokenResult = await exchangeCodeForToken(code);
+  const user = await getGitHubUser(tokenResult.accessToken);
 
   // Create session JWT
   const sessionToken = await createSessionToken({
-    githubToken,
+    githubToken: tokenResult.accessToken,
+    refreshToken: tokenResult.refreshToken,
+    githubTokenExpiresAt: tokenResult.expiresAt,
     userId: user.id,
     login: user.login,
     avatarUrl: user.avatar_url,

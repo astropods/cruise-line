@@ -37,6 +37,8 @@ mock.module(path.resolve(import.meta.dir, './github/app.ts'), () => ({
 
 mock.module(path.resolve(import.meta.dir, './github/oauth.ts'), () => ({
   verifySessionToken: mock(),
+  refreshGitHubToken: mock(),
+  createSessionToken: mock(() => Promise.resolve('fake-session-token')),
 }));
 
 mock.module(path.resolve(import.meta.dir, './db/sessions.ts'), () => ({

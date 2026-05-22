@@ -21,6 +21,7 @@ interface CommentsContextValue {
   setActiveCommentLine: (line: ActiveCommentLine | null) => void;
   setReplyingTo: (commentId: number | null) => void;
   loading: boolean;
+  fetchError: string | null;
   userAvatarUrl: string;
 }
 
@@ -34,6 +35,7 @@ const CommentsContext = createContext<CommentsContextValue>({
   setActiveCommentLine: () => {},
   setReplyingTo: () => {},
   loading: true,
+  fetchError: null,
   userAvatarUrl: '',
 });
 
@@ -47,7 +49,7 @@ interface CommentsProviderProps {
 }
 
 export function CommentsProvider({ children, owner, repo, pr, commitId, userAvatarUrl }: CommentsProviderProps) {
-  const { getCommentsForLine, commentCountForFile, addComment, replyTo, loading } = useComments({
+  const { getCommentsForLine, commentCountForFile, addComment, replyTo, loading, fetchError } = useComments({
     owner, repo, pr, commitId,
   });
   const [activeCommentLine, setActiveCommentLine] = useState<ActiveCommentLine | null>(null);
@@ -64,6 +66,7 @@ export function CommentsProvider({ children, owner, repo, pr, commitId, userAvat
       setActiveCommentLine,
       setReplyingTo,
       loading,
+      fetchError,
       userAvatarUrl,
     }}>
       {children}
