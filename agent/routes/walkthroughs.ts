@@ -11,11 +11,12 @@ import { getPrMetadata, getInstallationForRepo } from '../github/client.js';
 import { jobManager } from '../analysis/jobs.js';
 import { AppError } from '../middleware/error.js';
 import { rateLimit } from '../middleware/rate-limit.js';
+import type { AppEnv } from '../env.js';
 
-export const walkthroughRoutes = new Hono();
+export const walkthroughRoutes = new Hono<AppEnv>();
 
 // 5 generation requests per minute per user
-const generateLimiter = rateLimit('generate', {
+const generateLimiter = rateLimit<AppEnv>('generate', {
   windowMs: 60_000,
   max: 5,
   keyFn: (c) => {
@@ -80,6 +81,7 @@ walkthroughRoutes.post('/:owner/:repo/:pr/generate', generateLimiter, async (c) 
   const prNumber = Number(c.req.param('pr'));
   const force = c.req.query('force') === 'true';
 
+  if (!owner || !repo) throw new AppError(400, 'Missing route parameters');
   if (isNaN(prNumber)) throw new AppError(400, 'Invalid PR number');
 
   // Fetch current PR metadata

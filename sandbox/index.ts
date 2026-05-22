@@ -95,6 +95,26 @@ async function getCurrentSha(dir: string): Promise<string | null> {
   return result.ok ? result.stdout : null;
 }
 
+/** Fetch the PR head ref (or all branches if no prNumber) and checkout the target SHA. */
+async function fetchPrAndCheckout(
+  repoDir: string,
+  headSha: string,
+  prNumber?: number,
+): Promise<{ ok: boolean; error?: string }> {
+  const fetchArgs = prNumber
+    ? ['git', 'fetch', 'origin', '--depth=50', `+refs/pull/${prNumber}/head:refs/remotes/origin/pr-head`]
+    : ['git', 'fetch', 'origin', '--depth=50'];
+  const fetchResult = await exec(fetchArgs, repoDir);
+  if (!fetchResult.ok) {
+    return { ok: false, error: `fetch failed: ${fetchResult.stderr}` };
+  }
+  const checkoutResult = await exec(['git', 'checkout', headSha], repoDir);
+  if (!checkoutResult.ok) {
+    return { ok: false, error: `checkout failed: ${checkoutResult.stderr}` };
+  }
+  return { ok: true };
+}
+
 // Per-PR mutex to prevent concurrent clone operations
 const cloneLocks = new Map<string, Promise<void>>();
 
@@ -158,11 +178,12 @@ app.get('/health', (c) => c.json({ ok: true }));
 // ---------------------------------------------------------------------------
 
 app.post('/ensure-clone', async (c) => {
-  const { cloneUrl, repoPath, headSha, headRef, baseRef } = await c.req.json<{
+  const { cloneUrl, repoPath, headSha, headRef, prNumber, baseRef } = await c.req.json<{
     cloneUrl: string;
     repoPath: string;
     headSha: string;
     headRef: string;
+    prNumber?: number;
     baseRef?: string;
   }>();
 
@@ -186,14 +207,11 @@ app.post('/ensure-clone', async (c) => {
           return;
         }
 
-        // Try to update
-        const fetchResult = await exec(['git', 'fetch', 'origin', '--depth=50'], repoDir);
-        if (fetchResult.ok) {
-          const checkoutResult = await exec(['git', 'checkout', headSha], repoDir);
-          if (checkoutResult.ok) {
-            await ensureSymlink(repoDir, sessionDirFromRepoPath(repoDir));
-            return;
-          }
+        // Try to update — fetch PR ref (works for forks) with branch fallback
+        const updateResult = await fetchPrAndCheckout(repoDir, headSha, prNumber);
+        if (updateResult.ok) {
+          await ensureSymlink(repoDir, sessionDirFromRepoPath(repoDir));
+          return;
         }
         // Update failed — fall through to fresh clone
       }
@@ -203,16 +221,21 @@ app.post('/ensure-clone', async (c) => {
       await rm(repoDir, { recursive: true, force: true });
       await mkdir(repoDir, { recursive: true });
 
+      // Clone the base repo, then fetch the PR head ref (works for fork PRs
+      // where headRef branch only exists on the fork, not the base repo).
       const cloneResult = await exec(
-        ['git', 'clone', '--depth=50', '--single-branch', '--branch', headRef, cloneUrl, '.'],
+        ['git', 'clone', '--depth=50', cloneUrl, '.'],
         repoDir,
       );
       if (!cloneResult.ok) {
         throw new Error(`git clone failed: ${cloneResult.stderr}`);
       }
 
-      // Fetch for diff context
-      await exec(['git', 'fetch', 'origin', '--depth=50'], repoDir);
+      // Fetch the PR head and checkout the target SHA
+      const freshResult = await fetchPrAndCheckout(repoDir, headSha, prNumber);
+      if (!freshResult.ok) {
+        throw new Error(`Post-clone setup failed: ${freshResult.error}`);
+      }
       await ensureSymlink(repoDir, sessionDirFromRepoPath(repoDir));
     });
 
@@ -244,10 +267,12 @@ app.post('/ensure-clone', async (c) => {
       await rm(repoDir, { recursive: true, force: true }).catch(() => {});
       await mkdir(repoDir, { recursive: true });
       const cloneResult = await exec(
-        ['git', 'clone', '--depth=50', '--single-branch', '--branch', headRef, cloneUrl, '.'],
+        ['git', 'clone', '--depth=50', cloneUrl, '.'],
         repoDir,
       );
       if (!cloneResult.ok) throw new Error(cloneResult.stderr);
+      const retryResult = await fetchPrAndCheckout(repoDir, headSha, prNumber);
+      if (!retryResult.ok) throw new Error(retryResult.error ?? 'checkout failed');
       await ensureSymlink(repoDir, sessionDirFromRepoPath(repoDir));
       return c.json({ ok: true, repoDir, diff: '' });
     } catch (retryErr) {

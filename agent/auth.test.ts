@@ -46,8 +46,8 @@ mock.module(path.resolve(import.meta.dir, './db/sessions.ts'), () => ({
 // Suppress console.error from the error-path tests
 spyOn(console, 'error').mockImplementation(() => {});
 
-const { verifyRepoAccess } = await import('./github/client.ts');
-const { requireRepoAccess } = await import('./middleware/session.ts');
+const { verifyRepoAccess } = await import('./github/client.js');
+const { requireRepoAccess } = await import('./middleware/session.js');
 
 // --- Helpers ---------------------------------------------------------
 

@@ -20,6 +20,7 @@ export interface EnsureCloneParams {
   repoPath: string;
   headSha: string;
   headRef: string;
+  prNumber: number;
   baseRef?: string;
 }
 

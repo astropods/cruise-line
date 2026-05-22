@@ -1,15 +1,15 @@
-export interface FileContent {
+export type FileContent = {
   after?: string;
   language: string;
   /** Raw unified diff patch from `git diff`. Undefined for context-only files. */
   patch?: string;
-}
+};
 
 export type Severity = 'critical' | 'high' | 'medium' | 'low' | 'info';
 export type FindingCategory = 'correctness' | 'security' | 'maintainability' | 'performance' | 'style';
 export type Verdict = 'approve' | 'request_changes' | 'needs_discussion';
 
-export interface Finding {
+export type Finding = {
   title: string;
   severity: Severity;
   category: FindingCategory;
@@ -19,9 +19,9 @@ export interface Finding {
   files: string[];
   /** A prompt the developer can paste into Claude Code to fix this issue. Omitted for info findings. */
   fixPrompt?: string;
-}
+};
 
-export interface Walkthrough {
+export type Walkthrough = {
   pr: {
     repo: string;
     number: number;
@@ -36,16 +36,16 @@ export interface Walkthrough {
   findings: Finding[];
   /** Full file contents keyed by path, populated by the analyzer */
   files: Record<string, FileContent>;
-}
+};
 
 /** The shape Claude produces (without full file contents) */
-export interface ClaudeAnalysisOutput {
+export type ClaudeAnalysisOutput = {
   pr: Walkthrough['pr'];
   summary: string;
   verdict: Verdict;
   verdictRationale: string;
   findings: Finding[];
-}
+};
 
 /** JSON Schema for Claude Agent SDK structured output */
 export const analysisJsonSchema = {

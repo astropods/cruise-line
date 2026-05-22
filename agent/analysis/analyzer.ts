@@ -58,6 +58,7 @@ export async function analyzePr(
       repoPath,
       headSha: prMetadata.headSha,
       headRef: prMetadata.headRef,
+      prNumber: prMetadata.number,
       baseRef: prMetadata.baseRef,
     });
 
