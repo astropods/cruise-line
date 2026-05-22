@@ -1,13 +1,13 @@
-import type { Context, Next } from 'hono';
+import type { Context, Env, Next } from 'hono';
 import { AppError } from './error.js';
 
-interface RateLimitOptions {
+interface RateLimitOptions<E extends Env = Env> {
   /** Time window in milliseconds */
   windowMs: number;
   /** Maximum requests allowed per window */
   max: number;
   /** Custom key function — defaults to IP-based keying */
-  keyFn?: (c: Context) => string;
+  keyFn?: (c: Context<E>) => string;
 }
 
 /**
@@ -17,7 +17,7 @@ interface RateLimitOptions {
  * the window are pruned on each request and periodically via
  * a background cleanup interval.
  */
-export function rateLimit(name: string, options: RateLimitOptions) {
+export function rateLimit<E extends Env = Env>(name: string, options: RateLimitOptions<E>) {
   const { windowMs, max, keyFn } = options;
   const store = new Map<string, number[]>();
 
@@ -37,7 +37,7 @@ export function rateLimit(name: string, options: RateLimitOptions) {
   // Allow the process to exit cleanly
   if (cleanup.unref) cleanup.unref();
 
-  return async (c: Context, next: Next) => {
+  return async (c: Context<E>, next: Next) => {
     // Prefer x-real-ip (set authoritatively by reverse proxies) over
     // x-forwarded-for (client-appendable, trivially spoofable).
     // If neither is present, all direct clients share one bucket — safe default.

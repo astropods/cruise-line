@@ -4,16 +4,6 @@ import { config } from '../config.js';
 import { requireAuth, requireRepoAccess } from '../middleware/session.js';
 import { AppError } from '../middleware/error.js';
 import { rateLimit } from '../middleware/rate-limit.js';
-
-// 20 messages per minute per user
-const chatLimiter = rateLimit('chat', {
-  windowMs: 60_000,
-  max: 20,
-  keyFn: (c) => {
-    const session = c.get('session');
-    return session?.userId ? String(session.userId) : 'unknown';
-  },
-});
 import { getInstallationToken } from '../github/app.js';
 import { sandboxEnsureClone, sandboxRepoPath, sandboxQueryRaw, sandboxSessionMessages } from '../sandbox-client.js';
 import { getOrCreateChatSession, getChatSession, touchChatSession, deleteChatSession } from '../db/chat-sessions.js';
@@ -21,9 +11,19 @@ import { getLatestWalkthrough } from '../db/walkthroughs.js';
 import { listRules } from '../db/rules.js';
 import { getInstallationForRepo, getPrMetadata } from '../github/client.js';
 import { buildChatSystemPrompt } from '../chat/prompt.js';
-import type { SessionPayload } from '../github/oauth.js';
+import type { AppEnv } from '../env.js';
 
-export const chatRoutes = new Hono();
+export const chatRoutes = new Hono<AppEnv>();
+
+// 20 messages per minute per user
+const chatLimiter = rateLimit<AppEnv>('chat', {
+  windowMs: 60_000,
+  max: 20,
+  keyFn: (c) => {
+    const session = c.get('session');
+    return session?.userId ? String(session.userId) : 'unknown';
+  },
+});
 
 chatRoutes.use('/:owner/:repo/:pr/*', requireAuth, requireRepoAccess);
 chatRoutes.use('/:owner/:repo/:pr', requireAuth, requireRepoAccess);
@@ -33,11 +33,12 @@ chatRoutes.use('/:owner/:repo/:pr', requireAuth, requireRepoAccess);
  * Proxies the chat query to the sandbox container and streams results back.
  */
 chatRoutes.post('/:owner/:repo/:pr/message', chatLimiter, async (c) => {
-  const session = c.get('session') as SessionPayload;
+  const session = c.get('session');
   const owner = c.req.param('owner');
   const repo = c.req.param('repo');
   const prNumber = Number(c.req.param('pr'));
 
+  if (!owner || !repo) throw new AppError(400, 'Missing route parameters');
   if (isNaN(prNumber)) throw new AppError(400, 'Invalid PR number');
 
   const { message } = await c.req.json<{ message: string }>();
@@ -61,6 +62,7 @@ chatRoutes.post('/:owner/:repo/:pr/message', chatLimiter, async (c) => {
     repoPath,
     headSha: pr.headSha,
     headRef: pr.headRef,
+    prNumber,
   });
 
   const walkthrough = await getLatestWalkthrough(owner, repo, prNumber);
@@ -116,7 +118,7 @@ chatRoutes.post('/:owner/:repo/:pr/message', chatLimiter, async (c) => {
  * Proxies session history retrieval to the sandbox.
  */
 chatRoutes.get('/:owner/:repo/:pr/session', async (c) => {
-  const session = c.get('session') as SessionPayload;
+  const session = c.get('session');
   const owner = c.req.param('owner');
   const repo = c.req.param('repo');
   const prNumber = Number(c.req.param('pr'));
@@ -146,7 +148,7 @@ chatRoutes.get('/:owner/:repo/:pr/session', async (c) => {
  * DELETE /api/chat/:owner/:repo/:pr/session
  */
 chatRoutes.delete('/:owner/:repo/:pr/session', async (c) => {
-  const session = c.get('session') as SessionPayload;
+  const session = c.get('session');
   const owner = c.req.param('owner');
   const repo = c.req.param('repo');
   const prNumber = Number(c.req.param('pr'));

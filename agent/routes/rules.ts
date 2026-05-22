@@ -2,8 +2,9 @@ import { Hono } from 'hono';
 import { requireAuth, requireRepoAccess } from '../middleware/session.js';
 import { AppError } from '../middleware/error.js';
 import { listRules, addRule, deleteRule, updateRule } from '../db/rules.js';
+import type { AppEnv } from '../env.js';
 
-export const ruleRoutes = new Hono();
+export const ruleRoutes = new Hono<AppEnv>();
 
 ruleRoutes.use('/:owner/:repo/*', requireAuth, requireRepoAccess);
 ruleRoutes.use('/:owner/:repo', requireAuth, requireRepoAccess);

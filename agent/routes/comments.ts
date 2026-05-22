@@ -3,9 +3,9 @@ import { Octokit } from '@octokit/rest';
 import { config } from '../config.js';
 import { requireAuth, requireRepoAccess } from '../middleware/session.js';
 import { AppError } from '../middleware/error.js';
-import type { SessionPayload } from '../github/oauth.js';
+import type { AppEnv } from '../env.js';
 
-export const commentRoutes = new Hono();
+export const commentRoutes = new Hono<AppEnv>();
 
 commentRoutes.use('/:owner/:repo/:pr/*', requireAuth, requireRepoAccess);
 commentRoutes.use('/:owner/:repo/:pr', requireAuth, requireRepoAccess);
@@ -32,7 +32,7 @@ function formatComment(c: any) {
  * Fetch all review comments for the PR.
  */
 commentRoutes.get('/:owner/:repo/:pr', async (c) => {
-  const session = c.get('session') as SessionPayload;
+  const session = c.get('session');
   const owner = c.req.param('owner');
   const repo = c.req.param('repo');
   const prNumber = Number(c.req.param('pr'));
@@ -59,7 +59,7 @@ commentRoutes.get('/:owner/:repo/:pr', async (c) => {
  * Create a review comment on a specific line.
  */
 commentRoutes.post('/:owner/:repo/:pr', async (c) => {
-  const session = c.get('session') as SessionPayload;
+  const session = c.get('session');
   const owner = c.req.param('owner');
   const repo = c.req.param('repo');
   const prNumber = Number(c.req.param('pr'));
@@ -103,7 +103,7 @@ commentRoutes.post('/:owner/:repo/:pr', async (c) => {
  * Reply to an existing review comment.
  */
 commentRoutes.post('/:owner/:repo/:pr/:commentId/reply', async (c) => {
-  const session = c.get('session') as SessionPayload;
+  const session = c.get('session');
   const owner = c.req.param('owner');
   const repo = c.req.param('repo');
   const prNumber = Number(c.req.param('pr'));

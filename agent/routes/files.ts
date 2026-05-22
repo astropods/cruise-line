@@ -2,8 +2,9 @@ import { Hono } from 'hono';
 import { requireAuth, requireRepoAccess } from '../middleware/session.js';
 import { AppError } from '../middleware/error.js';
 import { sandboxFileContent, sandboxRepoPath } from '../sandbox-client.js';
+import type { AppEnv } from '../env.js';
 
-export const fileRoutes = new Hono();
+export const fileRoutes = new Hono<AppEnv>();
 
 fileRoutes.use('/:owner/:repo/:pr/*', requireAuth, requireRepoAccess);
 

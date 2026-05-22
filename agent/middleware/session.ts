@@ -1,10 +1,11 @@
 import type { Context, Next } from 'hono';
 import { getCookie } from 'hono/cookie';
 import { config } from '../config.js';
-import { verifySessionToken, type SessionPayload } from '../github/oauth.js';
+import { verifySessionToken } from '../github/oauth.js';
 import { verifyRepoAccess } from '../github/client.js';
 import { isSessionRevoked } from '../db/sessions.js';
 import { AppError } from './error.js';
+import type { AppEnv } from '../env.js';
 
 // Repo access cache: `${userId}:${owner}/${repo}` -> expiry timestamp
 const accessCache = new Map<string, number>();
@@ -14,7 +15,7 @@ const ACCESS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
  * Middleware that requires a valid session cookie.
  * Attaches session payload to the context.
  */
-export async function requireAuth(c: Context, next: Next) {
+export async function requireAuth(c: Context<AppEnv>, next: Next) {
   const cookie = getCookie(c, config.session.cookieName);
   if (!cookie) {
     throw new AppError(401, 'Not authenticated');
@@ -30,7 +31,7 @@ export async function requireAuth(c: Context, next: Next) {
     throw new AppError(401, 'Session has been revoked');
   }
 
-  c.set('session', session as SessionPayload);
+  c.set('session', session);
   await next();
 }
 
@@ -38,8 +39,8 @@ export async function requireAuth(c: Context, next: Next) {
  * Middleware that verifies the authenticated user is a collaborator (push access)
  * on the repo specified in :owner/:repo route params.
  */
-export async function requireRepoAccess(c: Context, next: Next) {
-  const session = c.get('session') as SessionPayload;
+export async function requireRepoAccess(c: Context<AppEnv>, next: Next) {
+  const session = c.get('session');
   const owner = c.req.param('owner');
   const repo = c.req.param('repo');
 

@@ -12,17 +12,18 @@ import { refreshWebhooks } from '../github/webhooks.js';
 import { requireAuth } from '../middleware/session.js';
 import { validateGitHubUrl, validateAppUrl } from '../middleware/validation.js';
 import { rateLimit } from '../middleware/rate-limit.js';
+import type { AppEnv } from '../env.js';
 
-export const setupRoutes = new Hono();
+export const setupRoutes = new Hono<AppEnv>();
 
 // 5 requests per minute per IP for setup operations
-const setupLimiter = rateLimit('setup', { windowMs: 60_000, max: 5 });
+const setupLimiter = rateLimit<AppEnv>('setup', { windowMs: 60_000, max: 5 });
 
 /**
  * Conditional auth for setup: if GitHub is already configured, require login.
  * If not configured (first-time setup), allow through since OAuth isn't available yet.
  */
-async function requireSetupAuth(c: Context, next: Next) {
+async function requireSetupAuth(c: Context<AppEnv>, next: Next) {
   if (isGitHubConfigured()) {
     return requireAuth(c, next);
   }
@@ -60,7 +61,7 @@ setupRoutes.get('/status', async (c) => {
  * Redirects the user to GitHub with a pre-filled app manifest.
  */
 setupRoutes.post('/github', setupLimiter, requireSetupAuth, async (c) => {
-  const body = await c.req.json<{ githubUrl?: string; appUrl?: string; org?: string }>().catch(() => ({}));
+  const body = await c.req.json<{ githubUrl?: string; appUrl?: string; org?: string }>().catch((): { githubUrl?: string; appUrl?: string; org?: string } => ({}));
 
   // Validate and set app URL if provided
   if (body.appUrl) {
