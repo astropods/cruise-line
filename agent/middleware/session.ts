@@ -1,7 +1,13 @@
 import type { Context, Next } from 'hono';
 import { getCookie } from 'hono/cookie';
 import { config } from '../config.js';
-import { verifySessionToken } from '../github/oauth.js';
+import {
+  verifySessionToken,
+  refreshGitHubToken,
+  createSessionToken,
+  setSessionCookie,
+  type TokenExchangeResult,
+} from '../github/oauth.js';
 import { verifyRepoAccess } from '../github/client.js';
 import { isSessionRevoked } from '../db/sessions.js';
 import { AppError } from './error.js';
@@ -11,9 +17,18 @@ import type { AppEnv } from '../env.js';
 const accessCache = new Map<string, number>();
 const ACCESS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
+// Refresh buffer: refresh token when less than 5 minutes remain
+const REFRESH_BUFFER_SECONDS = 5 * 60;
+
+// Dedup concurrent refresh attempts — keyed by the refresh token being used.
+// GitHub refresh tokens are single-use, so only the first caller should hit
+// the API; concurrent requests share the same in-flight promise.
+const inflightRefreshes = new Map<string, Promise<TokenExchangeResult>>();
+
 /**
  * Middleware that requires a valid session cookie.
  * Attaches session payload to the context.
+ * Automatically refreshes expired GitHub tokens when a refresh token is available.
  */
 export async function requireAuth(c: Context<AppEnv>, next: Next) {
   const cookie = getCookie(c, config.session.cookieName);
@@ -29,6 +44,42 @@ export async function requireAuth(c: Context<AppEnv>, next: Next) {
   // Check if the session has been revoked
   if (session.jti && await isSessionRevoked(session.jti)) {
     throw new AppError(401, 'Session has been revoked');
+  }
+
+  // Auto-refresh the GitHub token if it's expired or about to expire
+  const now = Math.floor(Date.now() / 1000);
+  if (session.githubTokenExpiresAt && session.refreshToken && now >= session.githubTokenExpiresAt - REFRESH_BUFFER_SECONDS) {
+    try {
+      // Dedup: reuse an in-flight refresh for the same refresh token
+      const rt = session.refreshToken;
+      let pending = inflightRefreshes.get(rt);
+      if (!pending) {
+        pending = refreshGitHubToken(rt);
+        inflightRefreshes.set(rt, pending);
+        // Clean up after settle; .catch() prevents an unhandled rejection on the
+        // detached chain (the original promise is still awaited below).
+        pending.catch(() => {}).finally(() => inflightRefreshes.delete(rt));
+      }
+
+      const refreshed = await pending;
+      session.githubToken = refreshed.accessToken;
+      session.refreshToken = refreshed.refreshToken;
+      session.githubTokenExpiresAt = refreshed.expiresAt;
+
+      // Issue a new session cookie with the updated token
+      const newSessionToken = await createSessionToken({
+        githubToken: session.githubToken,
+        refreshToken: session.refreshToken,
+        githubTokenExpiresAt: session.githubTokenExpiresAt,
+        userId: session.userId,
+        login: session.login,
+        avatarUrl: session.avatarUrl,
+      });
+      setSessionCookie(c, newSessionToken);
+    } catch (err) {
+      console.error('GitHub token refresh failed:', err);
+      throw new AppError(401, 'Session expired');
+    }
   }
 
   c.set('session', session);

@@ -6,6 +6,7 @@ import {
   exchangeCodeForToken,
   getGitHubUser,
   createSessionToken,
+  setSessionCookie,
   verifySessionToken,
 } from '../github/oauth.js';
 import { revokeSession } from '../db/sessions.js';
@@ -62,23 +63,21 @@ authRoutes.get('/callback', authLimiter, async (c) => {
   }
 
   // Exchange code for token
-  const githubToken = await exchangeCodeForToken(code);
-  const user = await getGitHubUser(githubToken);
+  const tokenResult = await exchangeCodeForToken(code);
+  const user = await getGitHubUser(tokenResult.accessToken);
 
   // Create session JWT
   const sessionToken = await createSessionToken({
-    githubToken,
+    githubToken: tokenResult.accessToken,
+    refreshToken: tokenResult.refreshToken,
+    githubTokenExpiresAt: tokenResult.expiresAt,
     userId: user.id,
     login: user.login,
     avatarUrl: user.avatar_url,
   });
 
   // Set session cookie on this domain
-  const secure = config.appUrl.startsWith('https') ? '; Secure' : '';
-  c.header(
-    'Set-Cookie',
-    `${config.session.cookieName}=${sessionToken}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${7 * 24 * 3600}${secure}`,
-  );
+  setSessionCookie(c, sessionToken);
 
   // In dev, the frontend is on a different origin (Vite).
   // Pass the token via query param so the frontend can set its own cookie.

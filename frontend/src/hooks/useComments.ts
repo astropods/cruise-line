@@ -11,12 +11,16 @@ interface UseCommentsOptions {
 export function useComments({ owner, repo, pr, commitId }: UseCommentsOptions) {
   const [comments, setComments] = useState<PRComment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   // Fetch existing comments on mount
   useEffect(() => {
+    setFetchError(null);
     fetchComments(owner, repo, pr)
       .then((res) => setComments(res.comments))
-      .catch(() => {})
+      .catch((err) => {
+        setFetchError(err instanceof Error ? err.message : 'Failed to load comments');
+      })
       .finally(() => setLoading(false));
   }, [owner, repo, pr]);
 
@@ -74,6 +78,7 @@ export function useComments({ owner, repo, pr, commitId }: UseCommentsOptions) {
   return {
     comments,
     loading,
+    fetchError,
     getCommentsForLine,
     commentCountForFile,
     addComment,
