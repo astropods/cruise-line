@@ -12,7 +12,8 @@
 
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
-import { query, getSessionMessages, getSessionInfo } from '@anthropic-ai/claude-agent-sdk';
+// Import the SDK via telemetry.ts so OpenInference can instrument it before use.
+import { query, getSessionMessages, getSessionInfo } from './telemetry.js';
 import { existsSync } from 'fs';
 import { readFile } from 'fs/promises';
 import { symlink, readlink, lstat, mkdir, rm } from 'fs/promises';
