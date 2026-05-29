@@ -25,30 +25,41 @@ const ClaudeAgentSDK = { ...ClaudeAgentSDKModule };
 
 const endpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
 if (endpoint) {
-  const provider = new NodeTracerProvider({
-    resource: new Resource({
-      'service.name': process.env.ASTRO_AGENT_NAME ?? 'cruise-line-sandbox',
-      'service.version': process.env.ASTRO_AGENT_BUILD ?? 'dev',
-    }),
-  });
-  const url = endpoint.replace(/\/+$/, '') + '/v1/traces';
-  provider.addSpanProcessor(new BatchSpanProcessor(new OTLPTraceExporter({ url })));
-  provider.register();
+  // Telemetry must never take the sandbox down. If any of the OTEL constructors
+  // throw — version mismatch, malformed URL, etc. — log and fall through to the
+  // unpatched SDK exports below.
+  try {
+    const provider = new NodeTracerProvider({
+      resource: new Resource({
+        'service.name': process.env.ASTRO_AGENT_NAME ?? 'cruise-line-sandbox',
+        'service.version': process.env.ASTRO_AGENT_BUILD ?? 'dev',
+      }),
+    });
+    const url = endpoint.replace(/\/+$/, '') + '/v1/traces';
+    provider.addSpanProcessor(new BatchSpanProcessor(new OTLPTraceExporter({ url })));
+    provider.register();
 
-  const instrumentation = new ClaudeAgentSDKInstrumentation();
-  instrumentation.setTracerProvider(provider);
-  instrumentation.manuallyInstrument(ClaudeAgentSDK);
+    const instrumentation = new ClaudeAgentSDKInstrumentation();
+    instrumentation.setTracerProvider(provider);
+    instrumentation.manuallyInstrument(ClaudeAgentSDK);
 
-  const flush = async () => {
-    try {
-      await provider.forceFlush();
-      await provider.shutdown();
-    } catch {}
-  };
-  process.on('SIGTERM', flush);
-  process.on('SIGINT', flush);
+    // Registering SIGTERM/SIGINT listeners replaces Node's default terminate
+    // behavior, so we must explicitly exit after flushing or the process hangs
+    // until Docker SIGKILLs it.
+    const flushAndExit = async (signal: NodeJS.Signals) => {
+      try {
+        await provider.forceFlush();
+        await provider.shutdown();
+      } catch {}
+      process.exit(signal === 'SIGINT' ? 130 : 0);
+    };
+    process.once('SIGTERM', flushAndExit);
+    process.once('SIGINT', flushAndExit);
 
-  console.log(`Telemetry: exporting OTLP traces to ${url}`);
+    console.log(`Telemetry: exporting OTLP traces to ${url}`);
+  } catch (err) {
+    console.warn('Telemetry: initialization failed — traces disabled', err);
+  }
 } else {
   console.log('Telemetry: OTEL_EXPORTER_OTLP_ENDPOINT not set — traces disabled');
 }
