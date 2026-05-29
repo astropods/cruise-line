@@ -13,7 +13,13 @@
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
 // Import the SDK via telemetry.ts so OpenInference can instrument it before use.
-import { query, getSessionMessages, getSessionInfo } from './telemetry.js';
+import {
+  query,
+  getSessionMessages,
+  getSessionInfo,
+  getTelemetryStatus,
+  runTelemetryTest,
+} from './telemetry.js';
 import { existsSync } from 'fs';
 import { readFile } from 'fs/promises';
 import { symlink, readlink, lstat, mkdir, rm } from 'fs/promises';
@@ -173,6 +179,17 @@ function detectLanguage(filePath: string): string {
 // ---------------------------------------------------------------------------
 
 app.get('/health', (c) => c.json({ ok: true }));
+
+// ---------------------------------------------------------------------------
+// Telemetry diagnostics — proxied through the agent at /api/debug/telemetry.
+// ---------------------------------------------------------------------------
+
+app.get('/telemetry-status', (c) => c.json(getTelemetryStatus()));
+
+app.post('/telemetry-test', async (c) => {
+  const result = await runTelemetryTest();
+  return c.json(result);
+});
 
 // ---------------------------------------------------------------------------
 // POST /ensure-clone — Clone or update a repo in the sandbox volume.

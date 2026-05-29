@@ -249,3 +249,28 @@ export async function sandboxSessionMessages(
   const data = await res.json() as { messages: any[] };
   return data.messages ?? [];
 }
+
+// ---------------------------------------------------------------------------
+// Telemetry diagnostics
+// ---------------------------------------------------------------------------
+
+export async function sandboxTelemetryStatus(): Promise<unknown> {
+  const res = await fetch(sandboxUrl('/telemetry-status'), {
+    signal: AbortSignal.timeout(5_000),
+  });
+  if (!res.ok) {
+    throw new Error(`Sandbox telemetry-status failed (${res.status})`);
+  }
+  return res.json();
+}
+
+export async function sandboxTelemetryTest(): Promise<unknown> {
+  const res = await fetch(sandboxUrl('/telemetry-test'), {
+    method: 'POST',
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!res.ok) {
+    throw new Error(`Sandbox telemetry-test failed (${res.status})`);
+  }
+  return res.json();
+}

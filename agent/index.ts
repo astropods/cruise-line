@@ -21,6 +21,7 @@ import { chatRoutes } from './routes/chat.js';
 import { fileRoutes } from './routes/files.js';
 import { ruleRoutes } from './routes/rules.js';
 import { setupRoutes } from './routes/setup.js';
+import { debugRoutes } from './routes/debug.js';
 import { errorHandler } from './middleware/error.js';
 
 const isDev = config.port !== 80;
@@ -64,6 +65,7 @@ app.route('/api/chat', chatRoutes);
 app.route('/api/files', fileRoutes);
 app.route('/api/rules', ruleRoutes);
 app.route('/api/setup', setupRoutes);
+app.route('/api/debug', debugRoutes);
 
 if (isDev) {
   // In dev, redirect non-API page requests to Vite dev server
