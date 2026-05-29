@@ -21,7 +21,6 @@ frontend/node_modules/
 
 # Sandbox
 sandbox/node_modules/
-sandbox/bun.lock
 
 # IDE
 .idea/

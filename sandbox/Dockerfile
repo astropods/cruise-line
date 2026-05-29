@@ -7,10 +7,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends git ca-certific
 
 WORKDIR /sandbox
 
-COPY sandbox/package.json sandbox/bun.lockb* ./
-RUN bun install --production
+COPY sandbox/package.json sandbox/bun.lock ./
+RUN bun install --production --frozen-lockfile
 
-COPY sandbox/index.ts ./
+COPY sandbox/index.ts sandbox/telemetry.ts ./
 
 # Install Claude Code native binary — must run AFTER node_modules are copied
 # so the binary lands in the correct SDK package directories.
