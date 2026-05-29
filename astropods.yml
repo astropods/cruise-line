@@ -43,4 +43,9 @@ knowledge:
         dockerfile: sandbox/Dockerfile
       port: 3000
       volume: /data
+      # The platform auto-injects OTEL_EXPORTER_OTLP_ENDPOINT into the agent
+      # container but not knowledge containers. The collector service name is
+      # deterministic (<agent>-collector:4318), so we wire it in explicitly here.
+      environment:
+        OTEL_EXPORTER_OTLP_ENDPOINT: http://cruise-line-collector:4318
     persistent: true
