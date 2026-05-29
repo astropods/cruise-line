@@ -39,9 +39,9 @@ export const { query, getSessionMessages, getSessionInfo } = ClaudeAgentSDK;
 
 The astro platform auto-injects `OTEL_EXPORTER_OTLP_ENDPOINT` into agent containers; the value points at a per-deployment collector that forwards to the account's Langfuse project. When the env var isn't set (local dev, or unsupported container types) the module logs and skips instrumentation, so the sandbox stays functional without a collector.
 
-### Known prod gap
+### Knowledge container endpoint wiring
 
-`OTEL_EXPORTER_OTLP_ENDPOINT` is currently auto-injected into agent containers only, not knowledge containers. The sandbox is declared as a `knowledge` entry in `astropods.yml`, so traces will no-op in deployed environments until either the platform injects OTEL env into knowledge/ingestion containers or `chat-sandbox.container.environment.OTEL_EXPORTER_OTLP_ENDPOINT` is set explicitly. The deterministic value is `http://cruise-line-collector:4318`.
+`OTEL_EXPORTER_OTLP_ENDPOINT` is currently auto-injected into agent containers only, not knowledge containers. The sandbox is declared as a `knowledge` entry, so we wire the deterministic collector address (`http://cruise-line-collector:4318`) into `chat-sandbox.container.environment` explicitly. If the platform later extends auto-injection to knowledge/ingestion containers, this hardcoded value can be removed.
 
 ## Migration
 
