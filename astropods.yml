@@ -35,7 +35,6 @@ models:
 knowledge:
   cruise-db:
     provider: postgres
-    persistent: true
   chat-sandbox:
     container:
       build:
@@ -48,4 +47,3 @@ knowledge:
       # deterministic (<agent>-collector:4318), so we wire it in explicitly here.
       environment:
         OTEL_EXPORTER_OTLP_ENDPOINT: http://cruise-line-collector:4318
-    persistent: true
