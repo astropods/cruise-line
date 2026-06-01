@@ -100,7 +100,7 @@ export async function analyzePr(
       systemPrompt: SYSTEM_PROMPT,
       repoPath: cloneResult.repoDir,
       model: config.claude.model,
-      maxTurns: 30,
+      maxTurns: 60,
       outputFormat: {
         type: 'json_schema',
         schema: walkthroughJsonSchema,
