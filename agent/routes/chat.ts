@@ -78,7 +78,7 @@ chatRoutes.post('/:owner/:repo/:pr/message', chatLimiter, async (c) => {
     sessionId: chatSession.session_id,
     repoPath: cloneResult.repoDir,
     model: config.claude.model,
-    maxTurns: 15,
+    maxTurns: 30,
   });
 
   // Stream the sandbox SSE response through to the client
