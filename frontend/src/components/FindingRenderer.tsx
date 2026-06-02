@@ -39,10 +39,10 @@ const categoryConfig: Record<FindingCategory, { label: string; icon: Icon }> = {
 };
 
 /**
- * Extract the first ::diff or ::code directive's file and start line,
- * which is the most specific location to anchor a comment.
+ * Extract the first ::diff or ::code directive's file and start line.
+ * Used as a fallback for legacy walkthroughs saved before commentAnchor existed.
  */
-function extractCommentTarget(body: string): { file: string; line: number } | null {
+function extractCommentTargetFromBody(body: string): { file: string; line: number } | null {
   const match = body.match(/::(?:diff|code)\{[^}]*file="([^"]+)"[^}]*lines="(\d+)-\d+"[^}]*\}/);
   if (!match) return null;
   return { file: match[1], line: parseInt(match[2], 10) };
@@ -55,7 +55,10 @@ export function FindingRenderer({ finding, files, index, onSaveAsRule, onRuleCli
   const { setActiveCommentLine } = useCommentsContext();
   const [copied, setCopied] = useState(false);
 
-  const commentTarget = extractCommentTarget(finding.body);
+  // Prefer the structured anchor (new walkthroughs); fall back to body parsing for legacy data.
+  const commentTarget = finding.commentAnchor
+    ? { file: finding.commentAnchor.file, line: finding.commentAnchor.lineStart }
+    : extractCommentTargetFromBody(finding.body);
   const canComment = commentTarget && files[commentTarget.file]?.patch;
 
   const handlePostAsComment = useCallback(() => {

@@ -99,11 +99,13 @@ Compare with the existing pattern in ::file{file="server/routes/admin.ts"}.
 - **Block directives** (\`::callout\` and \`::suggestion\`) consume the lines that follow them. **Always end them with a blank line** before continuing.
 - The \`lines\` attribute is always 1-indexed and refers to the new (head) version of the file.
 
-## Fix prompts
+## Required fields for non-info findings
 
-For findings with severity \`critical\` through \`low\`, include a \`fixPrompt\` — a self-contained prompt the developer can paste into Claude Code to fix the issue. Omit \`fixPrompt\` for \`info\`-severity findings (they don't need fixing).
+Every finding with severity \`critical\`, \`high\`, \`medium\`, or \`low\` **MUST** include both of these fields. The schema enforces this — if you omit either, the response will be rejected. Only \`info\` findings may omit them.
 
-Write the prompt as if you're briefing a colleague who has access to the repo but hasn't seen your review. Include:
+### \`fixPrompt\` (required for non-info)
+
+A self-contained prompt the developer can paste into Claude Code to fix the issue. Write it as if you're briefing a colleague who has access to the repo but hasn't seen your review. Include:
 - What's wrong and why it matters (one sentence)
 - The specific file(s) and line numbers involved
 - What the fix should do, with enough specificity to act on
@@ -115,6 +117,22 @@ Example:
 \`\`\`
 In \`server/routes/api.ts\`, the POST /collections handler (line 45-60) doesn't check authentication before modifying data. Add an auth guard at the top of the handler that returns 401 if \`ctx.session?.userId\` is missing. Follow the same pattern used in \`server/routes/admin.ts\` lines 12-20.
 \`\`\`
+
+### \`commentAnchor\` (required for non-info)
+
+Anchors the "Post as comment" action to a specific file and line range in the PR diff. Shape:
+
+\`\`\`json
+{ "file": "path/to/changed-file.ts", "lineStart": 45, "lineEnd": 60 }
+\`\`\`
+
+Rules:
+- \`file\` **must be a file that appears in this PR's diff** — not an unchanged file you happened to reference for context. If the file isn't part of the diff, the comment can't be posted to GitHub and the button will be broken. Pick a changed file that best represents the finding.
+- \`lineStart\` and \`lineEnd\` are 1-indexed and refer to the **new (head)** version of the file.
+- For a single-line finding, set \`lineStart === lineEnd\`.
+- Typically the anchor should match the primary \`::diff\` directive in the finding body. If you don't have a \`::diff\` directive yet, add one — every non-info finding should show the changed code it's about.
+
+If a finding is genuinely about something that has no anchor in the diff (e.g. "this whole new module is misplaced"), pick the most representative line range of the changed code anyway. Don't downgrade a real issue to \`info\` just to avoid the anchor.
 
 ## Guidelines
 

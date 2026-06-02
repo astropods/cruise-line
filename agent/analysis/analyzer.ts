@@ -36,6 +36,10 @@ function extractFileReferences(output: ClaudeWalkthroughOutput): Set<string> {
     for (const f of finding.files) {
       files.add(f);
     }
+    // Structured comment anchor target — must have its patch loaded for "Post as comment" to work
+    if (finding.commentAnchor?.file) {
+      files.add(finding.commentAnchor.file);
+    }
   }
   return files;
 }

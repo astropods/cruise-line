@@ -2,10 +2,12 @@ import { useState, useCallback } from 'react';
 import {
   WarningOctagon, WarningCircle, Warning, ArrowDown, Lightbulb,
   Bug, ShieldCheck, Wrench, Lightning, PaintBrush,
-  Copy, Check,
+  Copy, Check, ChatText,
   type Icon,
 } from '@phosphor-icons/react';
 import { RichContent } from './RichContent';
+import { useSlideout } from '../contexts/SlideoutContext';
+import { useCommentsContext } from '../contexts/CommentsContext';
 import type { FileContent, Severity, FindingCategory } from '../api';
 
 interface InlineFindingProps {
@@ -15,6 +17,44 @@ interface InlineFindingProps {
   body: string;
   fixPrompt?: string;
   files: Record<string, FileContent>;
+}
+
+/** Extract the first ::diff or ::code directive's file and start line from a finding body. */
+function extractCommentTargetFromBody(body: string): { file: string; line: number } | null {
+  const match = body.match(/::(?:diff|code)\{[^}]*file="([^"]+)"[^}]*lines="(\d+)-\d+"[^}]*\}/);
+  if (!match) return null;
+  return { file: match[1], line: parseInt(match[2], 10) };
+}
+
+/** Strip ::directive{} blocks from markdown so the comment prefill is clean prose. */
+function stripDirectives(body: string): string {
+  const lines = body.split('\n');
+  const result: string[] = [];
+  const directiveRe = /^::(\w+)\{[^}]*\}\s*$/;
+  let i = 0;
+  while (i < lines.length) {
+    const match = directiveRe.exec(lines[i]);
+    if (match) {
+      const directive = match[1];
+      if (directive === 'callout' || directive === 'suggestion') {
+        i++;
+        while (i < lines.length) {
+          if (lines[i].trim() === '') {
+            let nextNonEmpty = i + 1;
+            while (nextNonEmpty < lines.length && lines[nextNonEmpty].trim() === '') nextNonEmpty++;
+            if (nextNonEmpty >= lines.length || directiveRe.test(lines[nextNonEmpty])) break;
+          }
+          i++;
+        }
+      } else {
+        i++;
+      }
+    } else {
+      result.push(lines[i]);
+      i++;
+    }
+  }
+  return result.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 const severityConfig: Record<string, { label: string; icon: Icon; color: string; bg: string; border: string }> = {
@@ -36,10 +76,15 @@ const categoryConfig: Record<string, { label: string; icon: Icon }> = {
 export function InlineFinding({ title, severity, category, body, fixPrompt, files }: InlineFindingProps) {
   const sev = severityConfig[severity] ?? severityConfig.info;
   const cat = categoryConfig[category] ?? categoryConfig.correctness;
+  const { openFile } = useSlideout();
+  const { setActiveCommentLine } = useCommentsContext();
   const [copied, setCopied] = useState(false);
 
   const SevIcon = sev.icon;
   const CatIcon = cat.icon;
+
+  const commentTarget = extractCommentTargetFromBody(body);
+  const canComment = commentTarget && files[commentTarget.file]?.patch;
 
   const handleCopyFixPrompt = useCallback(() => {
     if (!fixPrompt) return;
@@ -48,6 +93,20 @@ export function InlineFinding({ title, severity, category, body, fixPrompt, file
       setTimeout(() => setCopied(false), 2000);
     });
   }, [fixPrompt]);
+
+  const handlePostAsComment = useCallback(() => {
+    if (!commentTarget || !canComment) return;
+    openFile(commentTarget.file, [commentTarget.line, commentTarget.line]);
+    const prefill = `🚢 **${title}**\n\n${stripDirectives(body)}`;
+    setTimeout(() => {
+      setActiveCommentLine({
+        path: commentTarget.file,
+        line: commentTarget.line,
+        side: 'RIGHT',
+        prefill,
+      });
+    }, 300);
+  }, [commentTarget, canComment, title, body, openFile, setActiveCommentLine]);
 
   return (
     <div className="my-4 rounded-lg border border-[var(--border)] overflow-hidden">
@@ -65,24 +124,38 @@ export function InlineFinding({ title, severity, category, body, fixPrompt, file
             <CatIcon size={12} />
             {cat.label}
           </span>
-          {fixPrompt && (
-            <button
-              onClick={handleCopyFixPrompt}
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs text-[var(--text-secondary)] hover:text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors ml-auto"
-              title="Copy a prompt you can paste into Claude Code to fix this issue"
-            >
-              {copied ? (
-                <>
-                  <Check size={12} weight="bold" className="text-green-400" />
-                  <span className="text-green-400">Copied!</span>
-                </>
-              ) : (
-                <>
-                  <Copy size={12} />
-                  Copy fix prompt
-                </>
+          {(fixPrompt || canComment) && (
+            <div className="ml-auto flex items-center gap-1">
+              {fixPrompt && (
+                <button
+                  onClick={handleCopyFixPrompt}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs text-[var(--text-secondary)] hover:text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors"
+                  title="Copy a prompt you can paste into Claude Code to fix this issue"
+                >
+                  {copied ? (
+                    <>
+                      <Check size={12} weight="bold" className="text-green-400" />
+                      <span className="text-green-400">Copied!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy size={12} />
+                      Copy fix prompt
+                    </>
+                  )}
+                </button>
               )}
-            </button>
+              {canComment && (
+                <button
+                  onClick={handlePostAsComment}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs text-[var(--text-secondary)] hover:text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors"
+                  title="Open comment input on the relevant line, pre-filled with this finding"
+                >
+                  <ChatText size={12} />
+                  Post as comment
+                </button>
+              )}
+            </div>
           )}
         </div>
       </div>
