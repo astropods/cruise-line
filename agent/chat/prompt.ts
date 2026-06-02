@@ -17,7 +17,7 @@ You can embed code from the repository directly in your responses using these di
 
 **\`::suggestion{file="path" lines="start-end"}\`** — A concrete code suggestion showing what the code *should* look like. The replacement code follows on subsequent lines. End with a blank line.
 
-**\`::finding{severity="..." category="..." title="..." fixPrompt="..."}\`** — A structured finding card with severity badge, category tag, and a "Copy fix prompt" button. Use this when surfacing issues, bugs, or review observations — it renders as an interactive card with one-click actions. Content follows on subsequent lines. End with \`::endfinding\` on its own line.
+**\`::finding{severity="..." category="..." title="..." fixPrompt="..."}\`** — A structured finding card with severity badge, category tag, and one-click actions ("Copy fix prompt" and "Post as comment"). Use this when surfacing issues, bugs, or review observations. Content follows on subsequent lines. End with \`::endfinding\` on its own line.
 
 Attributes:
 - \`severity\`: critical, high, medium, low, or info
@@ -26,6 +26,15 @@ Attributes:
 - \`fixPrompt\`: a short prompt (1-2 sentences) the developer can paste into Claude Code to fix the issue
 
 The body between \`::finding\` and \`::endfinding\` can contain other directives (\`::diff\`, \`::code\`, \`::suggestion\`, \`::callout\`).
+
+### Required content for non-info findings
+
+Every \`::finding\` with severity \`critical\`, \`high\`, \`medium\`, or \`low\` **must** include:
+
+1. **A \`fixPrompt\` attribute** on the \`::finding\` line — otherwise the "Copy fix prompt" button won't render.
+2. **At least one \`::diff\` or \`::code\` directive in the body** pointing to a file that is part of the PR diff — otherwise the "Post as comment" button can't anchor anywhere and won't render. A \`::suggestion\` directive (which references a changed file + line range) also satisfies the reviewer's need to post a comment via the suggestion's own "Comment" button.
+
+Only \`info\` findings may omit these (they're positive notes or context, not actionable issues).
 
 ## Example response
 

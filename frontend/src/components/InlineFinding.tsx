@@ -2,10 +2,13 @@ import { useState, useCallback } from 'react';
 import {
   WarningOctagon, WarningCircle, Warning, ArrowDown, Lightbulb,
   Bug, ShieldCheck, Wrench, Lightning, PaintBrush,
-  Copy, Check,
+  Copy, Check, ChatText,
   type Icon,
 } from '@phosphor-icons/react';
 import { RichContent } from './RichContent';
+import { useSlideout } from '../contexts/SlideoutContext';
+import { useCommentsContext } from '../contexts/CommentsContext';
+import { extractCommentTargetFromBody, stripDirectives } from '../lib/findingUtils';
 import type { FileContent, Severity, FindingCategory } from '../api';
 
 interface InlineFindingProps {
@@ -36,10 +39,15 @@ const categoryConfig: Record<string, { label: string; icon: Icon }> = {
 export function InlineFinding({ title, severity, category, body, fixPrompt, files }: InlineFindingProps) {
   const sev = severityConfig[severity] ?? severityConfig.info;
   const cat = categoryConfig[category] ?? categoryConfig.correctness;
+  const { openFile } = useSlideout();
+  const { setActiveCommentLine } = useCommentsContext();
   const [copied, setCopied] = useState(false);
 
   const SevIcon = sev.icon;
   const CatIcon = cat.icon;
+
+  const commentTarget = extractCommentTargetFromBody(body);
+  const canComment = commentTarget && files[commentTarget.file]?.patch;
 
   const handleCopyFixPrompt = useCallback(() => {
     if (!fixPrompt) return;
@@ -48,6 +56,20 @@ export function InlineFinding({ title, severity, category, body, fixPrompt, file
       setTimeout(() => setCopied(false), 2000);
     });
   }, [fixPrompt]);
+
+  const handlePostAsComment = useCallback(() => {
+    if (!commentTarget || !canComment) return;
+    openFile(commentTarget.file, [commentTarget.line, commentTarget.line]);
+    const prefill = `🚢 **${title}**\n\n${stripDirectives(body)}`;
+    setTimeout(() => {
+      setActiveCommentLine({
+        path: commentTarget.file,
+        line: commentTarget.line,
+        side: 'RIGHT',
+        prefill,
+      });
+    }, 300);
+  }, [commentTarget, canComment, title, body, openFile, setActiveCommentLine]);
 
   return (
     <div className="my-4 rounded-lg border border-[var(--border)] overflow-hidden">
@@ -65,24 +87,38 @@ export function InlineFinding({ title, severity, category, body, fixPrompt, file
             <CatIcon size={12} />
             {cat.label}
           </span>
-          {fixPrompt && (
-            <button
-              onClick={handleCopyFixPrompt}
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs text-[var(--text-secondary)] hover:text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors ml-auto"
-              title="Copy a prompt you can paste into Claude Code to fix this issue"
-            >
-              {copied ? (
-                <>
-                  <Check size={12} weight="bold" className="text-green-400" />
-                  <span className="text-green-400">Copied!</span>
-                </>
-              ) : (
-                <>
-                  <Copy size={12} />
-                  Copy fix prompt
-                </>
+          {(fixPrompt || canComment) && (
+            <div className="ml-auto flex items-center gap-1">
+              {fixPrompt && (
+                <button
+                  onClick={handleCopyFixPrompt}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs text-[var(--text-secondary)] hover:text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors"
+                  title="Copy a prompt you can paste into Claude Code to fix this issue"
+                >
+                  {copied ? (
+                    <>
+                      <Check size={12} weight="bold" className="text-green-400" />
+                      <span className="text-green-400">Copied!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy size={12} />
+                      Copy fix prompt
+                    </>
+                  )}
+                </button>
               )}
-            </button>
+              {canComment && (
+                <button
+                  onClick={handlePostAsComment}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs text-[var(--text-secondary)] hover:text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors"
+                  title="Open comment input on the relevant line, pre-filled with this finding"
+                >
+                  <ChatText size={12} />
+                  Post as comment
+                </button>
+              )}
+            </div>
           )}
         </div>
       </div>

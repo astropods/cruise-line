@@ -23,14 +23,25 @@ export type Severity = 'critical' | 'high' | 'medium' | 'low' | 'info';
 export type FindingCategory = 'correctness' | 'security' | 'maintainability' | 'performance' | 'style';
 export type Verdict = 'approve' | 'request_changes' | 'needs_discussion';
 
+export interface CommentAnchor {
+  /** Path of a file that is part of the PR diff */
+  file: string;
+  /** 1-indexed start line in the new (head) version of the file */
+  lineStart: number;
+  /** 1-indexed end line in the new (head) version of the file */
+  lineEnd: number;
+}
+
 export interface Finding {
   title: string;
   severity: Severity;
   category: FindingCategory;
   body: string;
   files: string[];
-  /** A prompt the developer can paste into Claude Code to fix this issue */
+  /** A prompt the developer can paste into Claude Code to fix this issue. Required for non-info findings. */
   fixPrompt?: string;
+  /** Where to anchor the "Post as comment" action. Required for non-info findings. */
+  commentAnchor?: CommentAnchor;
 }
 
 export interface Walkthrough {
