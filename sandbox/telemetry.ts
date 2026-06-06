@@ -8,53 +8,31 @@
  * SIGTERM/SIGINT flush handlers internally.
  *
  * This module re-exports the adapter's SDK surface and keeps a small
- * diagnostic surface around the OTEL diag channel:
+ * diagnostic surface:
  *   - `getTelemetryStatus()` reports endpoint + recent OTEL warnings/errors.
  *   - `runTelemetryTest()` emits a span via the globally registered tracer.
  *     The adapter does not expose its provider handle, so this can't
  *     force-flush — the BatchSpanProcessor's auto-flush will eventually
  *     deliver it. Verify at the Langfuse end.
  *
- * Both are exposed via /telemetry-status and /telemetry-test in index.ts and
- * proxied through the agent's debug route.
+ * The diag logger is installed in `./diag-init.ts`, which MUST be imported
+ * before the adapter so its `instrumentSDK()` init-time diagnostics land in
+ * the ring buffer rather than going to the default no-op logger. ESM hoists
+ * imports in source order, so the `./diag-init.ts` import below resolves
+ * (and runs `diag.setLogger`) before `@astropods/adapter-claude-agent-sdk`.
+ *
+ * Both endpoints are exposed via /telemetry-status and /telemetry-test in
+ * index.ts and proxied through the agent's debug route.
  */
 
-import { trace, diag, DiagLogLevel, type Span } from '@opentelemetry/api';
+import { diagBuffer, type DiagEntry } from './diag-init.ts';
+import { trace, type Span } from '@opentelemetry/api';
 
 export {
   query,
   getSessionMessages,
   getSessionInfo,
 } from '@astropods/adapter-claude-agent-sdk';
-
-interface DiagEntry { ts: string; level: string; msg: string; }
-
-const DIAG_BUFFER_MAX = 50;
-const diagBuffer: DiagEntry[] = [];
-
-function recordDiag(level: string, args: unknown[]) {
-  const msg = args.map((a) => (typeof a === 'string' ? a : safeStringify(a))).join(' ');
-  diagBuffer.push({ ts: new Date().toISOString(), level, msg });
-  if (diagBuffer.length > DIAG_BUFFER_MAX) diagBuffer.shift();
-}
-
-function safeStringify(v: unknown): string {
-  try { return JSON.stringify(v); } catch { return String(v); }
-}
-
-// Capture OTEL warnings/errors (export failures, batch issues) so we can
-// surface them via the debug endpoint without needing pod logs. Set before
-// the adapter registers its provider so we catch any init-time diagnostics.
-diag.setLogger(
-  {
-    verbose: () => {},
-    debug:   () => {},
-    info:    (...a) => recordDiag('info', a),
-    warn:    (...a) => recordDiag('warn', a),
-    error:   (...a) => recordDiag('error', a),
-  },
-  DiagLogLevel.INFO,
-);
 
 interface TelemetryStatus {
   initialized: boolean;
