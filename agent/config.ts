@@ -41,7 +41,7 @@ export const config = {
   },
 
   claude: {
-    model: optionalEnv('CLAUDE_MODEL', 'claude-opus-4-6'),
+    model: optionalEnv('CLAUDE_MODEL', 'claude-opus-4-8'),
     maxConcurrentJobs: Number(optionalEnv('MAX_CONCURRENT_JOBS', '3')),
   },
 

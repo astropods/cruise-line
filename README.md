@@ -55,7 +55,7 @@ Optional environment variables can be set in `astropods.yml`:
 
 | Variable | Default | Description |
 |---|---|---|
-| `CLAUDE_MODEL` | `claude-opus-4-5` | Claude model used for analysis |
+| `CLAUDE_MODEL` | `claude-opus-4-8` | Claude model used for analysis |
 | `MAX_CONCURRENT_JOBS` | `3` | Maximum concurrent analysis jobs |
 
 ### GitHub Enterprise

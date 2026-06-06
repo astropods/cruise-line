@@ -18,10 +18,12 @@ agent:
       datatype: string
       display-as: select
       options:
+        - claude-opus-4-8
+        - claude-opus-4-7
         - claude-opus-4-6
         - claude-sonnet-4-6
         - claude-haiku-4-5
-      default: "claude-opus-4-6"
+      default: "claude-opus-4-8"
       description: Claude model used for PR analysis. Opus is the most thorough, Haiku is the fastest.
     - name: MAX_CONCURRENT_JOBS
       datatype: number
