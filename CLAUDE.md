@@ -13,8 +13,10 @@ Single container (Hono web server on Bun) serving:
 - GitHub OAuth (viewer authentication)
 - React frontend (walkthrough viewer)
 
-Core analysis uses `@anthropic-ai/claude-agent-sdk` to clone repos and generate
-structured walkthrough JSON with chapters grouped by intent, not by file.
+Core analysis uses `@astropods/adapter-claude-agent-sdk` (a drop-in replacement
+for `@anthropic-ai/claude-agent-sdk` with OTEL instrumentation baked in) to
+clone repos and generate structured walkthrough JSON with chapters grouped by
+intent, not by file.
 
 ## Key paths
 

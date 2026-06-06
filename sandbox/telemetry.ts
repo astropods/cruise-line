@@ -1,61 +1,38 @@
 /**
  * OTEL telemetry bootstrap for the sandbox.
  *
- * The astro platform injects OTEL_EXPORTER_OTLP_ENDPOINT pointing at a
- * per-deployment collector that forwards spans to the account's Langfuse
- * project. We use OpenInference's Claude Agent SDK instrumentation to emit
- * AGENT and TOOL spans with token usage, cost, and tool calls. Langfuse
- * natively understands OpenInference conventions.
+ * Instrumentation is delegated to `@astropods/adapter-claude-agent-sdk`, a
+ * drop-in replacement for `@anthropic-ai/claude-agent-sdk` that wires up an
+ * OTLP exporter and applies OpenInference's `ClaudeAgentSDKInstrumentation`
+ * when `OTEL_EXPORTER_OTLP_ENDPOINT` is set. The adapter also installs
+ * SIGTERM/SIGINT flush handlers internally.
  *
- * When the endpoint isn't set (local dev with no collector), spans go to the
- * no-op tracer provider and nothing is exported.
+ * This module re-exports the adapter's SDK surface and keeps a small
+ * diagnostic surface:
+ *   - `getTelemetryStatus()` reports endpoint + recent OTEL warnings/errors.
+ *   - `runTelemetryTest()` emits a span via the globally registered tracer.
+ *     The adapter does not expose its provider handle, so this can't
+ *     force-flush — the BatchSpanProcessor's auto-flush will eventually
+ *     deliver it. Verify at the Langfuse end.
  *
- * Re-exports the claude-agent-sdk surface so callers get the instrumented
- * functions — the OpenInference SDK is ESM and must be patched via
- * `manuallyInstrument(namespace)`.
+ * The diag logger is installed in `./diag-init.ts`, which MUST be imported
+ * before the adapter so its `instrumentSDK()` init-time diagnostics land in
+ * the ring buffer rather than going to the default no-op logger. ESM hoists
+ * imports in source order, so the `./diag-init.ts` import below resolves
+ * (and runs `diag.setLogger`) before `@astropods/adapter-claude-agent-sdk`.
  *
- * Diagnostic surface: `getTelemetryStatus()` reports init state and recent
- * OTEL warnings/errors; `runTelemetryTest()` emits a span and force-flushes
- * to verify the export path end-to-end. Both are exposed via /telemetry-status
- * and /telemetry-test in index.ts and proxied through the agent's debug route.
+ * Both endpoints are exposed via /telemetry-status and /telemetry-test in
+ * index.ts and proxied through the agent's debug route.
  */
 
-import { trace, diag, DiagLogLevel, type Span } from '@opentelemetry/api';
-import { Resource } from '@opentelemetry/resources';
-import { NodeTracerProvider, BatchSpanProcessor } from '@opentelemetry/sdk-trace-node';
-import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { ClaudeAgentSDKInstrumentation } from '@arizeai/openinference-instrumentation-claude-agent-sdk';
-import * as ClaudeAgentSDKModule from '@anthropic-ai/claude-agent-sdk';
+import { diagBuffer, type DiagEntry } from './diag-init.ts';
+import { trace, type Span } from '@opentelemetry/api';
 
-interface DiagEntry { ts: string; level: string; msg: string; }
-
-const DIAG_BUFFER_MAX = 50;
-const diagBuffer: DiagEntry[] = [];
-
-function recordDiag(level: string, args: unknown[]) {
-  const msg = args.map((a) => (typeof a === 'string' ? a : safeStringify(a))).join(' ');
-  diagBuffer.push({ ts: new Date().toISOString(), level, msg });
-  if (diagBuffer.length > DIAG_BUFFER_MAX) diagBuffer.shift();
-}
-
-function safeStringify(v: unknown): string {
-  try { return JSON.stringify(v); } catch { return String(v); }
-}
-
-// Capture OTEL warnings/errors (export failures, batch issues) so we can
-// surface them via the debug endpoint without needing pod logs.
-diag.setLogger(
-  {
-    verbose: () => {},
-    debug:   () => {},
-    info:    (...a) => recordDiag('info', a),
-    warn:    (...a) => recordDiag('warn', a),
-    error:   (...a) => recordDiag('error', a),
-  },
-  DiagLogLevel.INFO,
-);
-
-const ClaudeAgentSDK = { ...ClaudeAgentSDKModule };
+export {
+  query,
+  getSessionMessages,
+  getSessionInfo,
+} from '@astropods/adapter-claude-agent-sdk';
 
 interface TelemetryStatus {
   initialized: boolean;
@@ -63,57 +40,23 @@ interface TelemetryStatus {
   exporterUrl: string | null;
   serviceName: string;
   serviceVersion: string;
-  initError: string | null;
   recentDiag: DiagEntry[];
 }
 
+const endpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? null;
 const status: TelemetryStatus = {
-  initialized: false,
-  endpoint: process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? null,
-  exporterUrl: null,
+  // The adapter only instruments when the endpoint is set, so env presence is
+  // an accurate proxy for "initialized" without needing a handle from the adapter.
+  initialized: !!endpoint,
+  endpoint,
+  exporterUrl: endpoint ? endpoint.replace(/\/+$/, '') + '/v1/traces' : null,
   serviceName: process.env.ASTRO_AGENT_NAME ?? 'cruise-line-sandbox',
   serviceVersion: process.env.ASTRO_AGENT_BUILD ?? 'dev',
-  initError: null,
   recentDiag: diagBuffer,
 };
 
-let providerHandle: NodeTracerProvider | null = null;
-
-if (status.endpoint) {
-  try {
-    const provider = new NodeTracerProvider({
-      resource: new Resource({
-        'service.name': status.serviceName,
-        'service.version': status.serviceVersion,
-      }),
-    });
-    const url = status.endpoint.replace(/\/+$/, '') + '/v1/traces';
-    provider.addSpanProcessor(new BatchSpanProcessor(new OTLPTraceExporter({ url })));
-    provider.register();
-
-    const instrumentation = new ClaudeAgentSDKInstrumentation();
-    instrumentation.setTracerProvider(provider);
-    instrumentation.manuallyInstrument(ClaudeAgentSDK);
-
-    providerHandle = provider;
-    status.exporterUrl = url;
-    status.initialized = true;
-
-    const flushAndExit = async (signal: NodeJS.Signals) => {
-      try {
-        await provider.forceFlush();
-        await provider.shutdown();
-      } catch {}
-      process.exit(signal === 'SIGINT' ? 130 : 0);
-    };
-    process.once('SIGTERM', flushAndExit);
-    process.once('SIGINT', flushAndExit);
-
-    console.log(`Telemetry: exporting OTLP traces to ${url}`);
-  } catch (err) {
-    status.initError = err instanceof Error ? err.message : String(err);
-    console.warn('Telemetry: initialization failed — traces disabled', err);
-  }
+if (endpoint) {
+  console.log(`Telemetry: adapter exporting OTLP traces to ${status.exporterUrl}`);
 } else {
   console.log('Telemetry: OTEL_EXPORTER_OTLP_ENDPOINT not set — traces disabled');
 }
@@ -123,9 +66,9 @@ export function getTelemetryStatus(): TelemetryStatus {
 }
 
 /**
- * Emit a test span and force-flush. Returns whether the flush completed and
- * any OTEL diagnostics emitted during the attempt (so we can see export
- * failures the BatchSpanProcessor would otherwise swallow).
+ * Emit a test span via the globally registered tracer. The adapter owns the
+ * provider, so we can't force-flush here — confirm delivery at the Langfuse
+ * end (or wait for the BatchSpanProcessor's scheduled export).
  */
 export async function runTelemetryTest(): Promise<{
   ok: boolean;
@@ -133,12 +76,11 @@ export async function runTelemetryTest(): Promise<{
   flushError: string | null;
   diagDuringTest: DiagEntry[];
 }> {
-  if (!providerHandle) {
-    return { ok: false, spanEmitted: false, flushError: 'tracer provider not initialized', diagDuringTest: [] };
+  if (!status.initialized) {
+    return { ok: false, spanEmitted: false, flushError: 'OTEL endpoint not configured', diagDuringTest: [] };
   }
   const before = diagBuffer.length;
   let spanEmitted = false;
-  let flushError: string | null = null;
   let span: Span | null = null;
   try {
     const tracer = trace.getTracer('cruise-line.sandbox.debug', '0.1.0');
@@ -150,12 +92,13 @@ export async function runTelemetryTest(): Promise<{
     });
     span.end();
     spanEmitted = true;
-    await providerHandle.forceFlush();
   } catch (err) {
-    flushError = err instanceof Error ? err.message : String(err);
+    return {
+      ok: false,
+      spanEmitted,
+      flushError: err instanceof Error ? err.message : String(err),
+      diagDuringTest: diagBuffer.slice(before),
+    };
   }
-  const diagDuringTest = diagBuffer.slice(before);
-  return { ok: flushError === null, spanEmitted, flushError, diagDuringTest };
+  return { ok: true, spanEmitted, flushError: null, diagDuringTest: diagBuffer.slice(before) };
 }
-
-export const { query, getSessionMessages, getSessionInfo } = ClaudeAgentSDK;
