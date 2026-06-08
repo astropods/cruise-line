@@ -10,7 +10,7 @@ WORKDIR /sandbox
 COPY sandbox/package.json sandbox/bun.lock ./
 RUN bun install --production --frozen-lockfile
 
-COPY sandbox/index.ts sandbox/telemetry.ts ./
+COPY sandbox/index.ts sandbox/telemetry.ts sandbox/diag-init.ts ./
 
 # Install Claude Code native binary — must run AFTER node_modules are copied
 # so the binary lands in the correct SDK package directories.
