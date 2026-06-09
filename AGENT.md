@@ -72,5 +72,5 @@ Click the **Comment** button on any code block or suggestion to open the file vi
 
 | Setting | Default | Description |
 |---|---|---|
-| Claude Model | `claude-opus-4-6` | Model used for analysis. Opus is most thorough, Haiku is fastest. |
+| Claude Model | `claude-opus-4-8` | Model used for analysis. Opus is most thorough, Haiku is fastest. |
 | Max Concurrent Jobs | `3` | How many PRs can be analyzed simultaneously. |
