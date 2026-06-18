@@ -12,6 +12,7 @@ import {
 } from './db/app-config.js';
 import { refreshWebhooks } from './github/webhooks.js';
 import { cleanupExpiredRevocations } from './db/sessions.js';
+import { attemptAutoSeedOwner } from './owner.js';
 import { healthRoutes } from './routes/health.js';
 import { webhookRoutes } from './routes/webhook.js';
 import { authRoutes } from './routes/auth.js';
@@ -102,6 +103,15 @@ if (dbConfig) {
   updateGitHubConfig(dbConfig);
   refreshWebhooks();
   console.log(`GitHub App loaded from database (${dbConfig.appSlug})`);
+
+  // Existing installs created before the owner concept won't have an owner
+  // claimed. Try to auto-seed from the App owner; fall back to manual claim.
+  const seed = await attemptAutoSeedOwner();
+  if (seed.status === 'claimed') {
+    console.log(`Owner auto-seeded from GitHub App owner: ${seed.login} (${seed.userId})`);
+  } else if (seed.status === 'failed') {
+    console.warn(`Owner auto-seed failed: ${seed.reason}. Use POST /api/setup/claim to claim manually.`);
+  }
 } else {
   console.log('GitHub App not configured — visit /setup to connect');
 }

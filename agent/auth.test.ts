@@ -18,6 +18,7 @@ const mockRefreshGitHubToken = mock();
 const mockCreateSessionToken = mock(() => Promise.resolve('fake-session-token'));
 const mockSetSessionCookie = mock();
 const mockIsSessionRevoked = mock();
+const mockGetOwner = mock();
 
 // Octokit constructor — used by getInstallationForRepo
 mock.module('@octokit/rest', () => ({
@@ -52,11 +53,15 @@ mock.module(path.resolve(import.meta.dir, './db/sessions.ts'), () => ({
   isSessionRevoked: mockIsSessionRevoked,
 }));
 
+mock.module(path.resolve(import.meta.dir, './db/app-config.ts'), () => ({
+  getOwner: mockGetOwner,
+}));
+
 // Suppress console.error from the error-path tests
 spyOn(console, 'error').mockImplementation(() => {});
 
 const { verifyRepoAccess } = await import('./github/client.js');
-const { requireAuth, requireRepoAccess } = await import('./middleware/session.js');
+const { requireAuth, requireOwner, requireRepoAccess } = await import('./middleware/session.js');
 
 // --- Helpers ---------------------------------------------------------
 
@@ -483,5 +488,62 @@ describe('requireRepoAccess', () => {
     } catch { /* expected */ }
 
     expect(mockGetPermissionLevel).toHaveBeenCalledTimes(2);
+  });
+});
+
+// =====================================================================
+// requireOwner — only the claimed owner can pass
+// =====================================================================
+
+describe('requireOwner', () => {
+  beforeEach(() => {
+    mockGetOwner.mockReset();
+  });
+
+  it('calls next() when the session user matches the claimed owner', async () => {
+    mockGetOwner.mockResolvedValueOnce({
+      userId: fakeSession.userId,
+      login: fakeSession.login,
+      avatarUrl: fakeSession.avatarUrl,
+      claimedAt: '2026-01-01T00:00:00.000Z',
+    });
+    const next = mock().mockResolvedValue(undefined);
+
+    await requireOwner(createContext(), next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it('throws 403 when no owner has been claimed yet', async () => {
+    mockGetOwner.mockResolvedValueOnce(null);
+    const next = mock();
+
+    try {
+      await requireOwner(createContext(), next);
+      expect.unreachable('should have thrown');
+    } catch (err) {
+      expect(err).toBeInstanceOf(AppError);
+      expect((err as AppError).statusCode).toBe(403);
+    }
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('throws 403 when the session user is not the owner', async () => {
+    mockGetOwner.mockResolvedValueOnce({
+      userId: 999,
+      login: 'someone-else',
+      avatarUrl: '',
+      claimedAt: '2026-01-01T00:00:00.000Z',
+    });
+    const next = mock();
+
+    try {
+      await requireOwner(createContext(), next);
+      expect.unreachable('should have thrown');
+    } catch (err) {
+      expect(err).toBeInstanceOf(AppError);
+      expect((err as AppError).statusCode).toBe(403);
+    }
+    expect(next).not.toHaveBeenCalled();
   });
 });
