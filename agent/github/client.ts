@@ -208,6 +208,74 @@ export async function getInstallationForRepo(
   return data.id;
 }
 
+export interface ConnectedRepo {
+  id: number;
+  name: string;
+  fullName: string;
+  private: boolean;
+  htmlUrl: string;
+}
+
+export interface ConnectedInstallation {
+  id: number;
+  account: {
+    login: string;
+    type: string;
+    avatarUrl: string;
+    htmlUrl: string;
+  };
+  repositories: ConnectedRepo[];
+}
+
+/**
+ * Enumerate every GitHub App installation along with the repositories it can
+ * access. One App-JWT call to list installations, then one installation-token
+ * call per installation to list its repos. Auto-paginated.
+ */
+export async function listInstallationsWithRepos(): Promise<ConnectedInstallation[]> {
+  const { generateAppJwt } = await import('./app.js');
+  const jwt = await generateAppJwt();
+  const appOctokit = new Octokit({ baseUrl: config.github.baseUrl, auth: jwt });
+
+  const installations = await appOctokit.paginate(appOctokit.apps.listInstallations, {
+    per_page: 100,
+  });
+
+  const result: ConnectedInstallation[] = [];
+  for (const installation of installations) {
+    const account = installation.account;
+    // SimpleUser has `login`; Enterprise accounts don't and aren't relevant here.
+    if (!account || !('login' in account)) continue;
+
+    const token = await getInstallationToken(installation.id);
+    const instOctokit = createInstallationOctokit(token);
+
+    const repos = await instOctokit.paginate(
+      instOctokit.apps.listReposAccessibleToInstallation,
+      { per_page: 100 },
+    );
+
+    result.push({
+      id: installation.id,
+      account: {
+        login: account.login,
+        type: account.type ?? 'User',
+        avatarUrl: account.avatar_url ?? '',
+        htmlUrl: account.html_url ?? '',
+      },
+      repositories: repos.map((r) => ({
+        id: r.id,
+        name: r.name,
+        fullName: r.full_name,
+        private: r.private,
+        htmlUrl: r.html_url,
+      })),
+    });
+  }
+
+  return result;
+}
+
 /**
  * Verify a user is a collaborator (write or admin) on a repository.
  * Uses the App installation token so team-based and org-level permissions

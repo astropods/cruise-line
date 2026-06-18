@@ -22,6 +22,7 @@ import { chatRoutes } from './routes/chat.js';
 import { fileRoutes } from './routes/files.js';
 import { ruleRoutes } from './routes/rules.js';
 import { setupRoutes } from './routes/setup.js';
+import { settingsRoutes } from './routes/settings.js';
 import { debugRoutes } from './routes/debug.js';
 import { errorHandler } from './middleware/error.js';
 
@@ -66,6 +67,7 @@ app.route('/api/chat', chatRoutes);
 app.route('/api/files', fileRoutes);
 app.route('/api/rules', ruleRoutes);
 app.route('/api/setup', setupRoutes);
+app.route('/api/settings', settingsRoutes);
 app.route('/api/debug', debugRoutes);
 
 if (isDev) {
