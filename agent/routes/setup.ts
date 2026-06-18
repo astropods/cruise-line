@@ -7,9 +7,12 @@ import {
   deleteGitHubAppConfig,
   saveGitHubUrls,
   saveAppUrl,
+  claimOwner,
+  getOwner,
 } from '../db/app-config.js';
+import { AppError } from '../middleware/error.js';
 import { refreshWebhooks } from '../github/webhooks.js';
-import { requireAuth } from '../middleware/session.js';
+import { requireAuth, requireOwner } from '../middleware/session.js';
 import { validateGitHubUrl, validateAppUrl } from '../middleware/validation.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import type { AppEnv } from '../env.js';
@@ -20,14 +23,19 @@ export const setupRoutes = new Hono<AppEnv>();
 const setupLimiter = rateLimit<AppEnv>('setup', { windowMs: 60_000, max: 5 });
 
 /**
- * Conditional auth for setup: if GitHub is already configured, require login.
- * If not configured (first-time setup), allow through since OAuth isn't available yet.
+ * Conditional auth for setup. Three states:
+ *   - Not configured: allow through (OAuth isn't usable until the GitHub App
+ *     credentials exist, so first-time setup is unauthenticated by necessity).
+ *   - Configured: require auth AND ownership. The first OAuth login after
+ *     setup claims ownership, so any authenticated user is either the owner
+ *     (allowed) or a non-owner (denied).
  */
 async function requireSetupAuth(c: Context<AppEnv>, next: Next) {
-  if (isGitHubConfigured()) {
-    return requireAuth(c, next);
+  if (!isGitHubConfigured()) {
+    await next();
+    return;
   }
-  await next();
+  return requireAuth(c, () => requireOwner(c, next));
 }
 
 /**
@@ -37,6 +45,7 @@ async function requireSetupAuth(c: Context<AppEnv>, next: Next) {
 setupRoutes.get('/status', async (c) => {
   const configured = isGitHubConfigured();
   const dbConfig = await getGitHubAppConfig();
+  const owner = await getOwner();
 
   // Build the install URL based on owner type
   let installUrl: string | null = null;
@@ -52,6 +61,8 @@ setupRoutes.get('/status', async (c) => {
     appUrl: config.appUrl,
     githubUrl: config.github.htmlUrl,
     installUrl,
+    ownerClaimed: owner !== null,
+    ownerLogin: owner?.login ?? null,
   });
 });
 
@@ -210,7 +221,61 @@ setupRoutes.get('/install/callback', (c) => {
  * DELETE /api/setup/github
  * Disconnect the current GitHub App so a new one can be connected.
  */
-setupRoutes.delete('/github', setupLimiter, requireAuth, async (c) => {
+/**
+ * POST /api/setup/claim
+ * Claim ownership for the currently authenticated user. Migration backstop
+ * for installs that predate the owner concept (e.g., org-owned Apps where
+ * the boot-time auto-seed can't pick a human) and a recovery path if the
+ * auto-seed fails for any reason.
+ *
+ * Requires auth but not requireOwner — by definition this is what runs
+ * before an owner exists. Once an owner is set, the endpoint returns 409
+ * with the current owner so the frontend can surface it.
+ */
+setupRoutes.post('/claim', setupLimiter, requireAuth, async (c) => {
+  if (!isGitHubConfigured()) {
+    throw new AppError(400, 'GitHub App must be configured before claiming ownership');
+  }
+
+  const session = c.get('session');
+  const existing = await getOwner();
+
+  if (existing) {
+    return c.json(
+      {
+        error: 'Owner already claimed',
+        owner: { userId: existing.userId, login: existing.login, avatarUrl: existing.avatarUrl },
+      },
+      409,
+    );
+  }
+
+  const claimed = await claimOwner({
+    userId: session.userId,
+    login: session.login,
+    avatarUrl: session.avatarUrl,
+  });
+
+  if (!claimed) {
+    // Raced with another claim — re-read to return the actual owner.
+    const owner = await getOwner();
+    return c.json(
+      {
+        error: 'Owner was claimed concurrently',
+        owner: owner ? { userId: owner.userId, login: owner.login, avatarUrl: owner.avatarUrl } : null,
+      },
+      409,
+    );
+  }
+
+  console.log(`Cruise Line ownership manually claimed by ${session.login} (${session.userId})`);
+  return c.json({
+    ok: true,
+    owner: { userId: session.userId, login: session.login, avatarUrl: session.avatarUrl },
+  });
+});
+
+setupRoutes.delete('/github', setupLimiter, requireAuth, requireOwner, async (c) => {
   await deleteGitHubAppConfig();
 
   // Clear runtime config

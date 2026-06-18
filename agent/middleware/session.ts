@@ -10,6 +10,7 @@ import {
 } from '../github/oauth.js';
 import { verifyRepoAccess } from '../github/client.js';
 import { isSessionRevoked } from '../db/sessions.js';
+import { getOwner } from '../db/app-config.js';
 import { AppError } from './error.js';
 import type { AppEnv } from '../env.js';
 
@@ -83,6 +84,25 @@ export async function requireAuth(c: Context<AppEnv>, next: Next) {
   }
 
   c.set('session', session);
+  await next();
+}
+
+/**
+ * Middleware that requires the authenticated user to be the claimed owner of
+ * this Cruise Line install. Must run after `requireAuth`.
+ */
+export async function requireOwner(c: Context<AppEnv>, next: Next) {
+  const session = c.get('session');
+  const owner = await getOwner();
+
+  if (!owner) {
+    throw new AppError(403, 'No owner has been set for this install');
+  }
+
+  if (session.userId !== owner.userId) {
+    throw new AppError(403, 'Only the install owner can perform this action');
+  }
+
   await next();
 }
 

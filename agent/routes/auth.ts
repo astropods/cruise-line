@@ -10,6 +10,7 @@ import {
   verifySessionToken,
 } from '../github/oauth.js';
 import { revokeSession } from '../db/sessions.js';
+import { claimOwner, getOwner, isOwnerClaimed } from '../db/app-config.js';
 import { SignJWT, jwtVerify } from 'jose';
 import { AppError } from '../middleware/error.js';
 import { rateLimit } from '../middleware/rate-limit.js';
@@ -66,6 +67,19 @@ authRoutes.get('/callback', authLimiter, async (c) => {
   const tokenResult = await exchangeCodeForToken(code);
   const user = await getGitHubUser(tokenResult.accessToken);
 
+  // First user to authenticate after setup claims ownership. The DB upsert is
+  // race-free, so concurrent first logins resolve to a single owner.
+  if (!(await isOwnerClaimed())) {
+    const claimed = await claimOwner({
+      userId: user.id,
+      login: user.login,
+      avatarUrl: user.avatar_url,
+    });
+    if (claimed) {
+      console.log(`Cruise Line ownership claimed by ${user.login} (${user.id})`);
+    }
+  }
+
   // Create session JWT
   const sessionToken = await createSessionToken({
     githubToken: tokenResult.accessToken,
@@ -103,10 +117,14 @@ authRoutes.get('/me', async (c) => {
     throw new AppError(401, 'Invalid or expired session');
   }
 
+  const owner = await getOwner();
+
   return c.json({
     userId: session.userId,
     login: session.login,
     avatarUrl: session.avatarUrl,
+    isOwner: owner !== null && owner.userId === session.userId,
+    ownerLogin: owner?.login ?? null,
   });
 });
 

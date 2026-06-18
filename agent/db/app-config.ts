@@ -12,6 +12,14 @@ export interface GitHubAppConfig {
 }
 
 const CONFIG_PREFIX = 'github_app.';
+const OWNER_PREFIX = 'owner.';
+
+export interface AppOwner {
+  userId: number;
+  login: string;
+  avatarUrl: string;
+  claimedAt: string;
+}
 
 export async function saveGitHubAppConfig(config: GitHubAppConfig): Promise<void> {
   const entries = Object.entries(config) as [keyof GitHubAppConfig, string][];
@@ -63,6 +71,8 @@ export async function deleteGitHubAppConfig(): Promise<void> {
   await sql`DELETE FROM app_config WHERE key LIKE ${CONFIG_PREFIX + '%'}`;
   // Also clear the GitHub URL settings so the next setup starts fresh
   await sql`DELETE FROM app_config WHERE key IN ('github_base_url', 'github_html_url')`;
+  // Clear the owner so the next person to set up can claim it
+  await sql`DELETE FROM app_config WHERE key LIKE ${OWNER_PREFIX + '%'}`;
 }
 
 export async function isGitHubAppConfigured(): Promise<boolean> {
@@ -141,4 +151,77 @@ export async function getGitHubUrls(): Promise<{ baseUrl: string; htmlUrl: strin
     baseUrl: map.get('github_base_url')!,
     htmlUrl: map.get('github_html_url')!,
   };
+}
+
+/**
+ * The owner is the GitHub user who first authenticated after the GitHub App
+ * was configured. Setup and settings mutations are restricted to this user.
+ */
+export async function getOwner(): Promise<AppOwner | null> {
+  const rows = await sql<{ key: string; value: string }[]>`
+    SELECT key, value FROM app_config WHERE key LIKE ${OWNER_PREFIX + '%'}
+  `;
+
+  if (rows.length === 0) return null;
+
+  const map = new Map(rows.map((r) => [r.key.replace(OWNER_PREFIX, ''), r.value]));
+
+  const userIdStr = map.get('user_id');
+  const login = map.get('login');
+  const claimedAt = map.get('claimed_at');
+
+  if (!userIdStr || !login || !claimedAt) return null;
+
+  return {
+    userId: Number(userIdStr),
+    login,
+    avatarUrl: map.get('avatar_url') ?? '',
+    claimedAt,
+  };
+}
+
+export async function isOwnerClaimed(): Promise<boolean> {
+  const owner = await getOwner();
+  return owner !== null;
+}
+
+/**
+ * Atomically claim ownership for a user. Returns true if the claim succeeded
+ * (no prior owner), false if someone else already owns this install. The
+ * INSERT ... ON CONFLICT DO NOTHING on `owner.user_id` is the race-free gate:
+ * once the user_id row exists, subsequent claims no-op.
+ */
+export async function claimOwner(input: {
+  userId: number;
+  login: string;
+  avatarUrl: string;
+}): Promise<boolean> {
+  const claimedAt = new Date().toISOString();
+
+  return await sql.begin(async (tx) => {
+    const [existing] = await tx<{ value: string }[]>`
+      INSERT INTO app_config (key, value)
+      VALUES (${OWNER_PREFIX + 'user_id'}, ${String(input.userId)})
+      ON CONFLICT (key) DO NOTHING
+      RETURNING value
+    `;
+
+    // If the INSERT was a no-op, someone else has already claimed ownership.
+    if (!existing) return false;
+
+    await tx`
+      INSERT INTO app_config (key, value) VALUES (${OWNER_PREFIX + 'login'}, ${input.login})
+      ON CONFLICT (key) DO UPDATE SET value = ${input.login}, updated_at = NOW()
+    `;
+    await tx`
+      INSERT INTO app_config (key, value) VALUES (${OWNER_PREFIX + 'avatar_url'}, ${input.avatarUrl})
+      ON CONFLICT (key) DO UPDATE SET value = ${input.avatarUrl}, updated_at = NOW()
+    `;
+    await tx`
+      INSERT INTO app_config (key, value) VALUES (${OWNER_PREFIX + 'claimed_at'}, ${claimedAt})
+      ON CONFLICT (key) DO UPDATE SET value = ${claimedAt}, updated_at = NOW()
+    `;
+
+    return true;
+  });
 }
