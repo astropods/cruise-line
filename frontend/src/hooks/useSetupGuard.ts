@@ -9,7 +9,7 @@ export function useSetupGuard() {
       .then((r) => r.json())
       .then((data: { configured: boolean }) => {
         if (!data.configured) {
-          window.location.href = '/setup';
+          window.location.href = '/settings';
         } else {
           setReady(true);
         }

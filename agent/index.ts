@@ -113,7 +113,7 @@ if (dbConfig) {
     console.warn(`Owner auto-seed failed: ${seed.reason}. Use POST /api/setup/claim to claim manually.`);
   }
 } else {
-  console.log('GitHub App not configured — visit /setup to connect');
+  console.log('GitHub App not configured — visit /settings to connect');
 }
 
 Bun.serve({
