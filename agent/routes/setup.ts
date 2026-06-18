@@ -97,7 +97,7 @@ setupRoutes.post('/github', setupLimiter, requireSetupAuth, async (c) => {
 
   const webhookUrl = `${config.appUrl}/api/webhook/github`;
   const callbackUrl = `${config.appUrl}/api/setup/github/callback`;
-  const setupUrl = `${config.appUrl}/setup`;
+  const setupUrl = `${config.appUrl}/settings`;
 
   const manifest = {
     name: 'Cruise Line',
@@ -162,7 +162,7 @@ setupRoutes.get('/github/callback', async (c) => {
   if (!res.ok) {
     const body = await res.text();
     console.error('GitHub manifest conversion failed:', res.status, body);
-    return c.redirect(`${config.appUrl}/setup?error=manifest_conversion_failed`);
+    return c.redirect(`${config.appUrl}/settings?error=manifest_conversion_failed`);
   }
 
   const data = (await res.json()) as {
@@ -203,7 +203,7 @@ setupRoutes.get('/github/callback', async (c) => {
 
   // Redirect to setup page with success
   return c.redirect(
-    `${config.appUrl}/setup?success=true&install_url=${encodeURIComponent(installUrl)}`,
+    `${config.appUrl}/settings?success=true&install_url=${encodeURIComponent(installUrl)}`,
   );
 });
 
@@ -214,7 +214,7 @@ setupRoutes.get('/github/callback', async (c) => {
 setupRoutes.get('/install/callback', (c) => {
   const installationId = c.req.query('installation_id');
   console.log(`GitHub App installed, installation_id: ${installationId}`);
-  return c.redirect(`${config.appUrl}/setup?installed=true`);
+  return c.redirect(`${config.appUrl}/settings?installed=true`);
 });
 
 /**

@@ -1,6 +1,6 @@
-import { BrowserRouter, Routes, Route } from 'react-router';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router';
 import { WalkthroughPage } from './pages/WalkthroughPage';
-import { SetupPage } from './pages/SetupPage';
+import { SettingsPage } from './pages/SettingsPage';
 import { AuthCompletePage } from './pages/AuthCompletePage';
 import { LoginPage } from './pages/LoginPage';
 import { NotFoundPage } from './pages/NotFoundPage';
@@ -17,7 +17,7 @@ function GuardedRoutes() {
     );
   }
 
-  if (!ready) return null; // Redirecting to /setup
+  if (!ready) return null; // Redirecting to /settings
 
   return (
     <Routes>
@@ -28,11 +28,20 @@ function GuardedRoutes() {
   );
 }
 
+// Hard redirect for legacy /setup URLs — preserves the query string so the
+// GitHub App callback flows (?success, ?installed, ?install_url, ?error)
+// keep working for installs whose stored setup_url still points to /setup.
+function LegacySetupRedirect() {
+  const { search } = useLocation();
+  return <Navigate to={`/settings${search}`} replace />;
+}
+
 export function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/setup" element={<SetupPage />} />
+        <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/setup" element={<LegacySetupRedirect />} />
         <Route path="/auth/complete" element={<AuthCompletePage />} />
         <Route path="*" element={<GuardedRoutes />} />
       </Routes>

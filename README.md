@@ -45,7 +45,7 @@ Once deployed, visit your agent's URL and follow the setup flow to connect a Git
 
 ### Configuration
 
-Cruise Line is configured via the Astro setup flow. After deploying, visit `/setup` to:
+Cruise Line is configured via the Astro setup flow. After deploying, visit `/settings` to:
 
 1. Connect to GitHub (or GitHub Enterprise) by creating a GitHub App
 2. Install the app on your repositories

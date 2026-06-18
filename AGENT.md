@@ -31,7 +31,7 @@ After deploying, visit your agent's URL to start the setup wizard.
 
 Click **Connect to GitHub** to create a GitHub App via the manifest flow. You'll be redirected to GitHub to authorize the app. For GitHub Enterprise, check the "I'm using GitHub Enterprise" box and enter your instance URL first.
 
-To switch to a different GitHub connection later, return to `/setup` and click **Disconnect and reconnect**.
+To switch to a different GitHub connection later, return to `/settings` and click **Disconnect and reconnect**.
 
 ### 2. Install on repositories
 

@@ -70,6 +70,24 @@ export interface UserInfo {
   userId: number;
   login: string;
   avatarUrl: string;
+  isOwner: boolean;
+  ownerLogin: string | null;
+}
+
+export interface SetupStatus {
+  configured: boolean;
+  appSlug: string | null;
+  appUrl: string;
+  githubUrl: string;
+  installUrl: string | null;
+  ownerClaimed: boolean;
+  ownerLogin: string | null;
+}
+
+export interface OwnerInfo {
+  userId: number;
+  login: string;
+  avatarUrl: string;
 }
 
 export interface ProgressEntry {
@@ -144,6 +162,18 @@ export function fetchStatus(owner: string, repo: string, pr: number) {
 
 export function fetchUser() {
   return apiFetch<UserInfo>('/api/auth/me');
+}
+
+export async function fetchSetupStatus(): Promise<SetupStatus> {
+  const res = await fetch('/api/setup/status', { credentials: 'include' });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json() as Promise<SetupStatus>;
+}
+
+export function claimOwnership() {
+  return apiFetch<{ ok: boolean; owner: OwnerInfo }>('/api/setup/claim', {
+    method: 'POST',
+  });
 }
 
 export async function logout() {

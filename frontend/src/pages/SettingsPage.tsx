@@ -1,44 +1,61 @@
 import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router';
+import {
+  fetchSetupStatus,
+  fetchUser,
+  claimOwnership,
+  type SetupStatus,
+  type UserInfo,
+} from '../api';
 
-interface SetupStatus {
-  configured: boolean;
-  appSlug: string | null;
-  githubUrl: string;
-  installUrl: string | null;
-}
-
-export function SetupPage() {
+export function SettingsPage() {
   const [searchParams] = useSearchParams();
   const [status, setStatus] = useState<SetupStatus | null>(null);
+  const [user, setUser] = useState<UserInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [githubUrl, setGithubUrl] = useState('https://github.com');
   const [isGhe, setIsGhe] = useState(false);
   const [appUrl, setAppUrl] = useState('');
   const [org, setOrg] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [claiming, setClaiming] = useState(false);
+  const [claimError, setClaimError] = useState<string | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
 
   const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
   const success = searchParams.get('success') === 'true';
-  const installUrl = searchParams.get('install_url');
+  const installUrlParam = searchParams.get('install_url');
   const installed = searchParams.get('installed') === 'true'
     || searchParams.get('setup_action') === 'install';
   const error = searchParams.get('error');
 
   useEffect(() => {
-    fetch('/api/setup/status', { credentials: 'include' })
-      .then((r) => r.json())
-      .then((data) => {
-        setStatus(data as SetupStatus);
-        if ((data as SetupStatus).githubUrl !== 'https://github.com') {
-          setGithubUrl((data as SetupStatus).githubUrl);
+    let cancelled = false;
+    async function load() {
+      try {
+        const s = await fetchSetupStatus();
+        if (cancelled) return;
+        setStatus(s);
+        if (s.githubUrl !== 'https://github.com') {
+          setGithubUrl(s.githubUrl);
           setIsGhe(true);
         }
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+        // Only fetch the user when the App is configured — OAuth isn't usable
+        // before that. fetchUser auto-redirects to OAuth on 401.
+        if (s.configured) {
+          const u = await fetchUser();
+          if (cancelled) return;
+          setUser(u);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    load();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   async function handleConnect() {
@@ -56,8 +73,6 @@ export function SetupPage() {
       });
       const data = (await res.json()) as { manifestUrl: string; manifest: string };
 
-      // Submit a form to GitHub with the manifest
-      // GitHub's app manifest flow requires a POST form submission
       const form = formRef.current!;
       form.action = data.manifestUrl;
       const input = form.querySelector('input[name="manifest"]') as HTMLInputElement;
@@ -65,6 +80,19 @@ export function SetupPage() {
       form.submit();
     } catch {
       setSubmitting(false);
+    }
+  }
+
+  async function handleClaim() {
+    setClaiming(true);
+    setClaimError(null);
+    try {
+      await claimOwnership();
+      // Reload so all state (user.isOwner, status.ownerClaimed) refreshes.
+      window.location.reload();
+    } catch (err) {
+      setClaimError(err instanceof Error ? err.message : 'Failed to claim ownership');
+      setClaiming(false);
     }
   }
 
@@ -76,15 +104,50 @@ export function SetupPage() {
     );
   }
 
+  // ---- Locked: configured, authed, but not the owner ----
+  if (status?.configured && user && !user.isOwner && status.ownerClaimed) {
+    return <LockedScreen />;
+  }
+
+  // ---- Claim ownership: configured, authed, no owner yet ----
+  if (status?.configured && user && !user.isOwner && !status.ownerClaimed) {
+    return (
+      <ClaimScreen
+        login={user.login}
+        avatarUrl={user.avatarUrl}
+        onClaim={handleClaim}
+        claiming={claiming}
+        error={claimError}
+      />
+    );
+  }
+
+  // ---- Main UI: unconfigured (first-time setup) OR configured owner ----
   return (
     <div className="min-h-screen bg-[var(--bg-primary)] flex items-center justify-center p-8">
       <div className="max-w-lg w-full">
         <h1 className="text-3xl font-bold text-[var(--text-primary)] mb-2">Cruise Line</h1>
         <p className="text-[var(--text-secondary)] mb-8">
-          Set up your GitHub integration to start generating PR walkthroughs.
+          {status?.configured
+            ? 'Manage your GitHub integration.'
+            : 'Set up your GitHub integration to start generating PR walkthroughs.'}
         </p>
 
-        {/* Error banner */}
+        {user?.isOwner && (
+          <div className="mb-6 flex items-center gap-3 p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)]">
+            <img
+              src={user.avatarUrl}
+              alt=""
+              className="w-8 h-8 rounded-full"
+            />
+            <div className="text-sm text-[var(--text-secondary)]">
+              Signed in as <span className="text-[var(--text-primary)] font-medium">@{user.login}</span>
+              {' — '}
+              <span className="text-[var(--accent)]">owner of this install</span>
+            </div>
+          </div>
+        )}
+
         {error && (
           <div className="mb-6 p-4 rounded-lg bg-red-900/20 border border-red-700/50 text-red-400 text-sm">
             Setup failed: {error.replace(/_/g, ' ')}. Please try again.
@@ -109,7 +172,7 @@ export function SetupPage() {
                 onClick={async () => {
                   if (!confirm('Disconnect the current GitHub App? You will need to create a new one.')) return;
                   await fetch('/api/setup/github', { method: 'DELETE', credentials: 'include' });
-                  window.location.href = '/setup';
+                  window.location.href = '/settings';
                 }}
                 className="text-xs text-[var(--text-secondary)] hover:text-red-400 transition-colors"
               >
@@ -118,7 +181,6 @@ export function SetupPage() {
             </div>
           ) : (
             <>
-              {/* Public URL — only shown on localhost where a tunnel is needed */}
               {isLocalhost && (
                 <div className="mb-4">
                   <label className="block text-sm text-[var(--text-secondary)] mb-1.5">
@@ -138,7 +200,6 @@ export function SetupPage() {
                 </div>
               )}
 
-              {/* Organization */}
               <div className="mb-4">
                 <label className="block text-sm text-[var(--text-secondary)] mb-1.5">
                   Organization <span className="text-[var(--text-secondary)]/50">(optional)</span>
@@ -155,7 +216,6 @@ export function SetupPage() {
                 </p>
               </div>
 
-              {/* GHE toggle */}
               <label className="flex items-center gap-2 mb-4 text-sm text-[var(--text-secondary)] cursor-pointer">
                 <input
                   type="checkbox"
@@ -186,9 +246,9 @@ export function SetupPage() {
 
               <p className="mt-3 text-xs text-[var(--text-secondary)]">
                 This will create a GitHub App on your account with read access to code and write access to pull request comments.
+                You'll become the owner of this Cruise Line install.
               </p>
 
-              {/* Hidden form for GitHub manifest POST */}
               <form ref={formRef} method="POST" style={{ display: 'none' }}>
                 <input type="hidden" name="manifest" value="" />
               </form>
@@ -209,13 +269,13 @@ export function SetupPage() {
             <div className="text-sm text-green-400">
               App installed on your repositories.
             </div>
-          ) : installUrl || status?.configured ? (
+          ) : installUrlParam || status?.configured ? (
             <>
               <p className="text-sm text-[var(--text-secondary)] mb-4">
                 Choose which repositories Cruise Line can access.
               </p>
               <a
-                href={installUrl ?? status?.installUrl ?? `${status?.githubUrl ?? 'https://github.com'}/apps/${status?.appSlug ?? 'cruise-line'}/installations/new`}
+                href={installUrlParam ?? status?.installUrl ?? `${status?.githubUrl ?? 'https://github.com'}/apps/${status?.appSlug ?? 'cruise-line'}/installations/new`}
                 className="inline-block px-5 py-2.5 text-sm font-medium rounded-lg bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] transition-colors"
               >
                 Install on repos
@@ -253,6 +313,71 @@ export function SetupPage() {
   );
 }
 
+function LockedScreen() {
+  return (
+    <div className="min-h-screen bg-[var(--bg-primary)] flex items-center justify-center p-8">
+      <div className="max-w-md w-full text-center">
+        <div className="mb-4 text-5xl">🔒</div>
+        <h1 className="text-2xl font-bold text-[var(--text-primary)] mb-3">
+          You are not authorized to view this page
+        </h1>
+        <p className="text-sm text-[var(--text-secondary)]">
+          Settings are restricted to the owner of this Cruise Line install.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function ClaimScreen({
+  login,
+  avatarUrl,
+  onClaim,
+  claiming,
+  error,
+}: {
+  login: string;
+  avatarUrl: string;
+  onClaim: () => void;
+  claiming: boolean;
+  error: string | null;
+}) {
+  return (
+    <div className="min-h-screen bg-[var(--bg-primary)] flex items-center justify-center p-8">
+      <div className="max-w-md w-full">
+        <h1 className="text-2xl font-bold text-[var(--text-primary)] mb-2">
+          Claim ownership
+        </h1>
+        <p className="text-sm text-[var(--text-secondary)] mb-6">
+          This Cruise Line install has no owner yet. The first person to claim ownership
+          will be the only user who can manage settings going forward.
+        </p>
+
+        <div className="mb-6 flex items-center gap-3 p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)]">
+          <img src={avatarUrl} alt="" className="w-8 h-8 rounded-full" />
+          <div className="text-sm text-[var(--text-secondary)]">
+            Signed in as <span className="text-[var(--text-primary)] font-medium">@{login}</span>
+          </div>
+        </div>
+
+        {error && (
+          <div className="mb-4 p-3 rounded-lg bg-red-900/20 border border-red-700/50 text-red-400 text-sm">
+            {error}
+          </div>
+        )}
+
+        <button
+          onClick={onClaim}
+          disabled={claiming}
+          className="w-full px-5 py-2.5 text-sm font-medium rounded-lg bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] disabled:opacity-50 transition-colors"
+        >
+          {claiming ? 'Claiming...' : `Claim ownership as @${login}`}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function StepBadge({ step, done }: { step: number; done?: boolean }) {
   return (
     <div
@@ -262,7 +387,7 @@ function StepBadge({ step, done }: { step: number; done?: boolean }) {
           : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] border border-[var(--border)]'
       }`}
     >
-      {done ? '\u2713' : step}
+      {done ? '✓' : step}
     </div>
   );
 }
