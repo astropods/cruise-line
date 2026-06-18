@@ -1,3 +1,4 @@
+import type { TransactionSql } from 'postgres';
 import { sql } from './client.js';
 
 export interface GitHubAppConfig {
@@ -188,6 +189,30 @@ export async function isOwnerClaimed(): Promise<boolean> {
 }
 
 /**
+ * Upsert the owner.login / owner.avatar_url / owner.claimed_at keys. The
+ * owner.user_id key is intentionally not handled here — that's where the
+ * claim and transfer flows diverge (race-safe DO NOTHING vs. unconditional
+ * DO UPDATE), so each caller writes its own user_id INSERT.
+ */
+async function upsertOwnerKeys(
+  tx: TransactionSql,
+  input: { login: string; avatarUrl: string },
+  claimedAt: string,
+): Promise<void> {
+  const entries: [string, string][] = [
+    [OWNER_PREFIX + 'login', input.login],
+    [OWNER_PREFIX + 'avatar_url', input.avatarUrl],
+    [OWNER_PREFIX + 'claimed_at', claimedAt],
+  ];
+  for (const [key, value] of entries) {
+    await tx`
+      INSERT INTO app_config (key, value) VALUES (${key}, ${value})
+      ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+    `;
+  }
+}
+
+/**
  * Overwrite the current owner. Used by the ownership-transfer flow, where the
  * current owner has deliberately delegated to another user. Distinct from
  * claimOwner (which is race-safe and only fires when no owner is set).
@@ -203,18 +228,7 @@ export async function setOwner(input: {
       INSERT INTO app_config (key, value) VALUES (${OWNER_PREFIX + 'user_id'}, ${String(input.userId)})
       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
     `;
-    await tx`
-      INSERT INTO app_config (key, value) VALUES (${OWNER_PREFIX + 'login'}, ${input.login})
-      ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
-    `;
-    await tx`
-      INSERT INTO app_config (key, value) VALUES (${OWNER_PREFIX + 'avatar_url'}, ${input.avatarUrl})
-      ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
-    `;
-    await tx`
-      INSERT INTO app_config (key, value) VALUES (${OWNER_PREFIX + 'claimed_at'}, ${claimedAt})
-      ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
-    `;
+    await upsertOwnerKeys(tx, input, claimedAt);
   });
 }
 
@@ -242,18 +256,7 @@ export async function claimOwner(input: {
     // If the INSERT was a no-op, someone else has already claimed ownership.
     if (!existing) return false;
 
-    await tx`
-      INSERT INTO app_config (key, value) VALUES (${OWNER_PREFIX + 'login'}, ${input.login})
-      ON CONFLICT (key) DO UPDATE SET value = ${input.login}, updated_at = NOW()
-    `;
-    await tx`
-      INSERT INTO app_config (key, value) VALUES (${OWNER_PREFIX + 'avatar_url'}, ${input.avatarUrl})
-      ON CONFLICT (key) DO UPDATE SET value = ${input.avatarUrl}, updated_at = NOW()
-    `;
-    await tx`
-      INSERT INTO app_config (key, value) VALUES (${OWNER_PREFIX + 'claimed_at'}, ${claimedAt})
-      ON CONFLICT (key) DO UPDATE SET value = ${claimedAt}, updated_at = NOW()
-    `;
+    await upsertOwnerKeys(tx, input, claimedAt);
 
     return true;
   });
