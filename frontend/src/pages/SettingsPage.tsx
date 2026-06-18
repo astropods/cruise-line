@@ -4,8 +4,13 @@ import {
   fetchSetupStatus,
   fetchUser,
   claimOwnership,
+  fetchConnectedRepos,
+  fetchKnownUsers,
+  transferOwnership,
   type SetupStatus,
   type UserInfo,
+  type ConnectedInstallation,
+  type KnownUser,
 } from '../api';
 
 export function SettingsPage() {
@@ -308,6 +313,13 @@ export function SettingsPage() {
             </p>
           )}
         </div>
+
+        {user?.isOwner && status?.configured && (
+          <>
+            <RepositoriesSection installUrl={status.installUrl} />
+            <UsersSection currentUserId={user.userId} />
+          </>
+        )}
       </div>
     </div>
   );
@@ -376,6 +388,216 @@ function ClaimScreen({
       </div>
     </div>
   );
+}
+
+function RepositoriesSection({ installUrl }: { installUrl: string | null }) {
+  const [installations, setInstallations] = useState<ConnectedInstallation[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchConnectedRepos()
+      .then((data) => setInstallations(data.installations))
+      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load repositories'));
+  }, []);
+
+  const totalRepos = installations?.reduce((sum, inst) => sum + inst.repositories.length, 0) ?? 0;
+
+  return (
+    <div className="mt-6 p-6 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)]">
+      <div className="flex items-baseline justify-between mb-4">
+        <h2 className="text-lg font-semibold text-[var(--text-primary)]">
+          Connected repositories
+        </h2>
+        {installations && (
+          <span className="text-xs text-[var(--text-secondary)]">
+            {totalRepos} repo{totalRepos === 1 ? '' : 's'} across {installations.length} install{installations.length === 1 ? '' : 's'}
+          </span>
+        )}
+      </div>
+
+      {error && (
+        <div className="p-3 rounded-lg bg-red-900/20 border border-red-700/50 text-red-400 text-sm">
+          {error}
+        </div>
+      )}
+
+      {!installations && !error && (
+        <div className="text-sm text-[var(--text-secondary)]">Loading…</div>
+      )}
+
+      {installations && installations.length === 0 && (
+        <div className="text-sm text-[var(--text-secondary)]">
+          The GitHub App isn't installed on any repositories yet.
+          {installUrl && (
+            <>
+              {' '}
+              <a href={installUrl} className="text-[var(--accent)] hover:underline">
+                Install it now
+              </a>.
+            </>
+          )}
+        </div>
+      )}
+
+      {installations && installations.length > 0 && (
+        <div className="space-y-5">
+          {installations.map((inst) => (
+            <div key={inst.id}>
+              <div className="flex items-center gap-2 mb-2">
+                <img src={inst.account.avatarUrl} alt="" className="w-5 h-5 rounded-full" />
+                <a
+                  href={inst.account.htmlUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-sm font-medium text-[var(--text-primary)] hover:text-[var(--accent)] transition-colors"
+                >
+                  {inst.account.login}
+                </a>
+                <span className="text-xs text-[var(--text-secondary)]">
+                  ({inst.account.type})
+                </span>
+              </div>
+              <ul className="space-y-1 pl-7">
+                {inst.repositories.length === 0 && (
+                  <li className="text-xs text-[var(--text-secondary)] italic">
+                    No repositories selected for this installation.
+                  </li>
+                )}
+                {inst.repositories.map((repo) => (
+                  <li key={repo.id} className="flex items-center gap-2 text-sm">
+                    <a
+                      href={repo.htmlUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-[var(--text-primary)] hover:text-[var(--accent)] transition-colors"
+                    >
+                      {repo.fullName}
+                    </a>
+                    {repo.private && (
+                      <span className="text-[10px] uppercase tracking-wide text-[var(--text-secondary)] border border-[var(--border)] rounded px-1.5 py-0.5">
+                        private
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function UsersSection({ currentUserId }: { currentUserId: number }) {
+  const [users, setUsers] = useState<KnownUser[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [transferringTo, setTransferringTo] = useState<number | null>(null);
+
+  useEffect(() => {
+    fetchKnownUsers()
+      .then((data) => setUsers(data.users))
+      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load users'));
+  }, []);
+
+  async function handleTransfer(target: KnownUser) {
+    if (!confirm(
+      `Transfer ownership to @${target.login}? You will lose access to these settings.`,
+    )) {
+      return;
+    }
+    setTransferringTo(target.userId);
+    try {
+      await transferOwnership(target.userId);
+      // Reload — after transfer the current user is no longer the owner, so
+      // they'll bounce to the 403 screen.
+      window.location.reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Transfer failed');
+      setTransferringTo(null);
+    }
+  }
+
+  return (
+    <div className="mt-6 p-6 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)]">
+      <div className="flex items-baseline justify-between mb-4">
+        <h2 className="text-lg font-semibold text-[var(--text-primary)]">
+          Users
+        </h2>
+        {users && (
+          <span className="text-xs text-[var(--text-secondary)]">
+            {users.length} user{users.length === 1 ? '' : 's'}
+          </span>
+        )}
+      </div>
+
+      <p className="text-xs text-[var(--text-secondary)] mb-4">
+        Everyone who has signed in to this Cruise Line install. Transfer ownership to
+        another user to hand off these settings.
+      </p>
+
+      {error && (
+        <div className="mb-3 p-3 rounded-lg bg-red-900/20 border border-red-700/50 text-red-400 text-sm">
+          {error}
+        </div>
+      )}
+
+      {!users && !error && (
+        <div className="text-sm text-[var(--text-secondary)]">Loading…</div>
+      )}
+
+      {users && users.length === 0 && (
+        <div className="text-sm text-[var(--text-secondary)]">No users have signed in yet.</div>
+      )}
+
+      {users && users.length > 0 && (
+        <ul className="divide-y divide-[var(--border)]">
+          {users.map((u) => (
+            <li key={u.userId} className="flex items-center gap-3 py-3">
+              <img src={u.avatarUrl} alt="" className="w-8 h-8 rounded-full flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-[var(--text-primary)] truncate">
+                    @{u.login}
+                  </span>
+                  {u.isOwner && (
+                    <span className="text-[10px] uppercase tracking-wide bg-[var(--accent)]/20 text-[var(--accent)] rounded px-1.5 py-0.5">
+                      owner
+                    </span>
+                  )}
+                </div>
+                <div className="text-xs text-[var(--text-secondary)]">
+                  Last seen {formatRelative(u.lastSeenAt)} · {u.loginCount} sign-in{u.loginCount === 1 ? '' : 's'}
+                </div>
+              </div>
+              {!u.isOwner && u.userId !== currentUserId && (
+                <button
+                  onClick={() => handleTransfer(u)}
+                  disabled={transferringTo !== null}
+                  className="text-xs px-3 py-1.5 rounded-md border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--accent)] disabled:opacity-50 transition-colors"
+                >
+                  {transferringTo === u.userId ? 'Transferring…' : 'Make owner'}
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function formatRelative(iso: string): string {
+  const then = new Date(iso).getTime();
+  const diffMs = Date.now() - then;
+  const diffMin = Math.floor(diffMs / 60_000);
+  if (diffMin < 1) return 'just now';
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  const diffDay = Math.floor(diffHr / 24);
+  if (diffDay < 30) return `${diffDay}d ago`;
+  return new Date(iso).toLocaleDateString();
 }
 
 function StepBadge({ step, done }: { step: number; done?: boolean }) {

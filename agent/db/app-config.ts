@@ -188,6 +188,37 @@ export async function isOwnerClaimed(): Promise<boolean> {
 }
 
 /**
+ * Overwrite the current owner. Used by the ownership-transfer flow, where the
+ * current owner has deliberately delegated to another user. Distinct from
+ * claimOwner (which is race-safe and only fires when no owner is set).
+ */
+export async function setOwner(input: {
+  userId: number;
+  login: string;
+  avatarUrl: string;
+}): Promise<void> {
+  const claimedAt = new Date().toISOString();
+  await sql.begin(async (tx) => {
+    await tx`
+      INSERT INTO app_config (key, value) VALUES (${OWNER_PREFIX + 'user_id'}, ${String(input.userId)})
+      ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+    `;
+    await tx`
+      INSERT INTO app_config (key, value) VALUES (${OWNER_PREFIX + 'login'}, ${input.login})
+      ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+    `;
+    await tx`
+      INSERT INTO app_config (key, value) VALUES (${OWNER_PREFIX + 'avatar_url'}, ${input.avatarUrl})
+      ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+    `;
+    await tx`
+      INSERT INTO app_config (key, value) VALUES (${OWNER_PREFIX + 'claimed_at'}, ${claimedAt})
+      ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+    `;
+  });
+}
+
+/**
  * Atomically claim ownership for a user. Returns true if the claim succeeded
  * (no prior owner), false if someone else already owns this install. The
  * INSERT ... ON CONFLICT DO NOTHING on `owner.user_id` is the race-free gate:

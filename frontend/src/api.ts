@@ -176,6 +176,53 @@ export function claimOwnership() {
   });
 }
 
+// --- Settings: connected repos, users, ownership transfer ---
+
+export interface ConnectedRepo {
+  id: number;
+  name: string;
+  fullName: string;
+  private: boolean;
+  htmlUrl: string;
+}
+
+export interface ConnectedInstallation {
+  id: number;
+  account: {
+    login: string;
+    type: string;
+    avatarUrl: string;
+    htmlUrl: string;
+  };
+  repositories: ConnectedRepo[];
+}
+
+export interface KnownUser {
+  userId: number;
+  login: string;
+  avatarUrl: string;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  loginCount: number;
+  isOwner: boolean;
+}
+
+export function fetchConnectedRepos() {
+  return apiFetch<{ installations: ConnectedInstallation[] }>('/api/settings/repos');
+}
+
+export function fetchKnownUsers() {
+  return apiFetch<{ users: KnownUser[] }>('/api/settings/users');
+}
+
+export function transferOwnership(userId: number) {
+  return apiFetch<{ ok: boolean; owner: OwnerInfo }>('/api/settings/owner', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId }),
+  });
+}
+
 export async function logout() {
   await apiFetch<{ ok: boolean }>('/api/auth/logout', { method: 'POST' });
   window.location.href = '/';

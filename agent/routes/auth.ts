@@ -11,6 +11,7 @@ import {
 } from '../github/oauth.js';
 import { revokeSession } from '../db/sessions.js';
 import { claimOwner, getOwner, isOwnerClaimed } from '../db/app-config.js';
+import { recordUserLogin } from '../db/users.js';
 import { SignJWT, jwtVerify } from 'jose';
 import { AppError } from '../middleware/error.js';
 import { rateLimit } from '../middleware/rate-limit.js';
@@ -66,6 +67,15 @@ authRoutes.get('/callback', authLimiter, async (c) => {
   // Exchange code for token
   const tokenResult = await exchangeCodeForToken(code);
   const user = await getGitHubUser(tokenResult.accessToken);
+
+  // Track every successful login. Drives the user list on settings and the
+  // ownership-transfer target validation (you can only transfer to someone
+  // who has actually logged in at least once).
+  await recordUserLogin({
+    userId: user.id,
+    login: user.login,
+    avatarUrl: user.avatar_url,
+  });
 
   // First user to authenticate after setup claims ownership. The DB upsert is
   // race-free, so concurrent first logins resolve to a single owner.
