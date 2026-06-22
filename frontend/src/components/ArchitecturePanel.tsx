@@ -181,6 +181,7 @@ function MermaidDiagram({ source }: { source: string }) {
     render();
     return () => {
       cancelled = true;
+      document.getElementById(renderId)?.remove();
     };
   }, [source]);
 
