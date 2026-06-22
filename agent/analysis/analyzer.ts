@@ -141,6 +141,15 @@ export async function analyzePr(
     // Fix escaped newlines from structured output
     claudeOutput.summary = claudeOutput.summary.replace(/\\n/g, '\n');
     claudeOutput.verdictRationale = claudeOutput.verdictRationale.replace(/\\n/g, '\n');
+    if (claudeOutput.architecture) {
+      claudeOutput.architecture.overview = claudeOutput.architecture.overview.replace(/\\n/g, '\n');
+      claudeOutput.architecture.steps = claudeOutput.architecture.steps.map((step) => step.replace(/\\n/g, '\n'));
+      claudeOutput.architecture.diagrams = claudeOutput.architecture.diagrams.map((diagram) => ({
+        ...diagram,
+        description: diagram.description.replace(/\\n/g, '\n'),
+        mermaid: diagram.mermaid.replace(/\\n/g, '\n'),
+      }));
+    }
     for (const finding of claudeOutput.findings) {
       finding.body = finding.body.replace(/\\n/g, '\n');
       if (finding.fixPrompt) {

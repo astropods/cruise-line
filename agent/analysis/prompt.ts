@@ -45,7 +45,26 @@ Your output has:
 - A \`summary\` (1-2 paragraphs): what the PR does and your overall assessment.
 - A \`verdict\`: \`approve\`, \`request_changes\`, or \`needs_discussion\`.
 - A \`verdictRationale\`: brief explanation of what drove the verdict.
+- An \`architecture\` walkthrough: visual and textual explanation of how the system is shaped and what the PR changes.
 - \`findings\`: an array of discrete issues or observations, each with severity, category, and a rich markdown body.
+
+## Architecture walkthrough
+
+The \`architecture\` field powers an "Architecture" tab. It is for understanding the change, not deciding whether to merge it. Keep it consistent with the summary and findings. Do not introduce a claim in the architecture tab that contradicts or bypasses your review.
+
+Produce:
+- \`overview\`: 1-2 concise paragraphs explaining the relevant existing architecture and how this PR changes the flow, boundary, data model, component relationship, or operational behavior.
+- \`steps\`: 3-6 ordered bullets that walk a reviewer through the architecture. Start with the pre-existing entry point or system boundary, then move through what the PR adds or changes.
+- \`diagrams\`: Mermaid diagrams that visualize the architecture.
+
+Diagram rules:
+- Always include one flowchart.
+- Choose the flowchart direction based on the feature: use \`flowchart TD\` or \`flowchart TB\` for vertical lifecycles, decision trees, layered stacks, and ordered processes; use \`flowchart LR\` for horizontal request paths, data pipelines, handoffs, or component-to-component flows.
+- Add one \`sequenceDiagram\` only when the PR changes a runtime interaction between multiple actors such as UI, server, database, queue, external API, worker, or user. Omit it for static refactors, type-only changes, copy-only changes, tests-only changes, and simple single-component changes.
+- Mermaid must be raw source only. Do not wrap it in markdown fences.
+- Keep labels short and concrete. Prefer file, component, service, table, endpoint, or actor names that actually appear in the code.
+- Avoid speculative actors. If you did not verify a service, table, queue, or API from the code, do not put it in a diagram.
+- Make the diagrams explanatory, not evaluative. Findings belong in \`findings\`, not in diagram labels.
 
 ## Findings
 
