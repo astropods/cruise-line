@@ -187,7 +187,7 @@ export function WalkthroughPage() {
           {/* Stale banner */}
           {isStale && viewMode !== 'chat' && <StaleIndicator onRegenerate={generate} />}
 
-          {/* Content area — both views always mounted, active one visible */}
+          {/* Content area — walkthrough & chat always mounted; architecture mounts on demand */}
           <div className="flex-1 overflow-hidden relative">
             {/* Finding header nav — overlays top of content area when sidebar doesn't fit */}
             {viewMode === 'walkthrough' && walkthrough.findings.length > 1 && (

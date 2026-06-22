@@ -167,7 +167,10 @@ function MermaidDiagram({ source }: { source: string }) {
                 noteBorderColor: '#30363d',
               },
             });
-          })();
+          })().catch((err: unknown) => {
+            mermaidInitPromise = null;
+            throw err;
+          });
         }
         await mermaidInitPromise;
 
