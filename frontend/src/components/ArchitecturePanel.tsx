@@ -6,11 +6,18 @@ import type { ArchitectureAnalysis, ArchitectureDiagram } from '../api';
 interface ArchitecturePanelProps {
   architecture?: ArchitectureAnalysis;
   onRegenerate: () => void;
+  diagramSvgCache?: Record<string, string>;
+  onDiagramRendered?: (source: string, svg: string) => void;
 }
 
 let mermaidInitPromise: Promise<void> | null = null;
 
-export function ArchitecturePanel({ architecture, onRegenerate }: ArchitecturePanelProps) {
+export function ArchitecturePanel({
+  architecture,
+  onRegenerate,
+  diagramSvgCache = {},
+  onDiagramRendered,
+}: ArchitecturePanelProps) {
   if (!architecture?.diagrams?.length) {
     return (
       <main className="max-w-[920px] mx-auto px-8 py-12 pb-24">
@@ -63,14 +70,27 @@ export function ArchitecturePanel({ architecture, onRegenerate }: ArchitecturePa
 
       <div className="space-y-6">
         {architecture.diagrams.map((diagram, index) => (
-          <DiagramCard key={`${diagram.title}-${index}`} diagram={diagram} />
+          <DiagramCard
+            key={`${diagram.title}-${index}`}
+            diagram={diagram}
+            diagramSvgCache={diagramSvgCache}
+            onDiagramRendered={onDiagramRendered}
+          />
         ))}
       </div>
     </main>
   );
 }
 
-function DiagramCard({ diagram }: { diagram: ArchitectureDiagram }) {
+function DiagramCard({
+  diagram,
+  diagramSvgCache,
+  onDiagramRendered,
+}: {
+  diagram: ArchitectureDiagram;
+  diagramSvgCache: Record<string, string>;
+  onDiagramRendered?: (source: string, svg: string) => void;
+}) {
   const [copied, setCopied] = useState(false);
   const source = normalizeMermaidSource(diagram.mermaid);
 
@@ -117,16 +137,33 @@ function DiagramCard({ diagram }: { diagram: ArchitectureDiagram }) {
           )}
         </button>
       </div>
-      <MermaidDiagram source={source} />
+      <MermaidDiagram
+        source={source}
+        cachedSvg={diagramSvgCache[source]}
+        onRendered={onDiagramRendered}
+      />
     </section>
   );
 }
 
-function MermaidDiagram({ source }: { source: string }) {
+function MermaidDiagram({
+  source,
+  cachedSvg,
+  onRendered,
+}: {
+  source: string;
+  cachedSvg?: string;
+  onRendered?: (source: string, svg: string) => void;
+}) {
   const idBase = useRef(`architecture-mermaid-${Math.random().toString(36).slice(2)}`);
   const renderCount = useRef(0);
-  const [svg, setSvg] = useState('');
+  const [svg, setSvg] = useState(cachedSvg ?? '');
   const [error, setError] = useState<string | null>(null);
+  const cachedSvgRef = useRef(cachedSvg);
+
+  useEffect(() => {
+    cachedSvgRef.current = cachedSvg;
+  }, [source, cachedSvg]);
 
   useEffect(() => {
     let cancelled = false;
@@ -136,6 +173,13 @@ function MermaidDiagram({ source }: { source: string }) {
       if (!source.trim()) {
         setSvg('');
         setError('Diagram source is empty.');
+        return;
+      }
+
+      const cached = cachedSvgRef.current;
+      if (cached) {
+        setError(null);
+        setSvg(cached);
         return;
       }
 
@@ -178,7 +222,10 @@ function MermaidDiagram({ source }: { source: string }) {
         if (cancelled) return;
 
         const rendered = await mermaid.render(renderId, source);
-        if (!cancelled) setSvg(rendered.svg);
+        if (!cancelled) {
+          setSvg(rendered.svg);
+          onRendered?.(source, rendered.svg);
+        }
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : 'Unable to render diagram.');
@@ -191,7 +238,7 @@ function MermaidDiagram({ source }: { source: string }) {
       cancelled = true;
       document.getElementById(renderId)?.remove();
     };
-  }, [source]);
+  }, [source, onRendered]);
 
   if (error) {
     return (
@@ -221,8 +268,7 @@ function MermaidDiagram({ source }: { source: string }) {
 
 function normalizeMermaidSource(source: string) {
   return source
-    .replace(/^```mermaid\s*/i, '')
-    .replace(/^```\s*/i, '')
+    .replace(/^```(?:mermaid)?\s*/i, '')
     .replace(/\s*```$/i, '')
     .trim();
 }

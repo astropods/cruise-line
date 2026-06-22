@@ -47,6 +47,7 @@ export function WalkthroughPage() {
   const [showRules, setShowRules] = useState(false);
   const [rulesPrefill, setRulesPrefill] = useState<string | undefined>();
   const [repoRules, setRepoRules] = useState<RuleRef[]>([]);
+  const [architectureSvgCache, setArchitectureSvgCache] = useState<Record<string, string>>({});
 
   // Fetch rules for hover tooltips
   const loadRules = useCallback(async () => {
@@ -74,6 +75,12 @@ export function WalkthroughPage() {
     setChatInitialMessage(message);
     setViewMode('chat');
   }
+
+  const cacheArchitectureSvg = useCallback((source: string, svg: string) => {
+    setArchitectureSvgCache((cache) => (
+      cache[source] === svg ? cache : { ...cache, [source]: svg }
+    ));
+  }, []);
 
   // Loading
   if (status === 'loading') return <PageLoading />;
@@ -241,6 +248,8 @@ export function WalkthroughPage() {
                 <ArchitecturePanel
                   architecture={walkthrough.architecture}
                   onRegenerate={generate}
+                  diagramSvgCache={architectureSvgCache}
+                  onDiagramRendered={cacheArchitectureSvg}
                 />
               )}
             </div>
