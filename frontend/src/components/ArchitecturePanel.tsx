@@ -8,7 +8,7 @@ interface ArchitecturePanelProps {
   onRegenerate: () => void;
 }
 
-let mermaidInitialized = false;
+let mermaidInitPromise: Promise<void> | null = null;
 
 export function ArchitecturePanel({ architecture, onRegenerate }: ArchitecturePanelProps) {
   if (!architecture?.diagrams?.length) {
@@ -142,32 +142,37 @@ function MermaidDiagram({ source }: { source: string }) {
       try {
         setError(null);
         setSvg('');
-        const { default: mermaid } = await import('mermaid');
-        if (!mermaidInitialized) {
-          mermaid.initialize({
-            startOnLoad: false,
-            securityLevel: 'strict',
-            theme: 'base',
-            themeVariables: {
-              background: '#161b22',
-              primaryColor: '#21262d',
-              primaryBorderColor: '#58a6ff',
-              primaryTextColor: '#e6edf3',
-              lineColor: '#8b949e',
-              secondaryColor: '#0d1117',
-              tertiaryColor: '#21262d',
-              actorBkg: '#21262d',
-              actorBorder: '#58a6ff',
-              actorTextColor: '#e6edf3',
-              signalColor: '#c9d1d9',
-              signalTextColor: '#c9d1d9',
-              noteBkgColor: '#21262d',
-              noteTextColor: '#c9d1d9',
-              noteBorderColor: '#30363d',
-            },
-          });
-          mermaidInitialized = true;
+        if (!mermaidInitPromise) {
+          mermaidInitPromise = (async () => {
+            const { default: mermaid } = await import('mermaid');
+            mermaid.initialize({
+              startOnLoad: false,
+              securityLevel: 'strict',
+              theme: 'base',
+              themeVariables: {
+                background: '#161b22',
+                primaryColor: '#21262d',
+                primaryBorderColor: '#58a6ff',
+                primaryTextColor: '#e6edf3',
+                lineColor: '#8b949e',
+                secondaryColor: '#0d1117',
+                tertiaryColor: '#21262d',
+                actorBkg: '#21262d',
+                actorBorder: '#58a6ff',
+                actorTextColor: '#e6edf3',
+                signalColor: '#c9d1d9',
+                signalTextColor: '#c9d1d9',
+                noteBkgColor: '#21262d',
+                noteTextColor: '#c9d1d9',
+                noteBorderColor: '#30363d',
+              },
+            });
+          })();
         }
+        await mermaidInitPromise;
+
+        const { default: mermaid } = await import('mermaid');
+        if (cancelled) return;
 
         const rendered = await mermaid.render(renderId, source);
         if (!cancelled) setSvg(rendered.svg);
