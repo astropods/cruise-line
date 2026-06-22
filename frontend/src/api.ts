@@ -44,6 +44,19 @@ export interface Finding {
   commentAnchor?: CommentAnchor;
 }
 
+export interface ArchitectureDiagram {
+  title: string;
+  kind: 'flowchart' | 'sequence';
+  description: string;
+  mermaid: string;
+}
+
+export interface ArchitectureAnalysis {
+  overview: string;
+  steps: string[];
+  diagrams: ArchitectureDiagram[];
+}
+
 export interface Walkthrough {
   pr: {
     repo: string;
@@ -58,6 +71,7 @@ export interface Walkthrough {
   verdictRationale: string;
   files: Record<string, FileContent>;
   findings: Finding[];
+  architecture?: ArchitectureAnalysis;
 }
 
 /** @deprecated Use Finding instead */

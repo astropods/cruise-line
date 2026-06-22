@@ -14,6 +14,7 @@ import { ProgressBar } from '../components/ProgressBar';
 import { StaleIndicator } from '../components/StaleIndicator';
 import { ChatPanel } from '../components/ChatPanel';
 import { ChatInputBar } from '../components/ChatInputBar';
+import { ArchitecturePanel } from '../components/ArchitecturePanel';
 import { PageLoading, ErrorState } from '../components/LoadingStates';
 import { Md } from '../components/Md';
 import { RulesPanel } from '../components/RulesPanel';
@@ -22,7 +23,7 @@ import type { Severity, ReviewRule } from '../api';
 import { fetchRules, logout } from '../api';
 import type { RuleRef } from '../components/RichContent';
 
-type ViewMode = 'walkthrough' | 'chat';
+type ViewMode = 'walkthrough' | 'architecture' | 'chat';
 
 export function WalkthroughPage() {
   const { owner, repo, pr } = useParams<{ owner: string; repo: string; pr: string }>();
@@ -126,26 +127,26 @@ export function WalkthroughPage() {
         <div className="flex-1 min-w-0 flex flex-col overflow-hidden cruise-main-container">
           {/* Header with tabs */}
           <header className="sticky top-0 z-30 bg-[var(--bg-primary)]/80 backdrop-blur-md border-b border-[var(--border)]">
-            <div className="max-w-[800px] mx-auto px-8 py-4 flex items-center justify-between">
-              <div className="flex items-center gap-3">
+            <div className="max-w-[920px] mx-auto px-8 py-4 flex items-center justify-between gap-4">
+              <div className="flex min-w-0 items-center gap-3">
                 <img
                   src={`${githubUrl}/${walkthrough.pr.author}.png?size=64`}
                   alt={walkthrough.pr.author}
                   className="w-8 h-8 rounded-full flex-shrink-0"
                 />
-                <div className="flex flex-col">
-                  <a href={prUrl} target="_blank" rel="noopener noreferrer" className="text-base font-semibold text-[var(--text-bright)] tracking-tight hover:text-[var(--accent)] transition-colors">
+                <div className="flex min-w-0 flex-col">
+                  <a href={prUrl} target="_blank" rel="noopener noreferrer" className="truncate text-base font-semibold text-[var(--text-bright)] hover:text-[var(--accent)] transition-colors">
                     {walkthrough.pr.title}
                   </a>
-                  <a href={prUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors">
+                  <a href={prUrl} target="_blank" rel="noopener noreferrer" className="truncate text-xs text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors">
                     {walkthrough.pr.repo}#{walkthrough.pr.number} by {walkthrough.pr.author}
                   </a>
                 </div>
               </div>
 
-              <div className="flex items-center gap-3">
+              <div className="flex shrink-0 items-center gap-3">
                 {/* View tabs */}
-                <div className="flex rounded-lg bg-[var(--bg-tertiary)] p-0.5">
+                <div className="flex shrink-0 rounded-lg bg-[var(--bg-tertiary)] p-0.5">
                   <button
                     onClick={() => setViewMode('walkthrough')}
                     className={`px-3 py-1 text-xs rounded-md transition-colors ${
@@ -155,6 +156,16 @@ export function WalkthroughPage() {
                     }`}
                   >
                     Analysis
+                  </button>
+                  <button
+                    onClick={() => setViewMode('architecture')}
+                    className={`px-3 py-1 text-xs rounded-md transition-colors ${
+                      viewMode === 'architecture'
+                        ? 'bg-[var(--bg-secondary)] text-[var(--text-bright)] shadow-sm'
+                        : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                    }`}
+                  >
+                    Architecture
                   </button>
                   <button
                     onClick={() => { setViewMode('chat'); setChatInitialMessage(undefined); }}
@@ -174,7 +185,7 @@ export function WalkthroughPage() {
           </header>
 
           {/* Stale banner */}
-          {isStale && viewMode === 'walkthrough' && <StaleIndicator onRegenerate={generate} />}
+          {isStale && viewMode !== 'chat' && <StaleIndicator onRegenerate={generate} />}
 
           {/* Content area — both views always mounted, active one visible */}
           <div className="flex-1 overflow-hidden relative">
@@ -215,6 +226,23 @@ export function WalkthroughPage() {
                 ))}
               </main>
               <MiniNav findings={walkthrough.findings} />
+            </div>
+
+            {/* Architecture view */}
+            <div
+              className="absolute inset-0 overflow-auto transition-opacity duration-200"
+              style={{
+                opacity: viewMode === 'architecture' ? 1 : 0,
+                pointerEvents: viewMode === 'architecture' ? 'auto' : 'none',
+                zIndex: viewMode === 'architecture' ? 1 : 0,
+              }}
+            >
+              {viewMode === 'architecture' && (
+                <ArchitecturePanel
+                  architecture={walkthrough.architecture}
+                  onRegenerate={generate}
+                />
+              )}
             </div>
 
             {/* Chat view */}

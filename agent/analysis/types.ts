@@ -32,6 +32,23 @@ export type Finding = {
   commentAnchor?: CommentAnchor;
 };
 
+export type ArchitectureDiagram = {
+  title: string;
+  kind: 'flowchart' | 'sequence';
+  /** Brief note explaining what this diagram helps the reviewer understand. */
+  description: string;
+  /** Raw Mermaid source. Do not include markdown fences. */
+  mermaid: string;
+};
+
+export type ArchitectureAnalysis = {
+  /** Explains the existing architecture and how the PR changes it. */
+  overview: string;
+  /** Step-by-step reading guide for the architecture changes. */
+  steps: string[];
+  diagrams: ArchitectureDiagram[];
+};
+
 export type Walkthrough = {
   pr: {
     repo: string;
@@ -45,6 +62,7 @@ export type Walkthrough = {
   verdict: Verdict;
   verdictRationale: string;
   findings: Finding[];
+  architecture?: ArchitectureAnalysis;
   /** Full file contents keyed by path, populated by the analyzer */
   files: Record<string, FileContent>;
 };
@@ -55,13 +73,14 @@ export type ClaudeAnalysisOutput = {
   summary: string;
   verdict: Verdict;
   verdictRationale: string;
+  architecture: ArchitectureAnalysis;
   findings: Finding[];
 };
 
 /** JSON Schema for Claude Agent SDK structured output */
 export const analysisJsonSchema = {
   type: 'object',
-  required: ['pr', 'summary', 'verdict', 'verdictRationale', 'findings'],
+  required: ['pr', 'summary', 'verdict', 'verdictRationale', 'architecture', 'findings'],
   properties: {
     pr: {
       type: 'object',
@@ -87,6 +106,52 @@ export const analysisJsonSchema = {
     verdictRationale: {
       type: 'string',
       description: 'Brief explanation of the verdict — what drove the recommendation',
+    },
+    architecture: {
+      type: 'object',
+      description: 'Understanding-oriented architecture walkthrough for the Architecture tab. This is not a merge-readiness assessment.',
+      required: ['overview', 'steps', 'diagrams'],
+      properties: {
+        overview: {
+          type: 'string',
+          description: '1-2 paragraphs explaining the system design already in place and how the PR changes it. Stay consistent with the summary and findings.',
+        },
+        steps: {
+          type: 'array',
+          minItems: 3,
+          maxItems: 6,
+          description: 'A step-by-step guide through the relevant architecture, ordered the way a reviewer should read the change.',
+          items: { type: 'string' },
+        },
+        diagrams: {
+          type: 'array',
+          minItems: 1,
+          maxItems: 2,
+          description: 'One flowchart is required. Add one sequence diagram only when the PR changes a multi-actor runtime interaction.',
+          items: {
+            type: 'object',
+            required: ['title', 'kind', 'description', 'mermaid'],
+            properties: {
+              title: {
+                type: 'string',
+                description: 'Short display title for the diagram.',
+              },
+              kind: {
+                type: 'string',
+                enum: ['flowchart', 'sequence'],
+              },
+              description: {
+                type: 'string',
+                description: 'One sentence explaining what the diagram shows.',
+              },
+              mermaid: {
+                type: 'string',
+                description: 'Raw Mermaid source only. No markdown fences. Flowcharts must start with flowchart TD/TB/LR/RL. Sequence diagrams must start with sequenceDiagram.',
+              },
+            },
+          },
+        },
+      },
     },
     findings: {
       type: 'array',
