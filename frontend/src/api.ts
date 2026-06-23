@@ -80,12 +80,14 @@ export interface Section {
   body: string;
 }
 
+export type UserRole = 'user' | 'owner';
+
 export interface UserInfo {
   userId: number;
   login: string;
   avatarUrl: string;
+  role: UserRole;
   isOwner: boolean;
-  ownerLogin: string | null;
 }
 
 export interface SetupStatus {
@@ -94,8 +96,7 @@ export interface SetupStatus {
   appUrl: string;
   githubUrl: string;
   installUrl: string | null;
-  ownerClaimed: boolean;
-  ownerLogin: string | null;
+  hasOwner: boolean;
 }
 
 export interface OwnerInfo {
@@ -218,7 +219,7 @@ export interface KnownUser {
   firstSeenAt: string;
   lastSeenAt: string;
   loginCount: number;
-  isOwner: boolean;
+  role: UserRole;
 }
 
 export function fetchConnectedRepos() {
@@ -229,12 +230,15 @@ export function fetchKnownUsers() {
   return apiFetch<{ users: KnownUser[] }>('/api/settings/users');
 }
 
-export function transferOwnership(userId: number) {
-  return apiFetch<{ ok: boolean; owner: OwnerInfo }>('/api/settings/owner', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ userId }),
-  });
+export function setUserRole(userId: number, role: UserRole) {
+  return apiFetch<{ ok: boolean; user: KnownUser }>(
+    `/api/settings/users/${userId}/role`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role }),
+    },
+  );
 }
 
 export async function logout() {

@@ -10,8 +10,7 @@ import {
   verifySessionToken,
 } from '../github/oauth.js';
 import { revokeSession } from '../db/sessions.js';
-import { claimOwner, getOwner, isOwnerClaimed } from '../db/app-config.js';
-import { recordUserLogin } from '../db/users.js';
+import { recordUserLogin, getUser, claimOwnerIfNone } from '../db/users.js';
 import { SignJWT, jwtVerify } from 'jose';
 import { AppError } from '../middleware/error.js';
 import { rateLimit } from '../middleware/rate-limit.js';
@@ -68,26 +67,19 @@ authRoutes.get('/callback', authLimiter, async (c) => {
   const tokenResult = await exchangeCodeForToken(code);
   const user = await getGitHubUser(tokenResult.accessToken);
 
-  // Track every successful login. Drives the user list on settings and the
-  // ownership-transfer target validation (you can only transfer to someone
-  // who has actually logged in at least once).
+  // Record the login so the user appears in the dashboard.
   await recordUserLogin({
     userId: user.id,
     login: user.login,
     avatarUrl: user.avatar_url,
   });
 
-  // First user to authenticate after setup claims ownership. The DB upsert is
-  // race-free, so concurrent first logins resolve to a single owner.
-  if (!(await isOwnerClaimed())) {
-    const claimed = await claimOwner({
-      userId: user.id,
-      login: user.login,
-      avatarUrl: user.avatar_url,
-    });
-    if (claimed) {
-      console.log(`Cruise Line ownership claimed by ${user.login} (${user.id})`);
-    }
+  // If no user holds the owner role yet, the first login claims it.
+  // claimOwnerIfNone uses a single guarded UPDATE so concurrent first logins
+  // resolve to a single owner.
+  const claimed = await claimOwnerIfNone(user.id);
+  if (claimed) {
+    console.log(`Cruise Line owner role claimed by ${user.login} (${user.id})`);
   }
 
   // Create session JWT
@@ -127,14 +119,15 @@ authRoutes.get('/me', async (c) => {
     throw new AppError(401, 'Invalid or expired session');
   }
 
-  const owner = await getOwner();
+  const user = await getUser(session.userId);
+  const role = user?.role ?? 'user';
 
   return c.json({
     userId: session.userId,
     login: session.login,
     avatarUrl: session.avatarUrl,
-    isOwner: owner !== null && owner.userId === session.userId,
-    ownerLogin: owner?.login ?? null,
+    role,
+    isOwner: role === 'owner',
   });
 });
 

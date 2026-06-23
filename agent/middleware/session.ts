@@ -10,9 +10,10 @@ import {
 } from '../github/oauth.js';
 import { verifyRepoAccess } from '../github/client.js';
 import { isSessionRevoked } from '../db/sessions.js';
-import { getOwner } from '../db/app-config.js';
+import { getUser, touchUser } from '../db/users.js';
 import { AppError } from './error.js';
 import type { AppEnv } from '../env.js';
+import type { SessionPayload } from '../github/oauth.js';
 
 // Repo access cache: `${userId}:${owner}/${repo}` -> expiry timestamp
 const accessCache = new Map<string, number>();
@@ -25,6 +26,26 @@ const REFRESH_BUFFER_SECONDS = 5 * 60;
 // GitHub refresh tokens are single-use, so only the first caller should hit
 // the API; concurrent requests share the same in-flight promise.
 const inflightRefreshes = new Map<string, Promise<TokenExchangeResult>>();
+
+// Users we've already touched this server boot. Bounds the per-request DB
+// write to one upsert per user per process lifetime — last_seen_at goes
+// slightly stale between server restarts, which is acceptable.
+const touchedUsers = new Set<number>();
+
+function trackActiveUser(session: SessionPayload): void {
+  if (touchedUsers.has(session.userId)) return;
+  touchedUsers.add(session.userId);
+  // Fire-and-forget so we never add DB latency to authed requests. If the
+  // write fails we drop the dedup entry so the next request retries.
+  touchUser({
+    userId: session.userId,
+    login: session.login,
+    avatarUrl: session.avatarUrl,
+  }).catch((err) => {
+    touchedUsers.delete(session.userId);
+    console.warn('User tracking failed:', err);
+  });
+}
 
 /**
  * Middleware that requires a valid session cookie.
@@ -84,23 +105,20 @@ export async function requireAuth(c: Context<AppEnv>, next: Next) {
   }
 
   c.set('session', session);
+  trackActiveUser(session);
   await next();
 }
 
 /**
- * Middleware that requires the authenticated user to be the claimed owner of
- * this Cruise Line install. Must run after `requireAuth`.
+ * Middleware that requires the authenticated user to hold the 'owner' role
+ * in the users table. Must run after `requireAuth`.
  */
 export async function requireOwner(c: Context<AppEnv>, next: Next) {
   const session = c.get('session');
-  const owner = await getOwner();
+  const user = await getUser(session.userId);
 
-  if (!owner) {
-    throw new AppError(403, 'No owner has been set for this install');
-  }
-
-  if (session.userId !== owner.userId) {
-    throw new AppError(403, 'Only the install owner can perform this action');
+  if (!user || user.role !== 'owner') {
+    throw new AppError(403, 'Only owners can perform this action');
   }
 
   await next();
