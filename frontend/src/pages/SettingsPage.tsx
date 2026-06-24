@@ -6,11 +6,12 @@ import {
   claimOwnership,
   fetchConnectedRepos,
   fetchKnownUsers,
-  transferOwnership,
+  setUserRole,
   type SetupStatus,
   type UserInfo,
   type ConnectedInstallation,
   type KnownUser,
+  type UserRole,
 } from '../api';
 
 export function SettingsPage() {
@@ -93,7 +94,7 @@ export function SettingsPage() {
     setClaimError(null);
     try {
       await claimOwnership();
-      // Reload so all state (user.isOwner, status.ownerClaimed) refreshes.
+      // Reload so user.isOwner / status.hasOwner refresh.
       window.location.reload();
     } catch (err) {
       setClaimError(err instanceof Error ? err.message : 'Failed to claim ownership');
@@ -109,13 +110,13 @@ export function SettingsPage() {
     );
   }
 
-  // ---- Locked: configured, authed, but not the owner ----
-  if (status?.configured && user && !user.isOwner && status.ownerClaimed) {
+  // ---- Locked: configured, authed, but not an owner ----
+  if (status?.configured && user && !user.isOwner && status.hasOwner) {
     return <LockedScreen />;
   }
 
   // ---- Claim ownership: configured, authed, no owner yet ----
-  if (status?.configured && user && !user.isOwner && !status.ownerClaimed) {
+  if (status?.configured && user && !user.isOwner && !status.hasOwner) {
     return (
       <ClaimScreen
         login={user.login}
@@ -492,7 +493,7 @@ function RepositoriesSection({ installUrl }: { installUrl: string | null }) {
 function UsersSection({ currentUserId }: { currentUserId: number }) {
   const [users, setUsers] = useState<KnownUser[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [transferringTo, setTransferringTo] = useState<number | null>(null);
+  const [mutatingUserId, setMutatingUserId] = useState<number | null>(null);
 
   useEffect(() => {
     fetchKnownUsers()
@@ -500,21 +501,37 @@ function UsersSection({ currentUserId }: { currentUserId: number }) {
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load users'));
   }, []);
 
-  async function handleTransfer(target: KnownUser) {
-    if (!confirm(
-      `Transfer ownership to @${target.login}? You will lose access to these settings.`,
-    )) {
-      return;
-    }
-    setTransferringTo(target.userId);
+  const ownerCount = users?.filter((u) => u.role === 'owner').length ?? 0;
+
+  async function handleSetRole(target: KnownUser, nextRole: UserRole) {
+    if (target.role === nextRole) return;
+
+    const isSelf = target.userId === currentUserId;
+    const willLoseAccess = isSelf && nextRole === 'user';
+    const promptText = willLoseAccess
+      ? `Demote yourself to user? You will lose access to these settings.`
+      : nextRole === 'owner'
+        ? `Promote @${target.login} to owner? They will gain full access to these settings.`
+        : `Demote @${target.login} to user? They will lose access to these settings.`;
+    if (!confirm(promptText)) return;
+
+    setMutatingUserId(target.userId);
+    setError(null);
     try {
-      await transferOwnership(target.userId);
-      // Reload — after transfer the current user is no longer the owner, so
-      // they'll bounce to the 403 screen.
-      window.location.reload();
+      const { user: updated } = await setUserRole(target.userId, nextRole);
+      if (willLoseAccess) {
+        // The current user just gave up the role — reload so they bounce to
+        // the 403 screen.
+        window.location.reload();
+        return;
+      }
+      setUsers((prev) =>
+        prev ? prev.map((u) => (u.userId === updated.userId ? updated : u)) : prev,
+      );
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Transfer failed');
-      setTransferringTo(null);
+      setError(err instanceof Error ? err.message : 'Role change failed');
+    } finally {
+      setMutatingUserId(null);
     }
   }
 
@@ -526,14 +543,14 @@ function UsersSection({ currentUserId }: { currentUserId: number }) {
         </h2>
         {users && (
           <span className="text-xs text-[var(--text-secondary)]">
-            {users.length} user{users.length === 1 ? '' : 's'}
+            {users.length} user{users.length === 1 ? '' : 's'} · {ownerCount} owner{ownerCount === 1 ? '' : 's'}
           </span>
         )}
       </div>
 
       <p className="text-xs text-[var(--text-secondary)] mb-4">
-        Everyone who has signed in to this Cruise Line install. Transfer ownership to
-        another user to hand off these settings.
+        Everyone who has signed in to this Cruise Line install. Promote users to
+        owner to share access to these settings. The last owner can't be demoted.
       </p>
 
       {error && (
@@ -552,35 +569,50 @@ function UsersSection({ currentUserId }: { currentUserId: number }) {
 
       {users && users.length > 0 && (
         <ul className="divide-y divide-[var(--border)]">
-          {users.map((u) => (
-            <li key={u.userId} className="flex items-center gap-3 py-3">
-              <img src={u.avatarUrl} alt="" className="w-8 h-8 rounded-full flex-shrink-0" />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-[var(--text-primary)] truncate">
-                    @{u.login}
-                  </span>
-                  {u.isOwner && (
-                    <span className="text-[10px] uppercase tracking-wide bg-[var(--accent)]/20 text-[var(--accent)] rounded px-1.5 py-0.5">
-                      owner
+          {users.map((u) => {
+            const isOwner = u.role === 'owner';
+            const isLastOwner = isOwner && ownerCount === 1;
+            const mutating = mutatingUserId === u.userId;
+            const disableButton = mutatingUserId !== null;
+            return (
+              <li key={u.userId} className="flex items-center gap-3 py-3">
+                <img src={u.avatarUrl} alt="" className="w-8 h-8 rounded-full flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-[var(--text-primary)] truncate">
+                      @{u.login}
                     </span>
-                  )}
+                    {isOwner && (
+                      <span className="text-[10px] uppercase tracking-wide bg-[var(--accent)]/20 text-[var(--accent)] rounded px-1.5 py-0.5">
+                        owner
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-xs text-[var(--text-secondary)]">
+                    Last seen {formatRelative(u.lastSeenAt)} · {u.loginCount} sign-in{u.loginCount === 1 ? '' : 's'}
+                  </div>
                 </div>
-                <div className="text-xs text-[var(--text-secondary)]">
-                  Last seen {formatRelative(u.lastSeenAt)} · {u.loginCount} sign-in{u.loginCount === 1 ? '' : 's'}
-                </div>
-              </div>
-              {!u.isOwner && u.userId !== currentUserId && (
-                <button
-                  onClick={() => handleTransfer(u)}
-                  disabled={transferringTo !== null}
-                  className="text-xs px-3 py-1.5 rounded-md border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--accent)] disabled:opacity-50 transition-colors"
-                >
-                  {transferringTo === u.userId ? 'Transferring…' : 'Make owner'}
-                </button>
-              )}
-            </li>
-          ))}
+                {isOwner ? (
+                  <button
+                    onClick={() => handleSetRole(u, 'user')}
+                    disabled={disableButton || isLastOwner}
+                    title={isLastOwner ? 'Promote another user to owner before demoting the last one' : undefined}
+                    className="text-xs px-3 py-1.5 rounded-md border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--accent)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {mutating ? 'Updating…' : 'Demote to user'}
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => handleSetRole(u, 'owner')}
+                    disabled={disableButton}
+                    className="text-xs px-3 py-1.5 rounded-md border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--accent)] disabled:opacity-50 transition-colors"
+                  >
+                    {mutating ? 'Updating…' : 'Make owner'}
+                  </button>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>

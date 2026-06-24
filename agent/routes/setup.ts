@@ -7,9 +7,8 @@ import {
   deleteGitHubAppConfig,
   saveGitHubUrls,
   saveAppUrl,
-  claimOwner,
-  getOwner,
 } from '../db/app-config.js';
+import { claimOwnerIfNone, countUsersByRole, touchUser } from '../db/users.js';
 import { AppError } from '../middleware/error.js';
 import { refreshWebhooks } from '../github/webhooks.js';
 import { requireAuth, requireOwner } from '../middleware/session.js';
@@ -45,7 +44,7 @@ async function requireSetupAuth(c: Context<AppEnv>, next: Next) {
 setupRoutes.get('/status', async (c) => {
   const configured = isGitHubConfigured();
   const dbConfig = await getGitHubAppConfig();
-  const owner = await getOwner();
+  const ownerCount = await countUsersByRole('owner');
 
   // Build the install URL based on owner type
   let installUrl: string | null = null;
@@ -61,8 +60,7 @@ setupRoutes.get('/status', async (c) => {
     appUrl: config.appUrl,
     githubUrl: config.github.htmlUrl,
     installUrl,
-    ownerClaimed: owner !== null,
-    ownerLogin: owner?.login ?? null,
+    hasOwner: ownerCount > 0,
   });
 });
 
@@ -238,37 +236,23 @@ setupRoutes.post('/claim', setupLimiter, requireAuth, async (c) => {
   }
 
   const session = c.get('session');
-  const existing = await getOwner();
 
-  if (existing) {
-    return c.json(
-      {
-        error: 'Owner already claimed',
-        owner: { userId: existing.userId, login: existing.login, avatarUrl: existing.avatarUrl },
-      },
-      409,
-    );
-  }
-
-  const claimed = await claimOwner({
+  // Make sure the calling user exists in the users table before granting the
+  // role. requireAuth already fires touchUser, but it's fire-and-forget; we
+  // can't depend on it having completed yet on this request.
+  await touchUser({
     userId: session.userId,
     login: session.login,
     avatarUrl: session.avatarUrl,
   });
 
+  const claimed = await claimOwnerIfNone(session.userId);
+
   if (!claimed) {
-    // Raced with another claim — re-read to return the actual owner.
-    const owner = await getOwner();
-    return c.json(
-      {
-        error: 'Owner was claimed concurrently',
-        owner: owner ? { userId: owner.userId, login: owner.login, avatarUrl: owner.avatarUrl } : null,
-      },
-      409,
-    );
+    return c.json({ error: 'Owner role is already held' }, 409);
   }
 
-  console.log(`Cruise Line ownership manually claimed by ${session.login} (${session.userId})`);
+  console.log(`Cruise Line owner role manually claimed by ${session.login} (${session.userId})`);
   return c.json({
     ok: true,
     owner: { userId: session.userId, login: session.login, avatarUrl: session.avatarUrl },
