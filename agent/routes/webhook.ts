@@ -8,7 +8,17 @@ webhookRoutes.post('/github', async (c) => {
   const event = c.req.header('x-github-event');
   const deliveryId = c.req.header('x-github-delivery');
 
+  // Log every arrival before validation so deliveries are visible in logs
+  // even when verification subsequently fails. Useful for distinguishing
+  // "GitHub didn't deliver" from "delivery rejected".
+  console.log(
+    `[webhook] received delivery=${deliveryId ?? 'missing'} event=${event ?? 'missing'}`,
+  );
+
   if (!signature || !event || !deliveryId) {
+    console.warn(
+      `[webhook] rejected delivery=${deliveryId ?? 'missing'}: missing required headers (signature=${!!signature}, event=${!!event}, delivery=${!!deliveryId})`,
+    );
     return c.json({ error: 'Missing webhook headers' }, 400);
   }
 
@@ -21,8 +31,12 @@ webhookRoutes.post('/github', async (c) => {
       signature,
       payload: body,
     });
+    console.log(`[webhook] processed delivery=${deliveryId} event=${event}`);
   } catch (err) {
-    console.error('Webhook verification/processing failed:', err);
+    const reason = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+    console.error(
+      `[webhook] verification/processing failed delivery=${deliveryId} event=${event}: ${reason}`,
+    );
     return c.json({ error: 'Webhook verification failed' }, 401);
   }
 
