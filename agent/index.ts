@@ -88,9 +88,12 @@ await initDb();
 // Auto-generate and persist session secret
 config.session.secret = await getOrCreateSessionSecret();
 
-// Load app URL from DB if not set via env
+// Load app URL from DB if not set via env.
+// ASTRO_EXTERNAL_AGENT_URL is injected by the Astro platform and always reflects
+// the current deployment URL — never let a stale DB value (cached during a prior
+// setup at a different URL) override it.
 const savedAppUrl = await getAppUrl();
-if (savedAppUrl) config.appUrl = savedAppUrl;
+if (savedAppUrl && !process.env.ASTRO_EXTERNAL_AGENT_URL) config.appUrl = savedAppUrl;
 
 // Load GitHub URLs from DB (GHE settings)
 const savedUrls = await getGitHubUrls();
