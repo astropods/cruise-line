@@ -59,8 +59,12 @@ export const config = {
     cookieName: 'cruise_session',
   },
 
-  /** Public-facing URL — auto-detected or set via APP_URL */
-  appUrl: optionalEnv('APP_URL', 'http://localhost:80'),
+  /**
+   * Public-facing URL. On Astro the platform injects ASTRO_EXTERNAL_AGENT_URL,
+   * which always reflects the current deployment URL and takes precedence over
+   * APP_URL and any value cached in the DB during setup (see index.ts).
+   */
+  appUrl: optionalEnv('ASTRO_EXTERNAL_AGENT_URL', optionalEnv('APP_URL', 'http://localhost:80')),
 };
 
 /**
