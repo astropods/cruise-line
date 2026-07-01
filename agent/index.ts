@@ -25,6 +25,7 @@ import { setupRoutes } from './routes/setup.js';
 import { settingsRoutes } from './routes/settings.js';
 import { debugRoutes } from './routes/debug.js';
 import { cliAuthRoutes } from './routes/cli-auth.js';
+import { downloadRoutes } from './routes/download.js';
 import { errorHandler } from './middleware/error.js';
 
 const isDev = config.port !== 80;
@@ -71,6 +72,9 @@ app.route('/api/setup', setupRoutes);
 app.route('/api/settings', settingsRoutes);
 app.route('/api/debug', debugRoutes);
 app.route('/api/cli', cliAuthRoutes);
+// CLI download surface: /install.sh, /download/*, /api/cli/latest.
+// Mounted at root so /install.sh and /download/* aren't buried under /api.
+app.route('/', downloadRoutes);
 
 if (isDev) {
   // In dev, redirect non-API page requests to Vite dev server
