@@ -23,10 +23,25 @@ const CLIENT_ID = 'cli';
 // Aggressive on the token endpoint because it accepts a public secret (the
 // verifier) and issues long-lived credentials. Anyone brute-forcing codes
 // hits this first.
-const tokenLimiter = rateLimit('cli-token', { windowMs: 60_000, max: 30 });
-const approveLimiter = rateLimit('cli-authorize', { windowMs: 60_000, max: 30 });
+//
+// Key function differs from the default: we fall through x-real-ip →
+// x-forwarded-for (leftmost) → 'unknown'. The default rate limiter collapses
+// to a single global bucket when x-real-ip is missing, which would let one
+// misconfigured client lock out every login for the whole install.
+// x-forwarded-for is client-appendable so it's not reliable for security
+// decisions, but for rate-limit *separation* it's strictly better than one
+// shared bucket.
+function publicIpKey(c: { req: { header: (name: string) => string | undefined } }): string {
+  const realIp = c.req.header('x-real-ip');
+  if (realIp) return realIp;
+  const xff = c.req.header('x-forwarded-for');
+  if (xff) return xff.split(',')[0]!.trim();
+  return 'unknown';
+}
+const tokenLimiter = rateLimit('cli-token', { windowMs: 60_000, max: 30, keyFn: publicIpKey });
+const approveLimiter = rateLimit('cli-authorize', { windowMs: 60_000, max: 30, keyFn: publicIpKey });
 
-async function sha256Base64Url(input: string): Promise<string> {
+export async function sha256Base64Url(input: string): Promise<string> {
   const data = new TextEncoder().encode(input);
   const digest = await crypto.subtle.digest('SHA-256', data);
   const bytes = new Uint8Array(digest);
@@ -41,7 +56,7 @@ async function sha256Base64Url(input: string): Promise<string> {
  * tricks a user into approving a consent screen exfiltrate the auth code
  * off the machine.
  */
-function isLoopbackRedirect(uri: string): boolean {
+export function isLoopbackRedirect(uri: string): boolean {
   let parsed: URL;
   try {
     parsed = new URL(uri);
@@ -52,7 +67,7 @@ function isLoopbackRedirect(uri: string): boolean {
   return parsed.hostname === '127.0.0.1' || parsed.hostname === 'localhost';
 }
 
-interface AuthorizeParams {
+export interface AuthorizeParams {
   responseType: string;
   clientId: string;
   redirectUri: string;
@@ -61,7 +76,7 @@ interface AuthorizeParams {
   codeChallengeMethod: string;
 }
 
-function validateAuthorizeParams(input: Partial<AuthorizeParams>): AuthorizeParams {
+export function validateAuthorizeParams(input: Partial<AuthorizeParams>): AuthorizeParams {
   const { responseType, clientId, redirectUri, state, codeChallenge, codeChallengeMethod } = input;
 
   if (responseType !== 'code') {
@@ -98,10 +113,10 @@ function validateAuthorizeParams(input: Partial<AuthorizeParams>): AuthorizePara
  *
  * Called by the consent SPA route to fetch the current user and validate the
  * authorize params. Returns the info needed to render the consent screen.
- * Requires the web session cookie; the SPA is responsible for sending the
- * user through /api/auth/github first if they aren't already signed in.
+ * Cookie-only: a CLI token holder must not be able to drive the consent flow
+ * headlessly and mint fresh independent tokens.
  */
-cliAuthRoutes.get('/authorize/params', requireAuth, async (c) => {
+cliAuthRoutes.get('/authorize/params', requireAuth, requireCookieSession, async (c) => {
   const params = validateAuthorizeParams({
     responseType: c.req.query('response_type'),
     clientId: c.req.query('client_id'),
@@ -130,8 +145,13 @@ cliAuthRoutes.get('/authorize/params', requireAuth, async (c) => {
  * single-use authorization code and returns the loopback URL the browser
  * should navigate to. The SPA performs the navigation; we don't 302 here
  * because this is a JSON API call.
+ *
+ * Cookie-only: minting a code is a token-issuance action. Letting a CLI
+ * token do this would turn "one authorization = one token" into "one leaked
+ * token = infinite fresh tokens" — the new tokens would survive revocation
+ * of the original.
  */
-cliAuthRoutes.post('/authorize/approve', approveLimiter, requireAuth, async (c) => {
+cliAuthRoutes.post('/authorize/approve', approveLimiter, requireAuth, requireCookieSession, async (c) => {
   const body = await c.req.json<Partial<AuthorizeParams>>();
   const params = validateAuthorizeParams(body);
   const session = c.get('session');

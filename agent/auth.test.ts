@@ -64,6 +64,15 @@ mock.module(path.resolve(import.meta.dir, './db/users.ts'), () => ({
 mock.module(path.resolve(import.meta.dir, './db/cli-tokens.ts'), () => ({
   resolveCliToken: mockResolveCliToken,
   touchCliTokenUsed: mockTouchCliTokenUsed,
+  // Stubs for cli-tokens exports that middleware doesn't use but sibling
+  // test files might import. Bun's mock.module is process-global — if any
+  // export is missing, an import in another file fails at load time.
+  consumeAuthCode: mock(() => Promise.resolve(null)),
+  createAuthCode: mock(() => Promise.resolve('code')),
+  issueCliToken: mock(() => Promise.resolve({ id: '', token: '', prefix: '' })),
+  listCliTokensForUser: mock(() => Promise.resolve([])),
+  revokeCliToken: mock(() => Promise.resolve(false)),
+  cleanupExpiredAuthCodes: mock(() => Promise.resolve()),
 }));
 
 // Suppress console.error from the error-path tests
