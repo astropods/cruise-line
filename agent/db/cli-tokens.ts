@@ -113,7 +113,7 @@ export interface CliTokenRecord {
   createdAt: string;
   lastUsedAt: string | null;
   revokedAt: string | null;
-  expiresAt: string | null;
+  expiresAt: string;
 }
 
 interface CliTokenRow {
@@ -123,7 +123,7 @@ interface CliTokenRow {
   created_at: Date;
   last_used_at: Date | null;
   revoked_at: Date | null;
-  expires_at: Date | null;
+  expires_at: Date;
 }
 
 function rowToRecord(row: CliTokenRow): CliTokenRecord {
@@ -134,7 +134,7 @@ function rowToRecord(row: CliTokenRow): CliTokenRecord {
     createdAt: row.created_at.toISOString(),
     lastUsedAt: row.last_used_at?.toISOString() ?? null,
     revokedAt: row.revoked_at?.toISOString() ?? null,
-    expiresAt: row.expires_at?.toISOString() ?? null,
+    expiresAt: row.expires_at.toISOString(),
   };
 }
 
@@ -172,10 +172,6 @@ export interface ResolvedCliToken {
  * unknown, revoked, or expired. Does not touch last_used_at; call
  * touchCliTokenUsed asynchronously after a successful auth so the DB write
  * never adds latency.
- *
- * expires_at IS NULL is treated as "no expiration" so tokens issued before
- * the 009_cli_token_expiry migration keep working; every new token gets a
- * concrete expiry at issue time.
  */
 export async function resolveCliToken(token: string): Promise<ResolvedCliToken | null> {
   if (!token.startsWith(TOKEN_PREFIX)) return null;
@@ -186,7 +182,7 @@ export async function resolveCliToken(token: string): Promise<ResolvedCliToken |
     FROM cli_tokens
     WHERE token_hash = ${hash}
       AND revoked_at IS NULL
-      AND (expires_at IS NULL OR expires_at > NOW())
+      AND expires_at > NOW()
   `;
   return row ? { id: row.id, userId: row.user_id } : null;
 }
@@ -206,7 +202,7 @@ export async function listCliTokensForUser(userId: number): Promise<CliTokenReco
     FROM cli_tokens
     WHERE user_id = ${userId}
       AND revoked_at IS NULL
-      AND (expires_at IS NULL OR expires_at > NOW())
+      AND expires_at > NOW()
     ORDER BY created_at DESC
   `;
   return rows.map(rowToRecord);

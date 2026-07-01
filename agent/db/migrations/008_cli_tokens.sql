@@ -15,7 +15,9 @@ CREATE TABLE IF NOT EXISTS cli_auth_codes (
 CREATE INDEX IF NOT EXISTS idx_cli_auth_codes_expires ON cli_auth_codes (expires_at);
 
 -- Long-lived bearer tokens issued to CLIs. token_hash is SHA-256 of the token;
--- the plaintext is returned exactly once at issue time.
+-- the plaintext is returned exactly once at issue time. expires_at is NOT NULL
+-- so any code path that forgets to set it fails loudly at INSERT rather than
+-- silently minting an immortal token.
 CREATE TABLE IF NOT EXISTS cli_tokens (
   id            TEXT PRIMARY KEY,
   token_hash    TEXT NOT NULL UNIQUE,
@@ -24,7 +26,9 @@ CREATE TABLE IF NOT EXISTS cli_tokens (
   label         TEXT,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   last_used_at  TIMESTAMPTZ,
-  revoked_at    TIMESTAMPTZ
+  revoked_at    TIMESTAMPTZ,
+  expires_at    TIMESTAMPTZ NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_cli_tokens_user ON cli_tokens (user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_cli_tokens_expires ON cli_tokens (expires_at);

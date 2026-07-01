@@ -719,7 +719,7 @@ function CliTokensSection() {
                   {t.lastUsedAt
                     ? ` · Last used ${formatRelative(t.lastUsedAt)}`
                     : ' · Never used'}
-                  {t.expiresAt && ` · Expires ${new Date(t.expiresAt).toLocaleDateString()}`}
+                  {` · Expires ${new Date(t.expiresAt).toLocaleDateString()}`}
                 </div>
               </div>
               <button

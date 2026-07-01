@@ -255,7 +255,7 @@ export interface CliTokenRecord {
   createdAt: string;
   lastUsedAt: string | null;
   revokedAt: string | null;
-  expiresAt: string | null;
+  expiresAt: string;
 }
 
 export function fetchCliTokens() {
