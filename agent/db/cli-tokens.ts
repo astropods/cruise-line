@@ -7,6 +7,10 @@ import { sql } from './client.js';
 const TOKEN_PREFIX = 'cl_live_';
 const TOKEN_ENTROPY_BYTES = 32;
 const CODE_ENTROPY_BYTES = 32;
+// New tokens expire 90 days after issue. A user hitting a stale token gets a
+// clear 401 from the CLI, prompting a re-login rather than a silent expansion
+// of the credential lifetime.
+const TOKEN_LIFETIME_MS = 90 * 24 * 60 * 60 * 1000;
 
 function randomBase64Url(bytes: number): string {
   const buf = crypto.getRandomValues(new Uint8Array(bytes));
@@ -109,6 +113,7 @@ export interface CliTokenRecord {
   createdAt: string;
   lastUsedAt: string | null;
   revokedAt: string | null;
+  expiresAt: string | null;
 }
 
 interface CliTokenRow {
@@ -118,6 +123,7 @@ interface CliTokenRow {
   created_at: Date;
   last_used_at: Date | null;
   revoked_at: Date | null;
+  expires_at: Date | null;
 }
 
 function rowToRecord(row: CliTokenRow): CliTokenRecord {
@@ -128,12 +134,14 @@ function rowToRecord(row: CliTokenRow): CliTokenRecord {
     createdAt: row.created_at.toISOString(),
     lastUsedAt: row.last_used_at?.toISOString() ?? null,
     revokedAt: row.revoked_at?.toISOString() ?? null,
+    expiresAt: row.expires_at?.toISOString() ?? null,
   };
 }
 
 /**
  * Issue a new CLI token for a user. Returns the plaintext token exactly once;
- * only the hash is stored server-side.
+ * only the hash is stored server-side. Every new token gets a fixed 90-day
+ * expiration.
  */
 export async function issueCliToken(input: {
   userId: number;
@@ -144,10 +152,11 @@ export async function issueCliToken(input: {
   const token = `${TOKEN_PREFIX}${random}`;
   const hash = await sha256Hex(token);
   const prefix = token.slice(0, 12);
+  const expiresAt = new Date(Date.now() + TOKEN_LIFETIME_MS);
 
   await sql`
-    INSERT INTO cli_tokens (id, token_hash, token_prefix, user_id, label)
-    VALUES (${id}, ${hash}, ${prefix}, ${input.userId}, ${input.label ?? null})
+    INSERT INTO cli_tokens (id, token_hash, token_prefix, user_id, label, expires_at)
+    VALUES (${id}, ${hash}, ${prefix}, ${input.userId}, ${input.label ?? null}, ${expiresAt})
   `;
 
   return { id, token, prefix };
@@ -160,8 +169,13 @@ export interface ResolvedCliToken {
 
 /**
  * Look up a token by its plaintext value. Returns null if the token is
- * unknown or revoked. Does not touch last_used_at; call touchCliTokenUsed
- * asynchronously after a successful auth so the DB write never adds latency.
+ * unknown, revoked, or expired. Does not touch last_used_at; call
+ * touchCliTokenUsed asynchronously after a successful auth so the DB write
+ * never adds latency.
+ *
+ * expires_at IS NULL is treated as "no expiration" so tokens issued before
+ * the 009_cli_token_expiry migration keep working; every new token gets a
+ * concrete expiry at issue time.
  */
 export async function resolveCliToken(token: string): Promise<ResolvedCliToken | null> {
   if (!token.startsWith(TOKEN_PREFIX)) return null;
@@ -170,7 +184,9 @@ export async function resolveCliToken(token: string): Promise<ResolvedCliToken |
   const [row] = await sql<{ id: string; user_id: number }[]>`
     SELECT id, user_id
     FROM cli_tokens
-    WHERE token_hash = ${hash} AND revoked_at IS NULL
+    WHERE token_hash = ${hash}
+      AND revoked_at IS NULL
+      AND (expires_at IS NULL OR expires_at > NOW())
   `;
   return row ? { id: row.id, userId: row.user_id } : null;
 }
@@ -179,11 +195,18 @@ export async function touchCliTokenUsed(id: string): Promise<void> {
   await sql`UPDATE cli_tokens SET last_used_at = NOW() WHERE id = ${id}`;
 }
 
+/**
+ * List a user's active tokens (not revoked, not expired). Expired tokens are
+ * filtered out here so the dashboard doesn't display dead credentials that
+ * would confuse a user into thinking they still have access.
+ */
 export async function listCliTokensForUser(userId: number): Promise<CliTokenRecord[]> {
   const rows = await sql<CliTokenRow[]>`
-    SELECT id, token_prefix, label, created_at, last_used_at, revoked_at
+    SELECT id, token_prefix, label, created_at, last_used_at, revoked_at, expires_at
     FROM cli_tokens
-    WHERE user_id = ${userId} AND revoked_at IS NULL
+    WHERE user_id = ${userId}
+      AND revoked_at IS NULL
+      AND (expires_at IS NULL OR expires_at > NOW())
     ORDER BY created_at DESC
   `;
   return rows.map(rowToRecord);

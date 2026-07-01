@@ -332,16 +332,26 @@ export function SettingsPage() {
 }
 
 function LockedScreen() {
+  // Non-owners can't touch install settings, but CLI tokens are per-user —
+  // any signed-in collaborator can mint and revoke their own. Rendering the
+  // section here is what actually makes /settings the "manage your tokens"
+  // surface for non-owners; without it the API is reachable but the UI
+  // isn't.
   return (
-    <div className="min-h-screen bg-[var(--bg-primary)] flex items-center justify-center p-8">
-      <div className="max-w-md w-full text-center">
-        <div className="mb-4 text-5xl">🔒</div>
-        <h1 className="text-2xl font-bold text-[var(--text-primary)] mb-3">
-          You are not authorized to view this page
-        </h1>
-        <p className="text-sm text-[var(--text-secondary)]">
-          Settings are restricted to the owner of this Cruise Line install.
-        </p>
+    <div className="min-h-screen bg-[var(--bg-primary)] p-8">
+      <div className="max-w-lg mx-auto">
+        <div className="mb-6 p-6 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] text-center">
+          <div className="mb-3 text-4xl">🔒</div>
+          <h1 className="text-xl font-semibold text-[var(--text-primary)] mb-2">
+            Install settings are restricted
+          </h1>
+          <p className="text-sm text-[var(--text-secondary)]">
+            Only the owner of this Cruise Line install can manage repositories
+            and users. Your account is otherwise ready to use.
+          </p>
+        </div>
+
+        <CliTokensSection />
       </div>
     </div>
   );
@@ -709,6 +719,7 @@ function CliTokensSection() {
                   {t.lastUsedAt
                     ? ` · Last used ${formatRelative(t.lastUsedAt)}`
                     : ' · Never used'}
+                  {t.expiresAt && ` · Expires ${new Date(t.expiresAt).toLocaleDateString()}`}
                 </div>
               </div>
               <button
