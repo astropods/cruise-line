@@ -36,6 +36,9 @@ COPY cli/ ./
 
 # Produce a binary + sha256 checksum for each target. The .sha256 files are
 # what `cruise-line upgrade` verifies against before atomic-renaming.
+# Keep this list in sync with SUPPORTED_TARGETS in agent/cli-dist.ts — the
+# server rejects downloads for anything not in that TS list, so a target
+# built here but missing there is unreachable, and vice versa.
 RUN mkdir -p /out && \
     for target in "darwin/arm64" "darwin/amd64"; do \
       os=$(echo "$target" | cut -d/ -f1); \

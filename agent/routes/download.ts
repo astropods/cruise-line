@@ -21,7 +21,15 @@ export const downloadRoutes = new Hono();
 // crashing on missing files so `bun run dev` still works.
 const CLI_DIR = join(process.cwd(), 'dist', 'cli');
 
-const SUPPORTED_TARGET_SET = new Set<string>(SUPPORTED_TARGETS);
+// Filenames the server is willing to hand out. Derived from SUPPORTED_TARGETS
+// so adding a platform means changing one list (plus the Dockerfile matrix).
+// Anything not in this set is a hard 404 — no path traversal, no accidental
+// serving of the VERSION file or unrelated build outputs.
+const ALLOWED_FILES = new Set<string>();
+for (const target of SUPPORTED_TARGETS) {
+  ALLOWED_FILES.add(`cruise-line-${target}`);
+  ALLOWED_FILES.add(`cruise-line-${target}.sha256`);
+}
 
 /**
  * GET /download/cruise-line-<os>-<arch>
@@ -32,18 +40,10 @@ const SUPPORTED_TARGET_SET = new Set<string>(SUPPORTED_TARGETS);
  */
 downloadRoutes.get('/download/:filename', async (c) => {
   const filename = c.req.param('filename');
-  if (!filename) throw new AppError(400, 'Missing filename');
-
-  const match = filename.match(/^cruise-line-(darwin-(?:arm64|amd64))(\.sha256)?$/);
-  if (!match) {
+  if (!filename || !ALLOWED_FILES.has(filename)) {
     throw new AppError(404, 'Not found');
   }
-  const target = match[1]!;
-  const isChecksum = !!match[2];
-
-  if (!SUPPORTED_TARGET_SET.has(target)) {
-    throw new AppError(404, 'Unsupported target');
-  }
+  const isChecksum = filename.endsWith('.sha256');
 
   const filePath = join(CLI_DIR, filename);
   if (!existsSync(filePath)) {
