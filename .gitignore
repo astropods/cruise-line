@@ -19,7 +19,8 @@ dist/
 frontend/dist/
 frontend/node_modules/
 
-# CLI (Go binary is a release artifact, not source)
+# CLI (Go binaries are release artifacts, not source)
+cli/cli
 cli/cruise-line
 cli/cruise-line-*
 cli/dist/

@@ -5,7 +5,7 @@
  */
 
 import { Hono } from 'hono';
-import { requireAuth } from '../middleware/session.js';
+import { requireAuth, requireCookieSession } from '../middleware/session.js';
 import {
   sandboxTelemetryStatus,
   sandboxTelemetryTest,
@@ -14,7 +14,8 @@ import type { AppEnv } from '../env.js';
 
 export const debugRoutes = new Hono<AppEnv>();
 
-debugRoutes.use('*', requireAuth);
+// Internal operator diagnostics. Never reachable via CLI tokens.
+debugRoutes.use('*', requireAuth, requireCookieSession);
 
 debugRoutes.get('/telemetry', async (c) => {
   const status = await sandboxTelemetryStatus();

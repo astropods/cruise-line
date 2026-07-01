@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { requireAuth, requireRepoAccess } from '../middleware/session.js';
+import { requireAuth, requireRepoAccess, requireCookieSession } from '../middleware/session.js';
 import { AppError } from '../middleware/error.js';
 import { listRules, addRule, deleteRule, updateRule } from '../db/rules.js';
 import type { AppEnv } from '../env.js';
@@ -25,11 +25,12 @@ ruleRoutes.get('/:owner/:repo', async (c) => {
  * POST /api/rules/:owner/:repo
  * Add a new review rule.
  */
-ruleRoutes.post('/:owner/:repo', async (c) => {
+ruleRoutes.post('/:owner/:repo', requireCookieSession, async (c) => {
   const owner = c.req.param('owner');
   const repo = c.req.param('repo');
   const { rule } = await c.req.json<{ rule: string }>();
 
+  if (!owner || !repo) throw new AppError(400, 'Missing route parameters');
   if (!rule?.trim()) throw new AppError(400, 'Rule text is required');
 
   const created = await addRule(owner, repo, rule.trim());
@@ -40,12 +41,13 @@ ruleRoutes.post('/:owner/:repo', async (c) => {
  * PATCH /api/rules/:owner/:repo/:id
  * Update a review rule's text.
  */
-ruleRoutes.patch('/:owner/:repo/:id', async (c) => {
+ruleRoutes.patch('/:owner/:repo/:id', requireCookieSession, async (c) => {
   const owner = c.req.param('owner');
   const repo = c.req.param('repo');
   const id = Number(c.req.param('id'));
   const { rule } = await c.req.json<{ rule: string }>();
 
+  if (!owner || !repo) throw new AppError(400, 'Missing route parameters');
   if (isNaN(id)) throw new AppError(400, 'Invalid rule ID');
   if (!rule?.trim()) throw new AppError(400, 'Rule text is required');
 
@@ -59,11 +61,12 @@ ruleRoutes.patch('/:owner/:repo/:id', async (c) => {
  * DELETE /api/rules/:owner/:repo/:id
  * Delete a review rule (renumbers remaining rules).
  */
-ruleRoutes.delete('/:owner/:repo/:id', async (c) => {
+ruleRoutes.delete('/:owner/:repo/:id', requireCookieSession, async (c) => {
   const owner = c.req.param('owner');
   const repo = c.req.param('repo');
   const id = Number(c.req.param('id'));
 
+  if (!owner || !repo) throw new AppError(400, 'Missing route parameters');
   if (isNaN(id)) throw new AppError(400, 'Invalid rule ID');
 
   await deleteRule(owner, repo, id);

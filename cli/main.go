@@ -74,10 +74,11 @@ commands:
   help                        Show this help
 
 flags:
-  cruise-line login supports --label <text> and --host <url> as alternates
-  cruise-line pr status supports --wait and --timeout <seconds>
+  cruise-line pr status supports --wait, --timeout <duration>, --interval <duration>
+  cruise-line api    supports --body <json> and --body-file <path|->
 
-config lives at $CRUISE_LINE_HOME or $XDG_CONFIG_HOME/cruise-line/config.json
-(falling back to ~/.config/cruise-line/config.json).
+durations accept Go syntax (10m, 30s, 1h). config lives at $CRUISE_LINE_HOME
+or $XDG_CONFIG_HOME/cruise-line/config.json (falling back to
+~/.config/cruise-line/config.json).
 `)
 }

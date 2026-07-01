@@ -199,11 +199,3 @@ export async function revokeCliToken(id: string, userId: number): Promise<boolea
   `;
   return !!row;
 }
-
-/** Revoke the token identified by its id, regardless of owner. Used by /api/cli/token/revoke. */
-export async function revokeCliTokenById(id: string): Promise<void> {
-  await sql`
-    UPDATE cli_tokens SET revoked_at = NOW()
-    WHERE id = ${id} AND revoked_at IS NULL
-  `;
-}

@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { requireAuth, requireOwner } from '../middleware/session.js';
+import { requireAuth, requireOwner, requireCookieSession } from '../middleware/session.js';
 import { AppError } from '../middleware/error.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import {
@@ -16,7 +16,10 @@ export const settingsRoutes = new Hono<AppEnv>();
 
 const settingsLimiter = rateLimit<AppEnv>('settings', { windowMs: 60_000, max: 30 });
 
-settingsRoutes.use('*', settingsLimiter, requireAuth, requireOwner);
+// Admin settings are cookie-only: CLI tokens are read-only by contract even
+// when the token belongs to an owner. Runs before requireOwner so we return
+// 403-not-cookie rather than 403-not-owner for CLI callers.
+settingsRoutes.use('*', settingsLimiter, requireAuth, requireCookieSession, requireOwner);
 
 /**
  * GET /api/settings/repos

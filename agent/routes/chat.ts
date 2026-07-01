@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { config } from '../config.js';
-import { requireAuth, requireRepoAccess } from '../middleware/session.js';
+import { requireAuth, requireRepoAccess, requireCookieSession } from '../middleware/session.js';
 import { AppError } from '../middleware/error.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import { getInstallationToken } from '../github/app.js';
@@ -25,8 +25,11 @@ const chatLimiter = rateLimit<AppEnv>('chat', {
   },
 });
 
-chatRoutes.use('/:owner/:repo/:pr/*', requireAuth, requireRepoAccess);
-chatRoutes.use('/:owner/:repo/:pr', requireAuth, requireRepoAccess);
+// Chat is an interactive browser feature — GitHub OAuth token is needed to
+// fetch PR context, and the surface (streaming SSE, session management) is not
+// meant for headless callers. Block Bearer callers at the router level.
+chatRoutes.use('/:owner/:repo/:pr/*', requireAuth, requireCookieSession, requireRepoAccess);
+chatRoutes.use('/:owner/:repo/:pr', requireAuth, requireCookieSession, requireRepoAccess);
 
 /**
  * POST /api/chat/:owner/:repo/:pr/message

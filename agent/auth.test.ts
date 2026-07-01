@@ -20,6 +20,8 @@ const mockSetSessionCookie = mock();
 const mockIsSessionRevoked = mock();
 const mockGetUser = mock();
 const mockTouchUser = mock(() => Promise.resolve());
+const mockResolveCliToken = mock(() => Promise.resolve(null as any));
+const mockTouchCliTokenUsed = mock(() => Promise.resolve());
 
 // Octokit constructor — used by getInstallationForRepo
 mock.module('@octokit/rest', () => ({
@@ -60,15 +62,20 @@ mock.module(path.resolve(import.meta.dir, './db/users.ts'), () => ({
 }));
 
 mock.module(path.resolve(import.meta.dir, './db/cli-tokens.ts'), () => ({
-  resolveCliToken: mock(() => Promise.resolve(null)),
-  touchCliTokenUsed: mock(() => Promise.resolve()),
+  resolveCliToken: mockResolveCliToken,
+  touchCliTokenUsed: mockTouchCliTokenUsed,
 }));
 
 // Suppress console.error from the error-path tests
 spyOn(console, 'error').mockImplementation(() => {});
 
 const { verifyRepoAccess } = await import('./github/client.js');
-const { requireAuth, requireOwner, requireRepoAccess } = await import('./middleware/session.js');
+const {
+  requireAuth,
+  requireOwner,
+  requireRepoAccess,
+  requireCookieSession,
+} = await import('./middleware/session.js');
 
 // --- Helpers ---------------------------------------------------------
 
@@ -255,6 +262,157 @@ describe('requireAuth', () => {
     } catch (err) {
       expect(err).toBeInstanceOf(AppError);
       expect((err as AppError).statusCode).toBe(401);
+    }
+    expect(next).not.toHaveBeenCalled();
+  });
+});
+
+// =====================================================================
+// requireAuth — Bearer (CLI-token) branch
+// =====================================================================
+
+const fakeUserRecord = {
+  userId: 42,
+  login: 'testuser',
+  avatarUrl: 'https://example.com/avatar.png',
+  firstSeenAt: '2026-01-01T00:00:00.000Z',
+  lastSeenAt: '2026-01-01T00:00:00.000Z',
+  loginCount: 1,
+  role: 'user' as const,
+};
+
+describe('requireAuth — Bearer branch', () => {
+  beforeEach(() => {
+    mockResolveCliToken.mockReset();
+    mockTouchCliTokenUsed.mockReset();
+    mockTouchCliTokenUsed.mockResolvedValue(undefined);
+    mockGetUser.mockReset();
+    mockVerifySessionToken.mockReset();
+  });
+
+  it('accepts a valid Bearer token and synthesizes a session with empty githubToken', async () => {
+    mockResolveCliToken.mockResolvedValueOnce({ id: 'tok_1', userId: 42 });
+    mockGetUser.mockResolvedValueOnce(fakeUserRecord);
+
+    const c = createAuthContext(undefined, { authorization: 'Bearer cl_live_abc' });
+    const next = mock().mockResolvedValue(undefined);
+
+    await requireAuth(c, next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+    const session = c.get('session') as SessionPayload;
+    expect(session.userId).toBe(42);
+    // Bearer sessions never carry a GitHub OAuth token — this is what
+    // requireCookieSession relies on to gate GitHub-write routes.
+    expect(session.githubToken).toBe('');
+    expect(c.get('authKind')).toBe('cli');
+    expect(mockResolveCliToken).toHaveBeenCalledWith('cl_live_abc');
+  });
+
+  it('rejects unknown Bearer tokens with 401', async () => {
+    mockResolveCliToken.mockResolvedValueOnce(null);
+
+    const c = createAuthContext(undefined, { authorization: 'Bearer cl_live_bogus' });
+    const next = mock();
+
+    try {
+      await requireAuth(c, next);
+      expect.unreachable('should have thrown');
+    } catch (err) {
+      expect(err).toBeInstanceOf(AppError);
+      expect((err as AppError).statusCode).toBe(401);
+    }
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('rejects a Bearer token whose user was deleted with 401', async () => {
+    mockResolveCliToken.mockResolvedValueOnce({ id: 'tok_1', userId: 42 });
+    mockGetUser.mockResolvedValueOnce(null);
+
+    const c = createAuthContext(undefined, { authorization: 'Bearer cl_live_orphan' });
+    const next = mock();
+
+    try {
+      await requireAuth(c, next);
+      expect.unreachable('should have thrown');
+    } catch (err) {
+      expect(err).toBeInstanceOf(AppError);
+      expect((err as AppError).statusCode).toBe(401);
+    }
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('bypasses cookie verification when a Bearer header is present', async () => {
+    mockResolveCliToken.mockResolvedValueOnce({ id: 'tok_1', userId: 42 });
+    mockGetUser.mockResolvedValueOnce(fakeUserRecord);
+
+    // Cookie is also set, but Bearer takes precedence — verifySessionToken
+    // must not be called on Bearer paths.
+    const c = createAuthContext('some-cookie-value', {
+      authorization: 'Bearer cl_live_abc',
+    });
+    const next = mock().mockResolvedValue(undefined);
+
+    await requireAuth(c, next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(mockVerifySessionToken).not.toHaveBeenCalled();
+  });
+
+  it('is case-insensitive on the Authorization header scheme', async () => {
+    mockResolveCliToken.mockResolvedValueOnce({ id: 'tok_1', userId: 42 });
+    mockGetUser.mockResolvedValueOnce(fakeUserRecord);
+
+    const c = createAuthContext(undefined, { authorization: 'bearer cl_live_lc' });
+    const next = mock().mockResolvedValue(undefined);
+
+    await requireAuth(c, next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(mockResolveCliToken).toHaveBeenCalledWith('cl_live_lc');
+  });
+});
+
+// =====================================================================
+// requireCookieSession — gates GitHub-write routes from Bearer callers
+// =====================================================================
+
+describe('requireCookieSession', () => {
+  it('lets cookie sessions through', async () => {
+    const c = createContext();
+    c.set('authKind', 'cookie');
+    const next = mock().mockResolvedValue(undefined);
+
+    await requireCookieSession(c, next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects CLI-token sessions with 403', async () => {
+    const c = createContext();
+    c.set('authKind', 'cli');
+    const next = mock();
+
+    try {
+      await requireCookieSession(c, next);
+      expect.unreachable('should have thrown');
+    } catch (err) {
+      expect(err).toBeInstanceOf(AppError);
+      expect((err as AppError).statusCode).toBe(403);
+    }
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('rejects when authKind is unset (defense-in-depth)', async () => {
+    const c = createContext(); // no authKind set
+    const next = mock();
+
+    try {
+      await requireCookieSession(c, next);
+      expect.unreachable('should have thrown');
+    } catch (err) {
+      expect(err).toBeInstanceOf(AppError);
+      expect((err as AppError).statusCode).toBe(403);
     }
     expect(next).not.toHaveBeenCalled();
   });

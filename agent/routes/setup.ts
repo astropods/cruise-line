@@ -11,7 +11,7 @@ import {
 import { claimOwnerIfNone, countUsersByRole, touchUser } from '../db/users.js';
 import { AppError } from '../middleware/error.js';
 import { refreshWebhooks } from '../github/webhooks.js';
-import { requireAuth, requireOwner } from '../middleware/session.js';
+import { requireAuth, requireOwner, requireCookieSession } from '../middleware/session.js';
 import { validateGitHubUrl, validateAppUrl } from '../middleware/validation.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import type { AppEnv } from '../env.js';
@@ -34,7 +34,9 @@ async function requireSetupAuth(c: Context<AppEnv>, next: Next) {
     await next();
     return;
   }
-  return requireAuth(c, () => requireOwner(c, next));
+  // Setup mutates App-level state (credentials, install linkage) — never a
+  // CLI-token operation, even when the token belongs to an owner.
+  return requireAuth(c, () => requireCookieSession(c, () => requireOwner(c, next)));
 }
 
 /**
@@ -230,7 +232,7 @@ setupRoutes.get('/install/callback', (c) => {
  * before an owner exists. Once an owner is set, the endpoint returns 409
  * with the current owner so the frontend can surface it.
  */
-setupRoutes.post('/claim', setupLimiter, requireAuth, async (c) => {
+setupRoutes.post('/claim', setupLimiter, requireAuth, requireCookieSession, async (c) => {
   if (!isGitHubConfigured()) {
     throw new AppError(400, 'GitHub App must be configured before claiming ownership');
   }
@@ -259,7 +261,7 @@ setupRoutes.post('/claim', setupLimiter, requireAuth, async (c) => {
   });
 });
 
-setupRoutes.delete('/github', setupLimiter, requireAuth, requireOwner, async (c) => {
+setupRoutes.delete('/github', setupLimiter, requireAuth, requireCookieSession, requireOwner, async (c) => {
   await deleteGitHubAppConfig();
 
   // Clear runtime config

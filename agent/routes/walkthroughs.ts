@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { config } from '../config.js';
-import { requireAuth, requireRepoAccess } from '../middleware/session.js';
+import { requireAuth, requireRepoAccess, requireCookieSession } from '../middleware/session.js';
 import {
   upsertWalkthrough,
   getLatestWalkthrough,
@@ -75,7 +75,7 @@ walkthroughRoutes.get('/:owner/:repo/:pr', async (c) => {
  * POST /api/walkthroughs/:owner/:repo/:pr/generate
  * Triggers walkthrough generation. Idempotent — won't duplicate running jobs.
  */
-walkthroughRoutes.post('/:owner/:repo/:pr/generate', generateLimiter, async (c) => {
+walkthroughRoutes.post('/:owner/:repo/:pr/generate', generateLimiter, requireCookieSession, async (c) => {
   const owner = c.req.param('owner');
   const repo = c.req.param('repo');
   const prNumber = Number(c.req.param('pr'));
@@ -151,11 +151,12 @@ walkthroughRoutes.get('/:owner/:repo/:pr/status', async (c) => {
  * DELETE /api/walkthroughs/:owner/:repo/:pr
  * Deletes the walkthrough record for a PR.
  */
-walkthroughRoutes.delete('/:owner/:repo/:pr', async (c) => {
+walkthroughRoutes.delete('/:owner/:repo/:pr', requireCookieSession, async (c) => {
   const owner = c.req.param('owner');
   const repo = c.req.param('repo');
   const prNumber = Number(c.req.param('pr'));
 
+  if (!owner || !repo) throw new AppError(400, 'Missing route parameters');
   if (isNaN(prNumber)) throw new AppError(400, 'Invalid PR number');
 
   await deleteWalkthrough(owner, repo, prNumber);
