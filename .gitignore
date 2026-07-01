@@ -19,6 +19,11 @@ dist/
 frontend/dist/
 frontend/node_modules/
 
+# CLI (Go binary is a release artifact, not source)
+cli/cruise-line
+cli/cruise-line-*
+cli/dist/
+
 # Sandbox
 sandbox/node_modules/
 

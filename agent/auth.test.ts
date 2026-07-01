@@ -59,6 +59,11 @@ mock.module(path.resolve(import.meta.dir, './db/users.ts'), () => ({
   touchUser: mockTouchUser,
 }));
 
+mock.module(path.resolve(import.meta.dir, './db/cli-tokens.ts'), () => ({
+  resolveCliToken: mock(() => Promise.resolve(null)),
+  touchCliTokenUsed: mock(() => Promise.resolve()),
+}));
+
 // Suppress console.error from the error-path tests
 spyOn(console, 'error').mockImplementation(() => {});
 
@@ -86,11 +91,12 @@ function createContext(
   } as any;
 }
 
-function createAuthContext(cookie?: string) {
+function createAuthContext(cookie?: string, requestHeaders: Record<string, string> = {}) {
   const headers = new Map<string, string>();
+  const store = new Map<string, unknown>();
   return {
-    get: (key: string) => undefined as any,
-    set: (_key: string, _value: unknown) => {},
+    get: (key: string) => store.get(key),
+    set: (key: string, value: unknown) => store.set(key, value),
     header: (name: string, value: string) => headers.set(name, value),
     _headers: headers,
     // getCookie reads from the cookie jar; we simulate via the mock config's cookieName
@@ -98,6 +104,7 @@ function createAuthContext(cookie?: string) {
       raw: {
         headers: new Headers(cookie ? { Cookie: `cruise_session=${cookie}` } : {}),
       },
+      header: (name: string) => requestHeaders[name.toLowerCase()],
     },
   } as any;
 }

@@ -7,11 +7,14 @@ import {
   fetchConnectedRepos,
   fetchKnownUsers,
   setUserRole,
+  fetchCliTokens,
+  revokeCliTokenApi,
   type SetupStatus,
   type UserInfo,
   type ConnectedInstallation,
   type KnownUser,
   type UserRole,
+  type CliTokenRecord,
 } from '../api';
 
 export function SettingsPage() {
@@ -315,6 +318,8 @@ export function SettingsPage() {
           )}
         </div>
 
+        {user && status?.configured && <CliTokensSection />}
+
         {user?.isOwner && status?.configured && (
           <>
             <RepositoriesSection installUrl={status.installUrl} />
@@ -613,6 +618,108 @@ function UsersSection({ currentUserId }: { currentUserId: number }) {
               </li>
             );
           })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function CliTokensSection() {
+  const [tokens, setTokens] = useState<CliTokenRecord[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [revokingId, setRevokingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { tokens } = await fetchCliTokens();
+        if (!cancelled) setTokens(tokens);
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Failed to load tokens');
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function revoke(id: string) {
+    if (!confirm('Revoke this CLI token? Any device using it will lose access immediately.')) return;
+    setRevokingId(id);
+    setError(null);
+    try {
+      await revokeCliTokenApi(id);
+      setTokens((prev) => (prev ? prev.filter((t) => t.id !== id) : prev));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to revoke');
+    } finally {
+      setRevokingId(null);
+    }
+  }
+
+  return (
+    <div className="mt-6 p-6 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)]">
+      <div className="flex items-baseline justify-between mb-4">
+        <h2 className="text-lg font-semibold text-[var(--text-primary)]">
+          CLI tokens
+        </h2>
+        {tokens && (
+          <span className="text-xs text-[var(--text-secondary)]">
+            {tokens.length} active
+          </span>
+        )}
+      </div>
+
+      <p className="text-xs text-[var(--text-secondary)] mb-4">
+        Bearer tokens issued to the Cruise Line CLI on your local machines. Run{' '}
+        <code className="text-[var(--text-primary)]">cruise-line login</code> in
+        a terminal to issue a new one. Tokens can read walkthroughs and analysis
+        status but cannot post to GitHub.
+      </p>
+
+      {error && (
+        <div className="mb-3 p-3 rounded-lg bg-red-900/20 border border-red-700/50 text-red-400 text-sm">
+          {error}
+        </div>
+      )}
+
+      {!tokens && !error && (
+        <div className="text-sm text-[var(--text-secondary)]">Loading…</div>
+      )}
+
+      {tokens && tokens.length === 0 && (
+        <div className="text-sm text-[var(--text-secondary)]">
+          No active tokens. Run <code className="text-[var(--text-primary)]">cruise-line login</code> to issue one.
+        </div>
+      )}
+
+      {tokens && tokens.length > 0 && (
+        <ul className="divide-y divide-[var(--border)]">
+          {tokens.map((t) => (
+            <li key={t.id} className="flex items-center gap-3 py-3">
+              <div className="flex-1 min-w-0">
+                <div className="text-sm text-[var(--text-primary)] font-mono">
+                  {t.tokenPrefix}…
+                </div>
+                <div className="text-xs text-[var(--text-secondary)]">
+                  Created {formatRelative(t.createdAt)}
+                  {t.lastUsedAt
+                    ? ` · Last used ${formatRelative(t.lastUsedAt)}`
+                    : ' · Never used'}
+                </div>
+              </div>
+              <button
+                onClick={() => revoke(t.id)}
+                disabled={revokingId !== null}
+                className="text-xs px-3 py-1.5 rounded-md border border-[var(--border)] text-[var(--text-secondary)] hover:text-red-400 hover:border-red-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                {revokingId === t.id ? 'Revoking…' : 'Revoke'}
+              </button>
+            </li>
+          ))}
         </ul>
       )}
     </div>

@@ -11,6 +11,7 @@ import {
 import { verifyRepoAccess } from '../github/client.js';
 import { isSessionRevoked } from '../db/sessions.js';
 import { getUser, touchUser } from '../db/users.js';
+import { resolveCliToken, touchCliTokenUsed } from '../db/cli-tokens.js';
 import { AppError } from './error.js';
 import type { AppEnv } from '../env.js';
 import type { SessionPayload } from '../github/oauth.js';
@@ -48,11 +49,51 @@ function trackActiveUser(session: SessionPayload): void {
 }
 
 /**
- * Middleware that requires a valid session cookie.
+ * Middleware that requires a valid session cookie *or* a CLI bearer token.
  * Attaches session payload to the context.
- * Automatically refreshes expired GitHub tokens when a refresh token is available.
+ *
+ * Bearer sessions come from CLI-issued tokens and don't carry a GitHub OAuth
+ * token — routes that need `session.githubToken` (i.e. to act on GitHub as
+ * the user) must guard against that with `requireCookieSession`.
+ *
+ * Automatically refreshes expired GitHub tokens on cookie sessions when a
+ * refresh token is available.
  */
 export async function requireAuth(c: Context<AppEnv>, next: Next) {
+  const authHeader = c.req.header('authorization');
+  if (authHeader?.toLowerCase().startsWith('bearer ')) {
+    const token = authHeader.slice(7).trim();
+    const resolved = await resolveCliToken(token);
+    if (!resolved) {
+      throw new AppError(401, 'Invalid or revoked CLI token');
+    }
+
+    const user = await getUser(resolved.userId);
+    if (!user) {
+      throw new AppError(401, 'CLI token references an unknown user');
+    }
+
+    // Synthesize a session payload matching the cookie-flow shape. githubToken
+    // is intentionally empty — Bearer sessions can't act on GitHub as the user.
+    const bearerSession: SessionPayload = {
+      githubToken: '',
+      userId: user.userId,
+      login: user.login,
+      avatarUrl: user.avatarUrl,
+    };
+    c.set('session', bearerSession);
+    c.set('authKind', 'cli');
+
+    // Fire-and-forget: last_used_at drives dashboard freshness, not authorization.
+    touchCliTokenUsed(resolved.id).catch((err) => {
+      console.warn('touchCliTokenUsed failed:', err);
+    });
+    trackActiveUser(bearerSession);
+
+    await next();
+    return;
+  }
+
   const cookie = getCookie(c, config.session.cookieName);
   if (!cookie) {
     throw new AppError(401, 'Not authenticated');
@@ -105,7 +146,20 @@ export async function requireAuth(c: Context<AppEnv>, next: Next) {
   }
 
   c.set('session', session);
+  c.set('authKind', 'cookie');
   trackActiveUser(session);
+  await next();
+}
+
+/**
+ * Middleware that rejects Bearer (CLI-token) sessions. Use on routes that
+ * need to act on GitHub as the user (session.githubToken). Must run after
+ * `requireAuth`.
+ */
+export async function requireCookieSession(c: Context<AppEnv>, next: Next) {
+  if (c.get('authKind') !== 'cookie') {
+    throw new AppError(403, 'This endpoint is not available to CLI tokens. Use a browser session.');
+  }
   await next();
 }
 

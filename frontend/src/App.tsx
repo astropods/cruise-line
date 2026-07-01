@@ -4,6 +4,7 @@ import { SettingsPage } from './pages/SettingsPage';
 import { AuthCompletePage } from './pages/AuthCompletePage';
 import { LoginPage } from './pages/LoginPage';
 import { NotFoundPage } from './pages/NotFoundPage';
+import { CliAuthorizePage } from './pages/CliAuthorizePage';
 import { useSetupGuard } from './hooks/useSetupGuard';
 
 function GuardedRoutes() {
@@ -43,6 +44,7 @@ export function App() {
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/setup" element={<LegacySetupRedirect />} />
         <Route path="/auth/complete" element={<AuthCompletePage />} />
+        <Route path="/cli/authorize" element={<CliAuthorizePage />} />
         <Route path="*" element={<GuardedRoutes />} />
       </Routes>
     </BrowserRouter>
