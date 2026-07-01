@@ -1,14 +1,17 @@
 import { Hono } from 'hono';
 import { Octokit } from '@octokit/rest';
 import { config } from '../config.js';
-import { requireAuth, requireRepoAccess } from '../middleware/session.js';
+import { requireAuth, requireRepoAccess, requireCookieSession } from '../middleware/session.js';
 import { AppError } from '../middleware/error.js';
 import type { AppEnv } from '../env.js';
 
 export const commentRoutes = new Hono<AppEnv>();
 
-commentRoutes.use('/:owner/:repo/:pr/*', requireAuth, requireRepoAccess);
-commentRoutes.use('/:owner/:repo/:pr', requireAuth, requireRepoAccess);
+// All comment routes proxy GitHub as the user (session.githubToken). CLI-token
+// callers don't carry a GitHub OAuth token, and by design the CLI surface only
+// exposes CruiseLine data — coding agents talk to GitHub directly via `gh`.
+commentRoutes.use('/:owner/:repo/:pr/*', requireAuth, requireCookieSession, requireRepoAccess);
+commentRoutes.use('/:owner/:repo/:pr', requireAuth, requireCookieSession, requireRepoAccess);
 
 function formatComment(c: any) {
   return {
