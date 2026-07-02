@@ -288,6 +288,26 @@ export async function verifyRepoAccess(
 ): Promise<boolean> {
   try {
     const installationId = await getInstallationForRepo(owner, repo);
+    return await verifyRepoAccessForInstallation(installationId, owner, repo, username);
+  } catch (err: any) {
+    console.error(`Repo access check failed for ${username} on ${owner}/${repo}:`, err?.status, err?.message);
+    return false;
+  }
+}
+
+/**
+ * Same check as verifyRepoAccess but when the installation ID is already
+ * known — skips the extra `apps.getRepoInstallation` lookup. Callers doing
+ * batch filtering (see listInstallationsWithReposForUser) already have this
+ * ID from their prior enumeration and shouldn't pay for a second GitHub call.
+ */
+async function verifyRepoAccessForInstallation(
+  installationId: number,
+  owner: string,
+  repo: string,
+  username: string,
+): Promise<boolean> {
+  try {
     const token = await getInstallationToken(installationId);
     const octokit = createInstallationOctokit(token);
 
@@ -299,7 +319,81 @@ export async function verifyRepoAccess(
 
     return data.permission === 'write' || data.permission === 'maintain' || data.permission === 'admin';
   } catch (err: any) {
-    console.error(`Repo access check failed for ${username} on ${owner}/${repo}:`, err?.status, err?.message);
+    // A 404 here is the normal "user is not a collaborator" path — GitHub
+    // returns 404, not a permission=none row. Log at debug so scoping-heavy
+    // endpoints don't spam production logs.
+    if (err?.status !== 404) {
+      console.error(`Repo access check failed for ${username} on ${owner}/${repo}:`, err?.status, err?.message);
+    }
     return false;
   }
+}
+
+// Concurrency cap for the per-repo permission checks. GitHub's secondary
+// (abuse) rate limit is triggered by many concurrent requests to the same
+// endpoint — an install with hundreds of repos would blow through it if
+// we fanned out all at once, and the resulting 403s would be swallowed as
+// "no access", silently dropping repos the user actually can see.
+const REPO_ACCESS_CONCURRENCY = 8;
+
+/**
+ * Run `worker` on each input with at most `limit` in flight at once. Preserves
+ * input order in the output so callers can zip results back to inputs.
+ */
+async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  limit: number,
+  worker: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (true) {
+      const i = next++;
+      if (i >= items.length) return;
+      out[i] = await worker(items[i]!);
+    }
+  });
+  await Promise.all(workers);
+  return out;
+}
+
+/**
+ * Same as listInstallationsWithRepos, but scoped: only include repositories
+ * the given username has write/maintain/admin permission on. Installations
+ * that end up with zero visible repos are dropped. This is what the
+ * CLI-reachable `/api/cli/repos` endpoint returns — it must never leak the
+ * names of repositories the caller can't already see on GitHub.
+ *
+ * Permission checks run with bounded concurrency per installation so a
+ * large install (hundreds of repos) doesn't fan out into an equally large
+ * number of simultaneous GitHub API calls and trip secondary rate limits.
+ */
+export async function listInstallationsWithReposForUser(
+  username: string,
+): Promise<ConnectedInstallation[]> {
+  const all = await listInstallationsWithRepos();
+  const scoped: ConnectedInstallation[] = [];
+
+  for (const inst of all) {
+    const checks = await mapWithConcurrency(
+      inst.repositories,
+      REPO_ACCESS_CONCURRENCY,
+      async (repo) => {
+        const has = await verifyRepoAccessForInstallation(
+          inst.id,
+          inst.account.login,
+          repo.name,
+          username,
+        );
+        return has ? repo : null;
+      },
+    );
+    const visible = checks.filter((r): r is ConnectedRepo => r !== null);
+    if (visible.length > 0) {
+      scoped.push({ ...inst, repositories: visible });
+    }
+  }
+
+  return scoped;
 }

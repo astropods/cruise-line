@@ -74,8 +74,12 @@ walkthroughRoutes.get('/:owner/:repo/:pr', async (c) => {
 /**
  * POST /api/walkthroughs/:owner/:repo/:pr/generate
  * Triggers walkthrough generation. Idempotent — won't duplicate running jobs.
+ *
+ * Reachable via CLI bearer tokens: this is the loop-closing action for
+ * coding agents (open PR → trigger review → poll status → read walkthrough).
+ * DELETE below stays cookie-only — CLI callers should never destroy work.
  */
-walkthroughRoutes.post('/:owner/:repo/:pr/generate', generateLimiter, requireCookieSession, async (c) => {
+walkthroughRoutes.post('/:owner/:repo/:pr/generate', generateLimiter, async (c) => {
   const owner = c.req.param('owner');
   const repo = c.req.param('repo');
   const prNumber = Number(c.req.param('pr'));
@@ -83,6 +87,19 @@ walkthroughRoutes.post('/:owner/:repo/:pr/generate', generateLimiter, requireCoo
 
   if (!owner || !repo) throw new AppError(400, 'Missing route parameters');
   if (isNaN(prNumber)) throw new AppError(400, 'Invalid PR number');
+
+  // force=true wipes an existing completed walkthrough (upsertWalkthrough
+  // nulls out `data` when force is set) — a destructive action. CLI tokens
+  // can start work but never destroy it, so this branch stays cookie-only.
+  // Non-force /generate remains reachable via bearer, which is what coding
+  // agents need for the open-PR → trigger → poll loop.
+  //
+  // Polarity matters: this checks !== 'cookie' rather than === 'cli' so a
+  // future authKind (say, an API-key session) doesn't silently inherit the
+  // destructive branch. Same shape as requireCookieSession.
+  if (force && c.get('authKind') !== 'cookie') {
+    throw new AppError(403, 'force=true is only available from a browser session; run this from the browser to re-generate an existing walkthrough');
+  }
 
   // Fetch current PR metadata
   const installationId = await getInstallationForRepo(owner, repo);

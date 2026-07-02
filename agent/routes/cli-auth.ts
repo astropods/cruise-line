@@ -10,6 +10,7 @@ import {
   revokeCliToken,
 } from '../db/cli-tokens.js';
 import { getUser } from '../db/users.js';
+import { listInstallationsWithReposForUser } from '../cli-repos.js';
 import { SUPPORTED_TARGETS, readCliVersion } from '../cli-dist.js';
 import { config } from '../config.js';
 import type { AppEnv } from '../env.js';
@@ -260,6 +261,21 @@ cliAuthRoutes.get('/me', requireAuth, async (c) => {
     avatarUrl: session.avatarUrl,
     role: user?.role ?? 'user',
   });
+});
+
+/**
+ * GET /api/cli/repos
+ *
+ * List repositories the calling user has write access to on this deployment.
+ * Cookie- or Bearer-authed. Scoping is per-repo via the installation token —
+ * a caller who is a collaborator on one repo in org A must never see the
+ * names of unrelated private repos in org B just because both orgs installed
+ * the app.
+ */
+cliAuthRoutes.get('/repos', requireAuth, async (c) => {
+  const session = c.get('session');
+  const installations = await listInstallationsWithReposForUser(session.login);
+  return c.json({ installations });
 });
 
 /**

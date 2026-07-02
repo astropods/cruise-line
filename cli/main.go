@@ -55,6 +55,10 @@ func main() {
 		run(cmdWhoami, args)
 	case "pr":
 		run(cmdPR, args)
+	case "repos":
+		run(cmdRepos, args)
+	case "rules":
+		run(cmdRules, args)
 	case "api":
 		run(cmdAPI, args)
 	case "upgrade":
@@ -90,9 +94,12 @@ commands:
   login <host>                Authenticate against a Cruise Line host
   logout                      Revoke the local token and clear config
   whoami                      Print the identity the local token maps to
+  repos                       List repositories the Cruise Line App is installed on
+  rules <owner/repo>          Print review rules configured for a repository
   pr status <owner/repo>#<n>  Print the analysis status for a PR
   pr walkthrough <owner/repo>#<n>
                               Print the walkthrough JSON for a PR
+  pr review <owner/repo>#<n>  Trigger a new analysis run on a PR
   api <method> <path>         Call an arbitrary Cruise Line API endpoint
   upgrade                     Upgrade the CLI to the version this host ships
   version                     Print CLI version
