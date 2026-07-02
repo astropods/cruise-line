@@ -16,7 +16,41 @@ RUN bun install
 COPY frontend/ .
 RUN bun run build
 
-# Stage 3: Runtime
+# Stage 3: Cross-compile the CLI for the platforms we distribute.
+# Only pure-stdlib Go, so cross-compile has no CGO complications. Binaries
+# are what `curl <host>/install.sh | sh` downloads; the server serves them
+# straight off the runtime image's disk.
+FROM --platform=linux/amd64 golang:1.25-alpine AS cli-builder
+
+# BUILD_VERSION is baked into the binary via -ldflags so `cruise-line version`
+# reports something meaningful. The astropods build system can pass a git
+# SHA here; falls back to "dev" for local docker build.
+ARG BUILD_VERSION=dev
+
+WORKDIR /src
+
+COPY cli/go.mod cli/go.sum* ./
+RUN go mod download || true
+
+COPY cli/ ./
+
+# Produce a binary + sha256 checksum for each target. The .sha256 files are
+# what `cruise-line upgrade` verifies against before atomic-renaming.
+# Keep this list in sync with SUPPORTED_TARGETS in agent/cli-dist.ts — the
+# server rejects downloads for anything not in that TS list, so a target
+# built here but missing there is unreachable, and vice versa.
+RUN mkdir -p /out && \
+    for target in "darwin/arm64" "darwin/amd64"; do \
+      os=$(echo "$target" | cut -d/ -f1); \
+      arch=$(echo "$target" | cut -d/ -f2); \
+      out="/out/cruise-line-${os}-${arch}"; \
+      GOOS=$os GOARCH=$arch CGO_ENABLED=0 \
+        go build -trimpath -ldflags="-s -w -X main.version=${BUILD_VERSION}" -o "$out" . && \
+      sha256sum "$out" | awk '{print $1}' > "${out}.sha256"; \
+    done && \
+    echo "${BUILD_VERSION}" > /out/VERSION
+
+# Stage 4: Runtime
 FROM --platform=linux/amd64 oven/bun:1-slim
 
 WORKDIR /app
@@ -28,6 +62,10 @@ COPY package.json ./
 
 # Copy built frontend
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
+
+# Copy the CLI binaries + sha256 sidecars + VERSION file. The download
+# handlers stream directly from this directory.
+COPY --from=cli-builder /out ./dist/cli
 
 # Non-root user
 RUN chown -R bun:bun /app

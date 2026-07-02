@@ -15,7 +15,11 @@ import (
 	"os"
 )
 
-const version = "0.1.0"
+// version is overwritten at link time by prod builds via
+//   -ldflags="-X main.version=<version>"
+// Dev builds see "dev" so `cruise-line version` reports something honest
+// before the ldflags step runs.
+var version = "dev"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -25,6 +29,22 @@ func main() {
 
 	cmd := os.Args[1]
 	args := os.Args[2:]
+
+	// Lazy update check runs on any command that touches the server, unless
+	// it's the update-related commands themselves. Fires at most once per
+	// 24h (see updateCheckInterval) and hangs on to the result so we can
+	// print the notice AFTER the command runs — never interleaved with
+	// stdout output the caller is likely piping into another tool.
+	var updateNotice *latestResponse
+	switch cmd {
+	case "version", "--version", "-v", "help", "--help", "-h", "upgrade", "login":
+		// skip
+	default:
+		cfg, err := LoadConfig()
+		if err == nil {
+			updateNotice = maybeCheckForUpdate(cfg)
+		}
+	}
 
 	switch cmd {
 	case "login":
@@ -37,6 +57,8 @@ func main() {
 		run(cmdPR, args)
 	case "api":
 		run(cmdAPI, args)
+	case "upgrade":
+		run(cmdUpgrade, args)
 	case "version", "--version", "-v":
 		fmt.Println("cruise-line", version)
 	case "help", "--help", "-h":
@@ -46,6 +68,8 @@ func main() {
 		printRootHelp(os.Stderr)
 		os.Exit(1)
 	}
+
+	notifyIfOutdated(updateNotice)
 }
 
 type commandFunc func(args []string) error
@@ -70,12 +94,14 @@ commands:
   pr walkthrough <owner/repo>#<n>
                               Print the walkthrough JSON for a PR
   api <method> <path>         Call an arbitrary Cruise Line API endpoint
+  upgrade                     Upgrade the CLI to the version this host ships
   version                     Print CLI version
   help                        Show this help
 
 flags:
   cruise-line pr status supports --wait, --timeout <duration>, --interval <duration>
   cruise-line api    supports --body <json> and --body-file <path|->
+  cruise-line upgrade supports --force
 
 durations accept Go syntax (10m, 30s, 1h). config lives at $CRUISE_LINE_HOME
 or $XDG_CONFIG_HOME/cruise-line/config.json (falling back to
