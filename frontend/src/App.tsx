@@ -5,6 +5,7 @@ import { AuthCompletePage } from './pages/AuthCompletePage';
 import { LoginPage } from './pages/LoginPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { CliAuthorizePage } from './pages/CliAuthorizePage';
+import { HomePage } from './pages/HomePage';
 import { useSetupGuard } from './hooks/useSetupGuard';
 
 function GuardedRoutes() {
@@ -41,6 +42,8 @@ export function App() {
   return (
     <BrowserRouter>
       <Routes>
+        {/* Public home page — CLI install + tokens for signed-in users. */}
+        <Route path="/" element={<HomePage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/setup" element={<LegacySetupRedirect />} />
         <Route path="/auth/complete" element={<AuthCompletePage />} />
