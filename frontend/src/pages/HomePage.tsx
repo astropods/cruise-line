@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import {
   fetchSetupStatus,
-  fetchUser,
   logout,
   type SetupStatus,
   type UserInfo,
@@ -126,6 +125,18 @@ export function HomePage() {
                 <CliTokensSection />
               </div>
             </>
+          ) : status?.configured === false ? (
+            // Pre-setup: OAuth isn't wired up yet (client_id is empty),
+            // so the sign-in button would land the user on a GitHub error
+            // page. Show a waiting message instead. The owner sees the
+            // "Finish setup" chip in the top nav.
+            <div className="p-6 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)]">
+              <p className="text-sm text-[var(--text-secondary)]">
+                This deployment isn't fully set up yet. Once an owner
+                completes the GitHub App connection, you'll be able to sign
+                in here and issue CLI tokens.
+              </p>
+            </div>
           ) : (
             <div className="p-6 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)]">
               <p className="text-sm text-[var(--text-secondary)] mb-4">
