@@ -18,6 +18,18 @@ type Config struct {
 	Token   string     `json:"token,omitempty"`
 	TokenID string     `json:"token_id,omitempty"`
 	User    *UserBlock `json:"user,omitempty"`
+	// UpdateCheck caches the last-known upstream CLI version so we don't hit
+	// /api/cli/latest on every command. See update.go.
+	UpdateCheck *UpdateCheckState `json:"update_check,omitempty"`
+}
+
+// UpdateCheckState is persisted between runs so the lazy version check only
+// fires once per interval instead of on every command.
+type UpdateCheckState struct {
+	// RFC3339 timestamp of the last successful /api/cli/latest response.
+	LastCheckedAt string `json:"last_checked_at"`
+	// Version string returned by /api/cli/latest at LastCheckedAt.
+	LatestVersion string `json:"latest_version"`
 }
 
 type UserBlock struct {

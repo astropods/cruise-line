@@ -10,6 +10,8 @@ import {
   revokeCliToken,
 } from '../db/cli-tokens.js';
 import { getUser } from '../db/users.js';
+import { SUPPORTED_TARGETS, readCliVersion } from '../cli-dist.js';
+import { config } from '../config.js';
 import type { AppEnv } from '../env.js';
 
 export const cliAuthRoutes = new Hono<AppEnv>();
@@ -107,6 +109,23 @@ export function validateAuthorizeParams(input: Partial<AuthorizeParams>): Author
     codeChallengeMethod,
   };
 }
+
+/**
+ * GET /api/cli/latest
+ *
+ * Public. Returns the CLI version this deployment ships and the per-target
+ * download URLs. `cruise-line upgrade` and the lazy update check both hit
+ * this — no auth so an unauthenticated CLI can still check for updates.
+ */
+cliAuthRoutes.get('/latest', async (c) => {
+  const version = await readCliVersion();
+  const host = config.appUrl.replace(/\/$/, '');
+  const downloadUrls: Record<string, string> = {};
+  for (const target of SUPPORTED_TARGETS) {
+    downloadUrls[target] = `${host}/download/cruise-line-${target}`;
+  }
+  return c.json({ version, downloadUrls });
+});
 
 /**
  * GET /api/cli/authorize/params
