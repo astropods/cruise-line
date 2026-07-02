@@ -21,6 +21,8 @@ const mockIssueCliToken = mock();
 const mockRevokeCliToken = mock();
 const mockListCliTokensForUser = mock();
 const mockGetUser = mock();
+const mockResolveCliToken = mock(() => Promise.resolve(null as any));
+const mockListInstallationsWithReposForUser = mock();
 
 mock.module(path.resolve(import.meta.dir, './config.ts'), () => ({
   config: {
@@ -44,10 +46,20 @@ mock.module(path.resolve(import.meta.dir, './db/cli-tokens.ts'), () => ({
   issueCliToken: mockIssueCliToken,
   revokeCliToken: mockRevokeCliToken,
   listCliTokensForUser: mockListCliTokensForUser,
-  // middleware/session.ts imports these at module scope even though /token
-  // doesn't hit them — the mock has to satisfy the full import surface.
-  resolveCliToken: mock(() => Promise.resolve(null)),
+  resolveCliToken: mockResolveCliToken,
   touchCliTokenUsed: mock(() => Promise.resolve()),
+}));
+
+// github/client.ts pulls in @octokit and per-installation token minting.
+// Stub the whole export surface so imports resolve without touching GitHub.
+mock.module(path.resolve(import.meta.dir, './github/client.ts'), () => ({
+  listInstallationsWithReposForUser: mockListInstallationsWithReposForUser,
+  listInstallationsWithRepos: mock(() => Promise.resolve([])),
+  verifyRepoAccess: mock(() => Promise.resolve(true)),
+  getPrMetadata: mock(),
+  getPrHeadSha: mock(),
+  getInstallationForRepo: mock(),
+  postAnalysisComment: mock(),
 }));
 
 mock.module(path.resolve(import.meta.dir, './db/users.ts'), () => ({
@@ -377,5 +389,80 @@ describe('POST /api/cli/token', () => {
     });
     expect(res.status).toBe(400);
     expect(mockIssueCliToken).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------
+// GET /api/cli/repos
+// ---------------------------------------------------------------------
+
+describe('GET /api/cli/repos', () => {
+  const app = new Hono();
+  app.onError(errorHandler);
+  app.route('/api/cli', cliAuthRoutes);
+
+  const bearerUser = {
+    userId: 42,
+    login: 'testuser',
+    avatarUrl: '',
+    firstSeenAt: '2026-01-01T00:00:00.000Z',
+    lastSeenAt: '2026-01-01T00:00:00.000Z',
+    loginCount: 1,
+    role: 'user' as const,
+  };
+
+  beforeEach(() => {
+    mockResolveCliToken.mockReset();
+    mockGetUser.mockReset();
+    mockListInstallationsWithReposForUser.mockReset();
+  });
+
+  it('rejects an unauthenticated request with 401', async () => {
+    const res = await app.request('/api/cli/repos');
+    expect(res.status).toBe(401);
+    expect(mockListInstallationsWithReposForUser).not.toHaveBeenCalled();
+  });
+
+  it('scopes the response by calling listInstallationsWithReposForUser with the caller login', async () => {
+    // This is the security regression fix: the underlying helper must
+    // receive the caller's login so it can filter to repos they can see.
+    // A regression here (e.g. reverting to listInstallationsWithRepos) would
+    // silently leak cross-tenant private repo names.
+    mockResolveCliToken.mockResolvedValueOnce({ id: 'tok', userId: 42 });
+    mockGetUser.mockResolvedValueOnce(bearerUser);
+    mockListInstallationsWithReposForUser.mockResolvedValueOnce([
+      {
+        id: 1,
+        account: { login: 'acme', type: 'Organization', avatarUrl: '', htmlUrl: '' },
+        repositories: [
+          { id: 100, name: 'app', fullName: 'acme/app', private: true, htmlUrl: '' },
+        ],
+      },
+    ]);
+
+    const res = await app.request('/api/cli/repos', {
+      headers: { authorization: 'Bearer cl_live_test' },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { installations: unknown[] };
+    expect(body.installations).toHaveLength(1);
+
+    // The scoping check: passed login must match the authenticated user.
+    expect(mockListInstallationsWithReposForUser).toHaveBeenCalledTimes(1);
+    expect(mockListInstallationsWithReposForUser).toHaveBeenCalledWith('testuser');
+  });
+
+  it('returns whatever the scoped helper returns (including empty)', async () => {
+    // A user with no accessible repos should get [], not the full list.
+    mockResolveCliToken.mockResolvedValueOnce({ id: 'tok', userId: 42 });
+    mockGetUser.mockResolvedValueOnce(bearerUser);
+    mockListInstallationsWithReposForUser.mockResolvedValueOnce([]);
+
+    const res = await app.request('/api/cli/repos', {
+      headers: { authorization: 'Bearer cl_live_test' },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { installations: unknown[] };
+    expect(body.installations).toEqual([]);
   });
 });

@@ -10,7 +10,7 @@ import {
   revokeCliToken,
 } from '../db/cli-tokens.js';
 import { getUser } from '../db/users.js';
-import { listInstallationsWithRepos } from '../github/client.js';
+import { listInstallationsWithReposForUser } from '../github/client.js';
 import { SUPPORTED_TARGETS, readCliVersion } from '../cli-dist.js';
 import { config } from '../config.js';
 import type { AppEnv } from '../env.js';
@@ -266,13 +266,15 @@ cliAuthRoutes.get('/me', requireAuth, async (c) => {
 /**
  * GET /api/cli/repos
  *
- * List every repository the GitHub App is installed on. Cookie- or Bearer-
- * authed, no owner check — knowing which repos this Cruise Line install can
- * see isn't sensitive (the info is already discoverable via GitHub's own
- * repo pages), and coding agents need it to pick a target.
+ * List repositories the calling user has write access to on this deployment.
+ * Cookie- or Bearer-authed. Scoping is per-repo via the installation token —
+ * a caller who is a collaborator on one repo in org A must never see the
+ * names of unrelated private repos in org B just because both orgs installed
+ * the app.
  */
 cliAuthRoutes.get('/repos', requireAuth, async (c) => {
-  const installations = await listInstallationsWithRepos();
+  const session = c.get('session');
+  const installations = await listInstallationsWithReposForUser(session.login);
   return c.json({ installations });
 });
 

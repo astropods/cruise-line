@@ -164,17 +164,21 @@ func prWalkthrough(args []string) error {
 	return err
 }
 
-// prReview implements `cruise-line pr review owner/repo#N [--force]`.
+// prReview implements `cruise-line pr review owner/repo#N`.
 //
-// POSTs to /generate to kick off analysis. The server is idempotent — a
-// pending job for the same PR head SHA won't duplicate — so it's safe to
-// re-run this in agent loops. Pair with `pr status --wait` to block until
-// the walkthrough is ready.
+// POSTs to /generate to kick off analysis. The server is idempotent for the
+// non-force branch — if a completed walkthrough already exists at the PR's
+// current head SHA, the same walkthrough is returned instantly. Push a new
+// commit → new SHA → fresh analysis. Pair with `pr status --wait` to block
+// until the walkthrough is ready.
+//
+// No --force flag: force=true would wipe an existing completed walkthrough,
+// and the server rejects that from CLI tokens by design. If you actually
+// want to re-run analysis on the same SHA, do it from the browser.
 func prReview(args []string) error {
 	fs := flag.NewFlagSet("pr review", flag.ContinueOnError)
-	force := fs.Bool("force", false, "re-run analysis even if a completed walkthrough exists for the current SHA")
 	fs.Usage = func() {
-		fmt.Fprintln(os.Stderr, "usage: cruise-line pr review <owner/repo#N> [--force]")
+		fmt.Fprintln(os.Stderr, "usage: cruise-line pr review <owner/repo#N>")
 	}
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -194,12 +198,9 @@ func prReview(args []string) error {
 	client := NewClient(cfg)
 
 	path := fmt.Sprintf("/api/walkthroughs/%s/%s/%d/generate", ref.Owner, ref.Repo, ref.Number)
-	if *force {
-		path += "?force=true"
-	}
 
 	// POST body is intentionally empty — the endpoint reads everything from
-	// the URL and the ?force query param.
+	// the URL.
 	var out struct {
 		WalkthroughID int    `json:"walkthroughId"`
 		Status        string `json:"status"`

@@ -107,7 +107,6 @@ commands:
 
 flags:
   cruise-line pr status supports --wait, --timeout <duration>, --interval <duration>
-  cruise-line pr review supports --force
   cruise-line api    supports --body <json> and --body-file <path|->
   cruise-line upgrade supports --force
 

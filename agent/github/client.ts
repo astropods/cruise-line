@@ -288,6 +288,26 @@ export async function verifyRepoAccess(
 ): Promise<boolean> {
   try {
     const installationId = await getInstallationForRepo(owner, repo);
+    return await verifyRepoAccessForInstallation(installationId, owner, repo, username);
+  } catch (err: any) {
+    console.error(`Repo access check failed for ${username} on ${owner}/${repo}:`, err?.status, err?.message);
+    return false;
+  }
+}
+
+/**
+ * Same check as verifyRepoAccess but when the installation ID is already
+ * known — skips the extra `apps.getRepoInstallation` lookup. Callers doing
+ * batch filtering (see listInstallationsWithReposForUser) already have this
+ * ID from their prior enumeration and shouldn't pay for a second GitHub call.
+ */
+async function verifyRepoAccessForInstallation(
+  installationId: number,
+  owner: string,
+  repo: string,
+  username: string,
+): Promise<boolean> {
+  try {
     const token = await getInstallationToken(installationId);
     const octokit = createInstallationOctokit(token);
 
@@ -299,7 +319,51 @@ export async function verifyRepoAccess(
 
     return data.permission === 'write' || data.permission === 'maintain' || data.permission === 'admin';
   } catch (err: any) {
-    console.error(`Repo access check failed for ${username} on ${owner}/${repo}:`, err?.status, err?.message);
+    // A 404 here is the normal "user is not a collaborator" path — GitHub
+    // returns 404, not a permission=none row. Log at debug so scoping-heavy
+    // endpoints don't spam production logs.
+    if (err?.status !== 404) {
+      console.error(`Repo access check failed for ${username} on ${owner}/${repo}:`, err?.status, err?.message);
+    }
     return false;
   }
+}
+
+/**
+ * Same as listInstallationsWithRepos, but scoped: only include repositories
+ * the given username has write/maintain/admin permission on. Installations
+ * that end up with zero visible repos are dropped. This is what the
+ * CLI-reachable `/api/cli/repos` endpoint returns — it must never leak the
+ * names of repositories the caller can't already see on GitHub.
+ *
+ * Permission checks run in parallel per installation (a single Promise.all
+ * per install rather than one giant fan-out) so we stay under GitHub's
+ * abuse-detection rate limit on very large installs while still being
+ * reasonably fast on small ones.
+ */
+export async function listInstallationsWithReposForUser(
+  username: string,
+): Promise<ConnectedInstallation[]> {
+  const all = await listInstallationsWithRepos();
+  const scoped: ConnectedInstallation[] = [];
+
+  for (const inst of all) {
+    const checks = await Promise.all(
+      inst.repositories.map(async (repo) => {
+        const has = await verifyRepoAccessForInstallation(
+          inst.id,
+          inst.account.login,
+          repo.name,
+          username,
+        );
+        return has ? repo : null;
+      }),
+    );
+    const visible = checks.filter((r): r is ConnectedRepo => r !== null);
+    if (visible.length > 0) {
+      scoped.push({ ...inst, repositories: visible });
+    }
+  }
+
+  return scoped;
 }

@@ -88,6 +88,15 @@ walkthroughRoutes.post('/:owner/:repo/:pr/generate', generateLimiter, async (c) 
   if (!owner || !repo) throw new AppError(400, 'Missing route parameters');
   if (isNaN(prNumber)) throw new AppError(400, 'Invalid PR number');
 
+  // force=true wipes an existing completed walkthrough (upsertWalkthrough
+  // nulls out `data` when force is set) — a destructive action. CLI tokens
+  // can start work but never destroy it, so this branch stays cookie-only.
+  // Non-force /generate remains reachable via bearer, which is what coding
+  // agents need for the open-PR → trigger → poll loop.
+  if (force && c.get('authKind') === 'cli') {
+    throw new AppError(403, 'force=true is not available to CLI tokens; run this from the browser to re-generate an existing walkthrough');
+  }
+
   // Fetch current PR metadata
   const installationId = await getInstallationForRepo(owner, repo);
   const pr = await getPrMetadata(installationId, owner, repo, prNumber);
