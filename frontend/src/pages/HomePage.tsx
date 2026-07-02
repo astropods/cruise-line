@@ -7,7 +7,6 @@ import {
   type UserInfo,
 } from '../api';
 import { CliTokensSection } from '../components/CliTokensSection';
-import { CruiseIllustration } from '../components/CruiseIllustration';
 
 /**
  * Public landing page. Serves as the entry point for anyone downloading the
@@ -62,9 +61,14 @@ export function HomePage() {
       <main className="max-w-2xl mx-auto px-6 py-16">
         {/* Hero */}
         <div className="flex flex-col items-center text-center mb-14">
-          <div className="text-[var(--accent)] mb-6">
-            <CruiseIllustration size={120} />
-          </div>
+          <img
+            src="/logo.png"
+            alt="Cruise Line"
+            width={180}
+            height={180}
+            className="mb-6 select-none"
+            draggable={false}
+          />
           <h1 className="text-4xl font-semibold text-[var(--text-bright)] tracking-tight mb-3">
             Cruise Line CLI
           </h1>
