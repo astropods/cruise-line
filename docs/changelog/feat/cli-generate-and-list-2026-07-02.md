@@ -29,13 +29,18 @@ the change doesn't widen the abuse surface.
 
 ### New endpoints and commands
 
-- `GET /api/cli/repos` reuses `listInstallationsWithRepos` and returns the
-  same shape the settings page consumes. Accepts both cookie and bearer
-  auth, no owner check — knowing which repos the installation can see
-  isn't sensitive information.
-- `pr review <owner/repo#N> [--force]` POSTs to `/generate` and prints the
-  server's `{walkthroughId, status}` response. Chains directly into
-  `pr status --wait` for a "kick and block" flow.
+- `GET /api/cli/repos` is scoped per-caller via
+  `listInstallationsWithReposForUser(username)`, which runs each repo
+  through a collaborator-permission check via the installation token and
+  drops installations that end up empty. Any authenticated user can call
+  it, but they only see repositories they actually have write access to
+  — a collaborator on one repo in org A never sees the names of unrelated
+  private repos in org B just because both orgs installed the App.
+- `pr review <owner/repo#N>` POSTs to `/generate` and prints the server's
+  `{walkthroughId, status}` response. Chains directly into `pr status --wait`
+  for a "kick and block" flow. No `--force` flag: `force=true` wipes the
+  existing walkthrough, which the server rejects from CLI tokens because
+  CLI tokens can start work but never destroy it.
 - `repos` lists connected installations.
 - `rules <owner/repo>` reads from the existing `GET /api/rules/:owner/:repo`
   (which was already open to bearer callers — the write methods on that
@@ -52,7 +57,7 @@ settings). Users see accurate scope at approve time.
 ### Coding-agent flow, end to end
 
 ```
-cruise-line pr review astropods/cruise-line#42 --force
+cruise-line pr review astropods/cruise-line#42
 cruise-line pr status astropods/cruise-line#42 --wait --timeout=10m
 cruise-line pr walkthrough astropods/cruise-line#42 | jq .
 ```

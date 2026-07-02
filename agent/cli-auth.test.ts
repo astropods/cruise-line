@@ -50,16 +50,11 @@ mock.module(path.resolve(import.meta.dir, './db/cli-tokens.ts'), () => ({
   touchCliTokenUsed: mock(() => Promise.resolve()),
 }));
 
-// github/client.ts pulls in @octokit and per-installation token minting.
-// Stub the whole export surface so imports resolve without touching GitHub.
-mock.module(path.resolve(import.meta.dir, './github/client.ts'), () => ({
+// Mock the CLI-scoped re-export rather than github/client.ts itself.
+// A full-module mock on github/client.ts would clobber verifyRepoAccess
+// process-wide and break the middleware tests in auth.test.ts.
+mock.module(path.resolve(import.meta.dir, './cli-repos.ts'), () => ({
   listInstallationsWithReposForUser: mockListInstallationsWithReposForUser,
-  listInstallationsWithRepos: mock(() => Promise.resolve([])),
-  verifyRepoAccess: mock(() => Promise.resolve(true)),
-  getPrMetadata: mock(),
-  getPrHeadSha: mock(),
-  getInstallationForRepo: mock(),
-  postAnalysisComment: mock(),
 }));
 
 mock.module(path.resolve(import.meta.dir, './db/users.ts'), () => ({

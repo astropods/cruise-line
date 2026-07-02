@@ -329,6 +329,35 @@ async function verifyRepoAccessForInstallation(
   }
 }
 
+// Concurrency cap for the per-repo permission checks. GitHub's secondary
+// (abuse) rate limit is triggered by many concurrent requests to the same
+// endpoint — an install with hundreds of repos would blow through it if
+// we fanned out all at once, and the resulting 403s would be swallowed as
+// "no access", silently dropping repos the user actually can see.
+const REPO_ACCESS_CONCURRENCY = 8;
+
+/**
+ * Run `worker` on each input with at most `limit` in flight at once. Preserves
+ * input order in the output so callers can zip results back to inputs.
+ */
+async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  limit: number,
+  worker: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (true) {
+      const i = next++;
+      if (i >= items.length) return;
+      out[i] = await worker(items[i]!);
+    }
+  });
+  await Promise.all(workers);
+  return out;
+}
+
 /**
  * Same as listInstallationsWithRepos, but scoped: only include repositories
  * the given username has write/maintain/admin permission on. Installations
@@ -336,10 +365,9 @@ async function verifyRepoAccessForInstallation(
  * CLI-reachable `/api/cli/repos` endpoint returns — it must never leak the
  * names of repositories the caller can't already see on GitHub.
  *
- * Permission checks run in parallel per installation (a single Promise.all
- * per install rather than one giant fan-out) so we stay under GitHub's
- * abuse-detection rate limit on very large installs while still being
- * reasonably fast on small ones.
+ * Permission checks run with bounded concurrency per installation so a
+ * large install (hundreds of repos) doesn't fan out into an equally large
+ * number of simultaneous GitHub API calls and trip secondary rate limits.
  */
 export async function listInstallationsWithReposForUser(
   username: string,
@@ -348,8 +376,10 @@ export async function listInstallationsWithReposForUser(
   const scoped: ConnectedInstallation[] = [];
 
   for (const inst of all) {
-    const checks = await Promise.all(
-      inst.repositories.map(async (repo) => {
+    const checks = await mapWithConcurrency(
+      inst.repositories,
+      REPO_ACCESS_CONCURRENCY,
+      async (repo) => {
         const has = await verifyRepoAccessForInstallation(
           inst.id,
           inst.account.login,
@@ -357,7 +387,7 @@ export async function listInstallationsWithReposForUser(
           username,
         );
         return has ? repo : null;
-      }),
+      },
     );
     const visible = checks.filter((r): r is ConnectedRepo => r !== null);
     if (visible.length > 0) {

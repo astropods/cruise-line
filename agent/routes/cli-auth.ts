@@ -10,7 +10,7 @@ import {
   revokeCliToken,
 } from '../db/cli-tokens.js';
 import { getUser } from '../db/users.js';
-import { listInstallationsWithReposForUser } from '../github/client.js';
+import { listInstallationsWithReposForUser } from '../cli-repos.js';
 import { SUPPORTED_TARGETS, readCliVersion } from '../cli-dist.js';
 import { config } from '../config.js';
 import type { AppEnv } from '../env.js';

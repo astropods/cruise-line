@@ -93,8 +93,12 @@ walkthroughRoutes.post('/:owner/:repo/:pr/generate', generateLimiter, async (c) 
   // can start work but never destroy it, so this branch stays cookie-only.
   // Non-force /generate remains reachable via bearer, which is what coding
   // agents need for the open-PR → trigger → poll loop.
-  if (force && c.get('authKind') === 'cli') {
-    throw new AppError(403, 'force=true is not available to CLI tokens; run this from the browser to re-generate an existing walkthrough');
+  //
+  // Polarity matters: this checks !== 'cookie' rather than === 'cli' so a
+  // future authKind (say, an API-key session) doesn't silently inherit the
+  // destructive branch. Same shape as requireCookieSession.
+  if (force && c.get('authKind') !== 'cookie') {
+    throw new AppError(403, 'force=true is only available from a browser session; run this from the browser to re-generate an existing walkthrough');
   }
 
   // Fetch current PR metadata

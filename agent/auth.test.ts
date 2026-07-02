@@ -13,6 +13,7 @@ import { AppError } from './middleware/error.js';
 
 const mockGetPermissionLevel = mock();
 const mockGetRepoInstallation = mock();
+const mockPullsGet = mock();
 const mockVerifySessionToken = mock();
 const mockRefreshGitHubToken = mock();
 const mockCreateSessionToken = mock(() => Promise.resolve('fake-session-token'));
@@ -22,6 +23,13 @@ const mockGetUser = mock();
 const mockTouchUser = mock(() => Promise.resolve());
 const mockResolveCliToken = mock(() => Promise.resolve(null as any));
 const mockTouchCliTokenUsed = mock(() => Promise.resolve());
+const mockUpsertWalkthrough = mock();
+const mockGetLatestWalkthrough = mock();
+const mockJobManager = {
+  enqueue: mock(),
+  getJob: mock(() => null),
+  getActiveJob: mock(() => null),
+};
 
 // Octokit constructor — used by getInstallationForRepo
 mock.module('@octokit/rest', () => ({
@@ -42,6 +50,10 @@ mock.module(path.resolve(import.meta.dir, './github/app.ts'), () => ({
   getInstallationToken: mock(() => Promise.resolve('fake-installation-token')),
   createInstallationOctokit: mock(() => ({
     repos: { getCollaboratorPermissionLevel: mockGetPermissionLevel },
+    // pulls.get powers getPrMetadata, which the /generate route calls
+    // after verifyRepoAccess passes. Both getters share this single
+    // octokit instance so verifyRepoAccess tests aren't affected.
+    pulls: { get: mockPullsGet },
   })),
 }));
 
@@ -59,6 +71,20 @@ mock.module(path.resolve(import.meta.dir, './db/sessions.ts'), () => ({
 mock.module(path.resolve(import.meta.dir, './db/users.ts'), () => ({
   getUser: mockGetUser,
   touchUser: mockTouchUser,
+}));
+
+// db/walkthroughs.ts and analysis/jobs.ts are only touched by the /generate
+// route tests below. Registering module-wide mocks is safe because the other
+// tests in this file (middleware unit tests) don't hit those code paths.
+mock.module(path.resolve(import.meta.dir, './db/walkthroughs.ts'), () => ({
+  upsertWalkthrough: mockUpsertWalkthrough,
+  getLatestWalkthrough: mockGetLatestWalkthrough,
+  getWalkthroughById: mock(),
+  deleteWalkthrough: mock(),
+}));
+
+mock.module(path.resolve(import.meta.dir, './analysis/jobs.ts'), () => ({
+  jobManager: mockJobManager,
 }));
 
 mock.module(path.resolve(import.meta.dir, './db/cli-tokens.ts'), () => ({
@@ -727,5 +753,120 @@ describe('requireOwner', () => {
       expect((err as AppError).statusCode).toBe(403);
     }
     expect(next).not.toHaveBeenCalled();
+  });
+});
+
+// =====================================================================
+// POST /api/walkthroughs/:owner/:repo/:pr/generate — auth boundary
+// =====================================================================
+//
+// The /generate endpoint is the loop-closing action for coding agents.
+// These tests lock in three things a future refactor could silently
+// regress:
+//   1. Bearer callers can reach /generate (that's the whole point).
+//   2. Bearer callers with force=true are rejected with 403 (destructive
+//      path stays cookie-only).
+//   3. Repo access is still enforced regardless of session kind.
+
+const { Hono } = await import('hono');
+const { walkthroughRoutes } = await import('./routes/walkthroughs.js');
+const { errorHandler } = await import('./middleware/error.js');
+
+const generateApp = new Hono();
+generateApp.onError(errorHandler);
+generateApp.route('/api/walkthroughs', walkthroughRoutes);
+
+const generateBearerUser = {
+  userId: 42,
+  login: 'testuser',
+  avatarUrl: '',
+  firstSeenAt: '2026-01-01T00:00:00.000Z',
+  lastSeenAt: '2026-01-01T00:00:00.000Z',
+  loginCount: 1,
+  role: 'user' as const,
+};
+
+describe('POST /api/walkthroughs/:owner/:repo/:pr/generate — auth boundary', () => {
+  beforeEach(() => {
+    mockGetPermissionLevel.mockReset();
+    mockGetRepoInstallation.mockReset();
+    mockPullsGet.mockReset();
+    mockResolveCliToken.mockReset();
+    mockGetUser.mockReset();
+    mockUpsertWalkthrough.mockReset();
+    mockGetLatestWalkthrough.mockReset();
+    mockJobManager.enqueue.mockReset();
+    mockJobManager.getJob.mockReset();
+    mockJobManager.getJob.mockReturnValue(null);
+
+    // Baseline happy path: user is a write collaborator, no existing
+    // walkthrough at this SHA, GitHub returns the PR metadata.
+    mockGetRepoInstallation.mockResolvedValue({ data: { id: 12345 } });
+    mockGetPermissionLevel.mockResolvedValue({ data: { permission: 'write' } });
+    mockPullsGet.mockResolvedValue({
+      data: {
+        title: 'PR',
+        user: { login: 'testuser' },
+        base: { ref: 'main', sha: 'aaa' },
+        head: { ref: 'feat/x', sha: 'bbb' },
+        body: '',
+      },
+    });
+    mockGetLatestWalkthrough.mockResolvedValue(null);
+    mockUpsertWalkthrough.mockResolvedValue({ id: 7, head_sha: 'bbb', status: 'pending', error: null });
+  });
+
+  function bearerHeaders() {
+    mockResolveCliToken.mockResolvedValue({ id: 'tok', userId: 42 });
+    mockGetUser.mockResolvedValue(generateBearerUser);
+    return { authorization: 'Bearer cl_live_test' };
+  }
+
+  it('accepts a Bearer caller — CLI tokens can trigger analysis', async () => {
+    const res = await generateApp.request('/api/walkthroughs/acme/app/1/generate', {
+      method: 'POST',
+      headers: bearerHeaders(),
+    });
+    expect(res.status).toBe(202);
+    const body = (await res.json()) as { walkthroughId: number; status: string };
+    expect(body.walkthroughId).toBe(7);
+    expect(mockJobManager.enqueue).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a Bearer caller with force=true (destructive branch stays cookie-only)', async () => {
+    const res = await generateApp.request('/api/walkthroughs/acme/app/1/generate?force=true', {
+      method: 'POST',
+      headers: bearerHeaders(),
+    });
+    expect(res.status).toBe(403);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toMatch(/force=true/);
+    // The destructive branch — upsertWalkthrough with force=true nulls out
+    // the existing walkthrough's data — must not have executed.
+    expect(mockUpsertWalkthrough).not.toHaveBeenCalled();
+    expect(mockJobManager.enqueue).not.toHaveBeenCalled();
+  });
+
+  it('returns 401 when the request has no auth at all', async () => {
+    // Sanity: the /generate handler is not open. Also proves the force
+    // guard doesn't fire before authentication runs (401 not 403).
+    const res = await generateApp.request('/api/walkthroughs/acme/app/1/generate?force=true', {
+      method: 'POST',
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it('rejects a Bearer caller who is not a collaborator (repo access still enforced)', async () => {
+    // Loosening the cookie requirement doesn't loosen the repo-access
+    // requirement. A CLI token bound to a non-collaborator still gets 403
+    // from requireRepoAccess.
+    mockGetPermissionLevel.mockReset();
+    mockGetPermissionLevel.mockResolvedValue({ data: { permission: 'read' } });
+    const res = await generateApp.request('/api/walkthroughs/acme/other-app/1/generate', {
+      method: 'POST',
+      headers: bearerHeaders(),
+    });
+    expect(res.status).toBe(403);
+    expect(mockJobManager.enqueue).not.toHaveBeenCalled();
   });
 });
