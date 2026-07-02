@@ -74,8 +74,12 @@ walkthroughRoutes.get('/:owner/:repo/:pr', async (c) => {
 /**
  * POST /api/walkthroughs/:owner/:repo/:pr/generate
  * Triggers walkthrough generation. Idempotent — won't duplicate running jobs.
+ *
+ * Reachable via CLI bearer tokens: this is the loop-closing action for
+ * coding agents (open PR → trigger review → poll status → read walkthrough).
+ * DELETE below stays cookie-only — CLI callers should never destroy work.
  */
-walkthroughRoutes.post('/:owner/:repo/:pr/generate', generateLimiter, requireCookieSession, async (c) => {
+walkthroughRoutes.post('/:owner/:repo/:pr/generate', generateLimiter, async (c) => {
   const owner = c.req.param('owner');
   const repo = c.req.param('repo');
   const prNumber = Number(c.req.param('pr'));

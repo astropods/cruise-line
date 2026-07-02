@@ -13,7 +13,7 @@ import (
 
 func cmdPR(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: cruise-line pr <status|walkthrough> owner/repo#N")
+		return errors.New("usage: cruise-line pr <status|walkthrough|review> owner/repo#N")
 	}
 	sub := args[0]
 	rest := args[1:]
@@ -22,8 +22,10 @@ func cmdPR(args []string) error {
 		return prStatus(rest)
 	case "walkthrough":
 		return prWalkthrough(rest)
+	case "review":
+		return prReview(rest)
 	default:
-		return fmt.Errorf("unknown pr subcommand %q (expected status or walkthrough)", sub)
+		return fmt.Errorf("unknown pr subcommand %q (expected status, walkthrough, or review)", sub)
 	}
 }
 
@@ -160,4 +162,50 @@ func prWalkthrough(args []string) error {
 		fmt.Println()
 	}
 	return err
+}
+
+// prReview implements `cruise-line pr review owner/repo#N [--force]`.
+//
+// POSTs to /generate to kick off analysis. The server is idempotent — a
+// pending job for the same PR head SHA won't duplicate — so it's safe to
+// re-run this in agent loops. Pair with `pr status --wait` to block until
+// the walkthrough is ready.
+func prReview(args []string) error {
+	fs := flag.NewFlagSet("pr review", flag.ContinueOnError)
+	force := fs.Bool("force", false, "re-run analysis even if a completed walkthrough exists for the current SHA")
+	fs.Usage = func() {
+		fmt.Fprintln(os.Stderr, "usage: cruise-line pr review <owner/repo#N> [--force]")
+	}
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 1 {
+		fs.Usage()
+		return errors.New("expected exactly one positional argument: owner/repo#N")
+	}
+	ref, err := parsePRRef(fs.Arg(0))
+	if err != nil {
+		return err
+	}
+	cfg, err := RequireLoggedIn()
+	if err != nil {
+		return err
+	}
+	client := NewClient(cfg)
+
+	path := fmt.Sprintf("/api/walkthroughs/%s/%s/%d/generate", ref.Owner, ref.Repo, ref.Number)
+	if *force {
+		path += "?force=true"
+	}
+
+	// POST body is intentionally empty — the endpoint reads everything from
+	// the URL and the ?force query param.
+	var out struct {
+		WalkthroughID int    `json:"walkthroughId"`
+		Status        string `json:"status"`
+	}
+	if err := client.PostJSON(path, map[string]any{}, &out); err != nil {
+		return err
+	}
+	return jsonPrint(out)
 }

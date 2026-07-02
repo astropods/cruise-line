@@ -172,9 +172,10 @@ export function CliAuthorizePage() {
             </div>
 
             <ul className="text-sm text-[var(--text-secondary)] space-y-2 mb-6 list-disc list-inside">
-              <li>Read pull request walkthroughs you have access to</li>
-              <li>Check analysis status</li>
-              <li>Read-only — cannot post comments, trigger or delete walkthroughs, edit review rules, or change settings</li>
+              <li>Read pull request walkthroughs and review rules</li>
+              <li>Check analysis status and list connected repositories</li>
+              <li>Trigger a new analysis on a pull request</li>
+              <li>Cannot post comments, delete walkthroughs, edit review rules, use chat, or change settings</li>
             </ul>
 
             <div className="flex gap-3">
