@@ -1,6 +1,6 @@
 ---
 name: cruise-line-review
-description: Run a Cruise Line review locally in a loop. Spawns a sub-agent (cruise-line-reviewer) that uses the exact server-side system prompt and user prompt, then applies fixes and re-reviews until only info-level findings remain. Use this when the user asks you to "review with Cruise Line", "run a local Cruise Line review", or wants to iterate on a PR before pushing.
+description: Run a Cruise Line review locally in a loop. Spawns a sub-agent (cruise-line-reviewer) that uses the exact server-side system prompt and user prompt, then applies fixes and re-reviews. Uses your judgment on when to stop — no fixed iteration count. Use this when the user asks you to "review with Cruise Line", "run a local Cruise Line review", or wants to iterate on a PR before pushing.
 allowed-tools: Bash, Read, Edit, Glob, Grep, Agent
 user-invocable: true
 disable-model-invocation: true
@@ -14,11 +14,13 @@ If the user passed `owner/repo#N` explicitly, use it. Otherwise resolve the PR o
 
 If no PR is found, stop and ask the user which PR to review.
 
-## Loop (max 5 iterations)
+## Loop
 
-Each iteration is fully deterministic — the sub-agent's system prompt comes from the installed `cruise-line-reviewer` agent definition (pinned by `cruise-line install-skills`), and the user prompt comes from the server via `cruise-line pr prompt`, so a local run reads the same inputs a server-driven Cruise Line analysis would.
+Each iteration is deterministic — the sub-agent's system prompt comes from the installed `cruise-line-reviewer` agent definition (pinned by `cruise-line install-skills`), and the user prompt comes from the server via `cruise-line pr prompt`, so a local run reads the same inputs a server-driven Cruise Line analysis would.
 
-For iteration `i` from 1 to 5:
+The **number of iterations is your judgment call**, not a fixed count. Keep looping as long as another pass looks likely to surface actionable issues, and stop when it doesn't. Signals that another iteration is worthwhile: unresolved critical or high findings, findings the last pass explicitly flagged as regressions from a recent fix, or a `needs_discussion` verdict on a change you can now address. Signals to stop: an `approve` verdict, findings you've already declined to fix (repeat flags aren't new information), or diminishing returns (the last pass introduced no new material findings).
+
+Each iteration:
 
 1. Fetch the current user prompt from the server:
 
@@ -32,21 +34,15 @@ For iteration `i` from 1 to 5:
 
    - `subagent_type`: `"cruise-line-reviewer"`
    - `model`: `"opus"` (matches the server's Opus deployment)
-   - `description`: `"Cruise Line review iteration <i>"`
+   - `description`: brief label for this iteration
    - `prompt`: the user prompt string from step 1
 
 3. The sub-agent returns findings shaped exactly as the server would emit — a JSON object with `summary`, `verdict`, `findings[]`, each finding having `title`, `severity`, `category`, `body`, and (for non-info) `fixPrompt` + `commentAnchor`. Parse it.
 
-4. Termination check — stop the loop if any of these hold:
-   - `verdict` is `"approve"`.
-   - No findings with severity `critical` or `high` remain.
-   - `i == 5`.
-
-5. Otherwise, act on the critical and high findings:
-   - Read the affected files with the Read tool (paths come from `commentAnchor.file`).
-   - Apply the fix guided by `fixPrompt` using the Edit tool.
-   - Don't commit or push — the loop expects local-only fixes between iterations.
-   - Continue to the next iteration.
+4. Decide what to do next based on the review:
+   - **Act on findings worth fixing.** Read the affected files with the Read tool (paths come from `commentAnchor.file`). Apply the fix guided by `fixPrompt` using the Edit tool. Don't commit or push — the loop expects local-only fixes between iterations. Then run another iteration.
+   - **Skip findings you've considered and rejected.** If the review re-raises something you already decided not to fix (design trade-off, disagreement with the finding), don't keep churning on it. Note it in the final report and either stop or move on to other findings.
+   - **Stop when you're done.** Approve verdicts, no remaining actionable findings, or the last iteration surfaced nothing new — any of these are a signal to end the loop.
 
 ## Final report
 
