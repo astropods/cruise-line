@@ -97,24 +97,37 @@ func cmdUserPrompt(args []string) error {
 	}
 	client := NewClient(cfg)
 
-	reqBody := map[string]any{
-		"diff":     diff,
-		"title":    title,
-		"author":   strings.TrimSpace(author),
-		"baseRef":  baseRef,
-		"headRef":  strings.TrimSpace(headRef),
-		"baseSha":  strings.TrimSpace(baseSha),
-		"headSha":  strings.TrimSpace(headSha),
+	// Fetch rules from the server. This is the ONLY server round-trip per
+	// iteration — the prompt is assembled locally via buildUserPrompt (Go
+	// port of the server-side TS helper, cross-tested against a golden
+	// file). Same review methodology, no bespoke assembly endpoint.
+	var rulesResp struct {
+		Rules []struct {
+			RuleNumber int    `json:"ruleNumber"`
+			Rule       string `json:"rule"`
+		} `json:"rules"`
+	}
+	if err := client.GetJSON(fmt.Sprintf("/api/rules/%s/%s", owner, repo), &rulesResp); err != nil {
+		return fmt.Errorf("fetching rules: %w", err)
+	}
+	rules := make([]reviewRule, 0, len(rulesResp.Rules))
+	for _, r := range rulesResp.Rules {
+		rules = append(rules, reviewRule{RuleNumber: r.RuleNumber, Rule: r.Rule})
 	}
 
-	var out struct {
-		UserPrompt string `json:"userPrompt"`
-	}
-	path := fmt.Sprintf("/api/cli/user-prompt/%s/%s", owner, repo)
-	if err := client.PostJSON(path, reqBody, &out); err != nil {
-		return err
-	}
-	fmt.Println(out.UserPrompt)
+	prompt := buildUserPrompt(prMetadata{
+		Owner:   owner,
+		Repo:    repo,
+		Number:  0, // pre-PR local review — no GitHub PR number
+		Title:   title,
+		Author:  strings.TrimSpace(author),
+		BaseRef: baseRef,
+		HeadRef: strings.TrimSpace(headRef),
+		BaseSha: strings.TrimSpace(baseSha),
+		HeadSha: strings.TrimSpace(headSha),
+	}, diff, rules)
+
+	fmt.Println(prompt)
 	return nil
 }
 

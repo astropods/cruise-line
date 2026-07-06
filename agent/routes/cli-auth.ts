@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { requireAuth, requireCookieSession, requireRepoAccess } from '../middleware/session.js';
+import { requireAuth, requireCookieSession } from '../middleware/session.js';
 import { AppError } from '../middleware/error.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import {
@@ -11,8 +11,7 @@ import {
 } from '../db/cli-tokens.js';
 import { getUser } from '../db/users.js';
 import { listInstallationsWithReposForUser } from '../cli-repos.js';
-import { SYSTEM_PROMPT, buildUserPrompt } from '../analysis/prompt.js';
-import { listRules } from '../db/rules.js';
+import { SYSTEM_PROMPT } from '../analysis/prompt.js';
 import { SUPPORTED_TARGETS, readCliVersion } from '../cli-dist.js';
 import { config } from '../config.js';
 import type { AppEnv } from '../env.js';
@@ -45,19 +44,6 @@ function publicIpKey(c: { req: { header: (name: string) => string | undefined } 
 }
 const tokenLimiter = rateLimit('cli-token', { windowMs: 60_000, max: 30, keyFn: publicIpKey });
 const approveLimiter = rateLimit('cli-authorize', { windowMs: 60_000, max: 30, keyFn: publicIpKey });
-
-// The local-review skill calls /user-prompt once per iteration. 30/min/user
-// is generous for humans but bounded enough that a runaway loop can't burn
-// through GitHub API budget on the rules endpoint (which the DB read is
-// cheap, but the auth+access-check chain is a real cost).
-const userPromptLimiter = rateLimit<AppEnv>('cli-user-prompt', {
-  windowMs: 60_000,
-  max: 30,
-  keyFn: (c) => {
-    const session = c.get('session');
-    return session?.userId ? String(session.userId) : 'unknown';
-  },
-});
 
 export async function sha256Base64Url(input: string): Promise<string> {
   const data = new TextEncoder().encode(input);
@@ -307,79 +293,6 @@ cliAuthRoutes.get('/repos', requireAuth, async (c) => {
  */
 cliAuthRoutes.get('/review-prompt', requireAuth, async (c) => {
   return c.json({ prompt: SYSTEM_PROMPT });
-});
-
-/**
- * POST /api/cli/user-prompt/:owner/:repo
- *
- * Assembles the user prompt for a local pre-PR review — the developer has
- * a diff on their machine (may include uncommitted changes) and wants to
- * review it before opening a PR on GitHub. All PR-shaped metadata is
- * client-provided (from `git`); the server only contributes the rules
- * from its DB and runs everything through `buildUserPrompt` so the output
- * has the same shape as a real analysis-job prompt.
- *
- * The diff is required (there's nothing to review otherwise). Every other
- * field has a defensible default:
- *   - number: absent → renders as a "Change Details" header instead of
- *     "PR #N", so the review doesn't lie about there being a PR.
- *   - title: "Local pre-PR review"
- *   - author: "local"
- *   - baseRef/headRef: "main" / "HEAD"
- *   - baseSha/headSha: empty string (rendered as "()")
- *
- * Rate-limited via userPromptLimiter (30/min/user) — the review loop
- * calls this once per iteration.
- */
-cliAuthRoutes.post('/user-prompt/:owner/:repo', userPromptLimiter, requireAuth, requireRepoAccess, async (c) => {
-  const owner = c.req.param('owner');
-  const repo = c.req.param('repo');
-  if (!owner || !repo) throw new AppError(400, 'Missing route parameters');
-
-  const body = await c.req.json<{
-    diff?: string;
-    title?: string;
-    author?: string;
-    baseRef?: string;
-    headRef?: string;
-    baseSha?: string;
-    headSha?: string;
-    body?: string;
-    number?: number;
-  }>().catch(() => ({} as Record<string, never>));
-
-  if (typeof body.diff !== 'string' || body.diff.length === 0) {
-    throw new AppError(400, 'diff is required and must be a non-empty string');
-  }
-
-  const repoRules = await listRules(owner, repo);
-  const rules = repoRules.map((r) => ({ ruleNumber: r.ruleNumber, rule: r.rule }));
-
-  // Fill in defaults for anything the client omitted. The PrMetadata shape
-  // expects an installationId; we pass 0 because buildUserPrompt doesn't
-  // read it (it's only used server-side by the analyzer for GitHub calls).
-  const prMetadata = {
-    owner,
-    repo,
-    number: body.number ?? 0,
-    title: body.title ?? 'Local pre-PR review',
-    author: body.author ?? 'local',
-    baseRef: body.baseRef ?? 'main',
-    headRef: body.headRef ?? 'HEAD',
-    baseSha: body.baseSha ?? '',
-    headSha: body.headSha ?? '',
-    installationId: 0,
-    body: body.body,
-  };
-
-  const userPrompt = buildUserPrompt(
-    prMetadata,
-    body.diff,
-    body.body,
-    rules.length > 0 ? rules : undefined,
-  );
-
-  return c.json({ userPrompt });
 });
 
 /**
