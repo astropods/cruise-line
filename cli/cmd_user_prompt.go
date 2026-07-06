@@ -76,15 +76,16 @@ func cmdUserPrompt(args []string) error {
 		}
 	}
 
-	// Strip "origin/" or similar remote prefix from the reported base ref
-	// so the prompt reads naturally ("Base: main → Head: feat/x" rather
-	// than "Base: origin/main → Head: feat/x"). The sub-agent's `git diff
-	// $(git merge-base <baseRef> HEAD)` still resolves — plain "main"
-	// picks up the local branch which normally tracks origin/main.
-	baseRef := base
-	if _, after, ok := strings.Cut(base, "/"); ok {
-		baseRef = after
-	}
+	// Use the base ref verbatim — no prefix stripping. Handing the
+	// sub-agent a *different* ref than the one we verified was a bug:
+	//   - `origin/main` verifies fine but the stripped `main` may not
+	//     exist locally (fresh worktree, CI-style shallow checkout) or
+	//     may be stale relative to the remote-tracking ref we actually
+	//     resolved SHAs against.
+	//   - Slashed branch names like `release/2.0` or `feature/foo` were
+	//     mangled to `2.0` / `foo`, which don't resolve at all.
+	// The verbatim ref works for every case that `rev-parse --verify`
+	// already accepted.
 
 	cfg, err := RequireLoggedIn()
 	if err != nil {
@@ -113,7 +114,7 @@ func cmdUserPrompt(args []string) error {
 		Repo:    repo,
 		Title:   title,
 		Author:  strings.TrimSpace(author),
-		BaseRef: baseRef,
+		BaseRef: base,
 		HeadRef: strings.TrimSpace(headRef),
 		BaseSha: strings.TrimSpace(baseSha),
 		HeadSha: strings.TrimSpace(headSha),

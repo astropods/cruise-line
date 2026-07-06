@@ -81,6 +81,43 @@ func TestBuildUserPromptRendersMetadataAndRules(t *testing.T) {
 	}
 }
 
+// The sub-agent's `git merge-base <base> HEAD` must reference the same
+// ref the CLI verified — otherwise the review runs against a different
+// (possibly nonexistent) ref while the header SHA claims the verified
+// one. Two regressions this pins: `origin/main` getting stripped to
+// `main` (may not exist locally), and slashed branch names like
+// `release/2.0` getting mangled to `2.0`.
+func TestBuildUserPromptPreservesBaseRefVerbatim(t *testing.T) {
+	cases := []string{"main", "origin/main", "release/2.0", "feature/foo"}
+	for _, base := range cases {
+		t.Run(base, func(t *testing.T) {
+			pr := prMetadata{
+				Owner: "acme", Repo: "app",
+				Title: "some change", Author: "chris",
+				BaseRef: base, HeadRef: "feat/x",
+				BaseSha: "aaa", HeadSha: "bbb",
+			}
+			got := buildUserPrompt(pr, nil)
+
+			// Header shows the exact ref.
+			wantHeader := "aaa (" + base + ") → Head: bbb (feat/x)"
+			if !strings.Contains(got, wantHeader) {
+				t.Errorf("header missing verbatim base ref %q", base)
+			}
+
+			// Sub-agent guidance uses the exact ref for merge-base and log.
+			wantMergeBase := "git merge-base " + base + " HEAD"
+			if !strings.Contains(got, wantMergeBase) {
+				t.Errorf("merge-base guidance uses stripped/mangled base instead of %q", base)
+			}
+			wantLog := "git log " + base + "..HEAD"
+			if !strings.Contains(got, wantLog) {
+				t.Errorf("git log guidance uses stripped/mangled base instead of %q", base)
+			}
+		})
+	}
+}
+
 func TestBuildUserPromptOmitsRulesSectionWhenEmpty(t *testing.T) {
 	pr := prMetadata{
 		Owner: "acme", Repo: "app",
