@@ -28,6 +28,14 @@ FROM --platform=linux/amd64 golang:1.25-alpine AS cli-builder
 # so every deploy still ships a distinct version string — otherwise the
 # server would return the same value forever and the CLI's update check
 # would never notice new releases.
+#
+# The timestamp fallback is a stopgap: it also changes when the image is
+# rebuilt with no source changes (cache miss on an earlier layer, infra-
+# triggered redeploy), so every rebuild is a "new release" from the CLI's
+# perspective and users get nagged again. Fine for now — the fix is to
+# pass a real BUILD_VERSION (git SHA / release tag) from the astropods
+# pipeline as soon as it's available. Passing "" makes the fallback fire;
+# passing any non-empty value takes precedence.
 ARG BUILD_VERSION=
 
 WORKDIR /src

@@ -97,6 +97,21 @@ func TestNotifyIfOutdated(t *testing.T) {
 			t.Errorf("expected silence on nil response, got %q", out)
 		}
 	})
+
+	t.Run("silent when CRUISE_LINE_NO_UPDATE_CHECK is set", func(t *testing.T) {
+		// The env-var escape hatch for developers who run `go build .`
+		// against a prod server. Without this, the dev→real nudge would
+		// nag them on every command, and following the advice would
+		// blow away their local binary.
+		t.Setenv("CRUISE_LINE_NO_UPDATE_CHECK", "1")
+		version = "dev"
+		out := captureStderr(func() {
+			notifyIfOutdated(&latestResponse{Version: "20260706T210000Z"})
+		})
+		if out != "" {
+			t.Errorf("expected silence when CRUISE_LINE_NO_UPDATE_CHECK is set, got %q", out)
+		}
+	})
 }
 
 func TestFetchLatest(t *testing.T) {

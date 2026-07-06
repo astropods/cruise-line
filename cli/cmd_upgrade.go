@@ -103,7 +103,15 @@ func maybeCheckForUpdate(cfg *Config) *latestResponse {
 // existing installs to grab a properly-stamped binary once at the next
 // server release; after the upgrade, both sides are on real versions and
 // the normal comparison takes over.
+//
+// Escape hatch: developers hacking on the CLI itself (via `go build .`)
+// don't want to be told to `cruise-line upgrade` — that would replace
+// their locally-modified binary with a downloaded one. Setting
+// CRUISE_LINE_NO_UPDATE_CHECK=1 suppresses the nag entirely.
 func notifyIfOutdated(latest *latestResponse) {
+	if os.Getenv("CRUISE_LINE_NO_UPDATE_CHECK") != "" {
+		return
+	}
 	if latest == nil || latest.Version == "" {
 		return
 	}
