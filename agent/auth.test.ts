@@ -87,6 +87,15 @@ mock.module(path.resolve(import.meta.dir, './analysis/jobs.ts'), () => ({
   jobManager: mockJobManager,
 }));
 
+const mockListRules = mock(() => Promise.resolve([] as any[]));
+
+mock.module(path.resolve(import.meta.dir, './db/rules.ts'), () => ({
+  listRules: mockListRules,
+  addRule: mock(),
+  updateRule: mock(),
+  deleteRule: mock(),
+}));
+
 mock.module(path.resolve(import.meta.dir, './db/cli-tokens.ts'), () => ({
   resolveCliToken: mockResolveCliToken,
   touchCliTokenUsed: mockTouchCliTokenUsed,
@@ -870,3 +879,4 @@ describe('POST /api/walkthroughs/:owner/:repo/:pr/generate — auth boundary', (
     expect(mockJobManager.enqueue).not.toHaveBeenCalled();
   });
 });
+

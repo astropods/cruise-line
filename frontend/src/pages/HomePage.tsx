@@ -66,16 +66,12 @@ export function HomePage() {
             alt="Cruise Line"
             width={180}
             height={180}
-            className="mb-6 select-none"
+            className="mb-4 select-none"
             draggable={false}
           />
-          <h1 className="text-4xl font-semibold text-[var(--text-bright)] tracking-tight mb-3">
-            Cruise Line CLI
+          <h1 className="text-4xl font-semibold text-[var(--text-bright)] tracking-tight">
+            Cruise Line
           </h1>
-          <p className="text-[var(--text-secondary)] max-w-md">
-            Companion CLI for reading PR walkthroughs from this deployment.
-            Point your coding agent at it — no manual copy-pasting.
-          </p>
         </div>
 
         {/* Install */}

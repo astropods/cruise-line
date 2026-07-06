@@ -11,6 +11,7 @@ import {
 } from '../db/cli-tokens.js';
 import { getUser } from '../db/users.js';
 import { listInstallationsWithReposForUser } from '../cli-repos.js';
+import { SYSTEM_PROMPT } from '../analysis/prompt.js';
 import { SUPPORTED_TARGETS, readCliVersion } from '../cli-dist.js';
 import { config } from '../config.js';
 import type { AppEnv } from '../env.js';
@@ -276,6 +277,22 @@ cliAuthRoutes.get('/repos', requireAuth, async (c) => {
   const session = c.get('session');
   const installations = await listInstallationsWithReposForUser(session.login);
   return c.json({ installations });
+});
+
+/**
+ * GET /api/cli/review-prompt
+ *
+ * Returns the exact SYSTEM_PROMPT the server uses to drive analysis. Skills
+ * that run reviews locally feed this into Claude's system slot so the
+ * methodology (analytical lenses, severity taxonomy, output shape) matches
+ * a server-driven Cruise Line review. Rules are per-repo and fetched
+ * separately via /api/rules — this endpoint returns only the constant
+ * server-wide prompt.
+ *
+ * Bearer- or cookie-authed; not owner-gated.
+ */
+cliAuthRoutes.get('/review-prompt', requireAuth, async (c) => {
+  return c.json({ prompt: SYSTEM_PROMPT });
 });
 
 /**

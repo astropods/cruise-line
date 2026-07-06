@@ -38,7 +38,7 @@ func main() {
 	var updateNotice *latestResponse
 	switch cmd {
 	case "version", "--version", "-v", "help", "--help", "-h", "upgrade", "login":
-		// skip
+		// skip — these commands don't touch the server, or would be self-referential.
 	default:
 		cfg, err := LoadConfig()
 		if err == nil {
@@ -59,6 +59,12 @@ func main() {
 		run(cmdRepos, args)
 	case "rules":
 		run(cmdRules, args)
+	case "review-prompt":
+		run(cmdReviewPrompt, args)
+	case "user-prompt":
+		run(cmdUserPrompt, args)
+	case "install-skills":
+		run(cmdInstallSkills, args)
 	case "api":
 		run(cmdAPI, args)
 	case "upgrade":
@@ -100,6 +106,9 @@ commands:
   pr walkthrough <owner/repo>#<n>
                               Print the walkthrough JSON for a PR
   pr review <owner/repo>#<n>  Trigger a new analysis run on a PR
+  user-prompt <owner/repo>    Assemble a review prompt for local changes vs base (pre-PR)
+  review-prompt               Print the server's system prompt (for local skills)
+  install-skills              Install the local-review skill + sub-agent definition
   api <method> <path>         Call an arbitrary Cruise Line API endpoint
   upgrade                     Upgrade the CLI to the version this host ships
   version                     Print CLI version
@@ -107,8 +116,10 @@ commands:
 
 flags:
   cruise-line pr status supports --wait, --timeout <duration>, --interval <duration>
+  cruise-line user-prompt supports --base <ref> and --title <text>
   cruise-line api    supports --body <json> and --body-file <path|->
   cruise-line upgrade supports --force
+  cruise-line install-skills supports --force and --dir <path>
 
 durations accept Go syntax (10m, 30s, 1h). config lives at $CRUISE_LINE_HOME
 or $XDG_CONFIG_HOME/cruise-line/config.json (falling back to
