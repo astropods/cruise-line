@@ -37,37 +37,6 @@ export async function getPrMetadata(
 }
 
 /**
- * Fetch the unified diff for a PR using the installation token.
- *
- * Uses GitHub's `application/vnd.github.v3.diff` media type — the same
- * server-side format the analysis job feeds into buildUserPrompt. This
- * lets the CLI's /pr-prompt endpoint assemble the exact same user
- * prompt shape the server would generate for an analysis run.
- */
-export async function getPrDiff(
-  installationId: number,
-  owner: string,
-  repo: string,
-  prNumber: number,
-): Promise<string> {
-  const token = await getInstallationToken(installationId);
-  const octokit = createInstallationOctokit(token);
-
-  // Octokit's mediaType option swaps the response format from JSON to
-  // raw diff text. The response's `data` field then contains the diff
-  // as a string, which the octokit typings don't reflect — hence the
-  // cast at the callsite.
-  const res = await octokit.pulls.get({
-    owner,
-    repo,
-    pull_number: prNumber,
-    mediaType: { format: 'diff' },
-  });
-
-  return res.data as unknown as string;
-}
-
-/**
  * Get the current head SHA for a PR (to detect staleness).
  */
 export async function getPrHeadSha(

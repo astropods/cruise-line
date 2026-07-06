@@ -61,6 +61,8 @@ func main() {
 		run(cmdRules, args)
 	case "review-prompt":
 		run(cmdReviewPrompt, args)
+	case "user-prompt":
+		run(cmdUserPrompt, args)
 	case "install-skills":
 		run(cmdInstallSkills, args)
 	case "api":
@@ -104,7 +106,7 @@ commands:
   pr walkthrough <owner/repo>#<n>
                               Print the walkthrough JSON for a PR
   pr review <owner/repo>#<n>  Trigger a new analysis run on a PR
-  pr prompt <owner/repo>#<n>  Print the exact user prompt the server would send for a PR
+  user-prompt <owner/repo>    Assemble a review prompt for local changes vs base (pre-PR)
   review-prompt               Print the server's system prompt (for local skills)
   install-skills              Install the local-review skill + sub-agent definition
   api <method> <path>         Call an arbitrary Cruise Line API endpoint
@@ -114,6 +116,7 @@ commands:
 
 flags:
   cruise-line pr status supports --wait, --timeout <duration>, --interval <duration>
+  cruise-line user-prompt supports --base <ref> and --title <text>
   cruise-line api    supports --body <json> and --body-file <path|->
   cruise-line upgrade supports --force
   cruise-line install-skills supports --force and --dir <path>

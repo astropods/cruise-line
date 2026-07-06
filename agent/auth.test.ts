@@ -881,99 +881,139 @@ describe('POST /api/walkthroughs/:owner/:repo/:pr/generate — auth boundary', (
 });
 
 // =====================================================================
-// GET /api/walkthroughs/:owner/:repo/:pr/prompt — local review inputs
+// POST /api/cli/user-prompt/:owner/:repo — local pre-PR review inputs
 // =====================================================================
 //
-// The prompt endpoint returns the exact user prompt the server would feed
-// to its analysis job for this PR. The cruise-line-review skill relies on
-// two invariants this test locks in:
-//   1. Auth + repo access are enforced (inherited from router middleware).
-//   2. The response body includes the rule text — a regression that
-//      dropped the rules join would silently make local reviews diverge
-//      from server reviews without any obvious symptom.
+// The endpoint assembles the review's user prompt from a *client-provided*
+// diff (typically `git diff <base>` from the developer's working tree) and
+// the repo's configured rules. There's no PR, no GitHub round trip — this
+// is what makes the local-review loop converge as the main agent applies
+// fixes between iterations.
+//
+// Tests pin:
+//   1. Client-provided diff is echoed into the prompt verbatim (no server-
+//      side substitution or GitHub fallback).
+//   2. Repo rules are joined in from the DB.
+//   3. Auth + repo access are enforced.
+//   4. Missing/empty diff → 400 (nothing to review).
 
-describe('GET /api/walkthroughs/:owner/:repo/:pr/prompt — local review inputs', () => {
-  const app = generateApp; // Same Hono app; walkthroughRoutes already mounted.
+// Mount cliAuthRoutes onto the shared test Hono app. Must happen at module
+// load time — Hono locks the matcher after the first request, so mounting
+// inside beforeEach would only work for the first test in this describe.
+const { cliAuthRoutes: cliAuthRoutesForUserPrompt } = await import('./routes/cli-auth.js');
+generateApp.route('/api/cli', cliAuthRoutesForUserPrompt);
+
+describe('POST /api/cli/user-prompt/:owner/:repo — local pre-PR review inputs', () => {
+  const app = generateApp;
 
   beforeEach(() => {
     mockGetPermissionLevel.mockReset();
     mockGetRepoInstallation.mockReset();
-    mockPullsGet.mockReset();
     mockResolveCliToken.mockReset();
     mockGetUser.mockReset();
     mockListRules.mockReset();
 
-    // Baseline: user has write access, PR exists at head SHA bbb, no
-    // rules configured (individual tests override for rule assertion).
+    // Bearer user is a collaborator with write access — the endpoint
+    // gates on requireRepoAccess so this baseline lets tests reach the
+    // handler.
     mockGetRepoInstallation.mockResolvedValue({ data: { id: 12345 } });
     mockGetPermissionLevel.mockResolvedValue({ data: { permission: 'write' } });
-    // pulls.get is called twice inside the /prompt handler — once for
-    // metadata (default mediaType) and once for the diff (format: 'diff').
-    // Same mock serves both because getPrDiff casts the response `.data`
-    // as string; getPrMetadata reads structured fields off it.
-    mockPullsGet.mockImplementation(async (opts: { mediaType?: { format?: string } }) => {
-      if (opts.mediaType?.format === 'diff') {
-        return { data: 'diff --git a/foo b/foo\n@@ -1,1 +1,1 @@\n-old\n+new\n' };
-      }
-      return {
-        data: {
-          title: 'Add feature',
-          user: { login: 'author' },
-          base: { ref: 'main', sha: 'aaa' },
-          head: { ref: 'feat/x', sha: 'bbb' },
-          body: 'PR description body',
-        },
-      };
-    });
     mockListRules.mockResolvedValue([]);
   });
 
   function bearerHeaders() {
     mockResolveCliToken.mockResolvedValue({ id: 'tok', userId: 42 });
     mockGetUser.mockResolvedValue(generateBearerUser);
-    return { authorization: 'Bearer cl_live_test' };
+    return {
+      authorization: 'Bearer cl_live_test',
+      'content-type': 'application/json',
+    };
   }
 
-  it('returns a user prompt containing the PR metadata and diff', async () => {
-    const res = await app.request('/api/walkthroughs/acme/app/1/prompt', {
+  async function post(body: Record<string, unknown>) {
+    return app.request('/api/cli/user-prompt/acme/app', {
+      method: 'POST',
       headers: bearerHeaders(),
+      body: JSON.stringify(body),
+    });
+  }
+
+  it('echoes the client-provided diff verbatim into the assembled prompt', async () => {
+    const diff = 'diff --git a/foo b/foo\n@@ -1,1 +1,1 @@\n-old\n+working-tree-edit\n';
+    const res = await post({
+      diff,
+      title: 'refactor auth',
+      author: 'chris',
+      baseRef: 'main',
+      headRef: 'feat/x',
+      baseSha: 'aaa',
+      headSha: 'bbb',
     });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { userPrompt: string };
     expect(body.userPrompt).toContain('acme/app');
-    expect(body.userPrompt).toContain('Add feature');
-    expect(body.userPrompt).toContain('PR description body');
-    expect(body.userPrompt).toContain('+new'); // diff content survives
+    expect(body.userPrompt).toContain('refactor auth');
+    // The key pre-PR contract: whatever the client sent as `diff` MUST
+    // end up in the prompt exactly, because that's how the loop sees
+    // uncommitted local fixes.
+    expect(body.userPrompt).toContain('+working-tree-edit');
   });
 
-  it('injects repo-configured rules into the prompt when present', async () => {
+  it('joins in the repo-configured rules from the DB', async () => {
     mockListRules.mockResolvedValue([
       { id: 1, ruleNumber: 1, rule: 'Always use tagged-template SQL', createdAt: '2026-01-01T00:00:00Z' },
-      { id: 2, ruleNumber: 2, rule: 'Never duplicate SQL queries', createdAt: '2026-01-01T00:00:00Z' },
     ]);
-    const res = await app.request('/api/walkthroughs/acme/app/1/prompt', {
-      headers: bearerHeaders(),
+    const res = await post({
+      diff: 'diff --git a/foo b/foo\n@@ -1 +1 @@\n-a\n+b\n',
     });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { userPrompt: string };
     expect(body.userPrompt).toContain('Rule #1');
     expect(body.userPrompt).toContain('Always use tagged-template SQL');
-    expect(body.userPrompt).toContain('Rule #2');
   });
 
-  it('returns 401 when the request has no auth', async () => {
-    const res = await app.request('/api/walkthroughs/acme/app/1/prompt');
+  it('renders "Change Details" (not "PR #N") when no number is passed — pre-PR framing', async () => {
+    // A local pre-PR review shouldn't claim to be a PR. Regressing this
+    // would tell the sub-agent to "Review PR #0" which is nonsense.
+    const res = await post({
+      diff: 'diff --git a/x b/x\n@@ -1 +1 @@\n-a\n+b\n',
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { userPrompt: string };
+    expect(body.userPrompt).toContain('## Change Details');
+    expect(body.userPrompt).not.toContain('PR #0');
+  });
+
+  it('rejects an empty diff (nothing to review)', async () => {
+    const res = await post({ diff: '' });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toMatch(/diff/);
+  });
+
+  it('rejects a missing diff', async () => {
+    const res = await post({ title: 'no diff' });
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 401 with no auth', async () => {
+    const res = await app.request('/api/cli/user-prompt/acme/app', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ diff: 'x' }),
+    });
     expect(res.status).toBe(401);
   });
 
-  it('returns 403 when the bearer user is not a collaborator', async () => {
-    // Loosening the write path doesn't loosen the read path. If you can't
-    // see the repo on GitHub, you can't fetch its PR contents via
-    // Cruise Line either.
+  it('returns 403 when the caller is not a repo collaborator', async () => {
     mockGetPermissionLevel.mockReset();
     mockGetPermissionLevel.mockResolvedValue({ data: { permission: 'read' } });
-    const res = await app.request('/api/walkthroughs/acme/other-app/1/prompt', {
+    // Different repo to bypass the requireRepoAccess in-memory cache
+    // (keyed by `${userId}:${owner}/${repo}`).
+    const res = await app.request('/api/cli/user-prompt/acme/private-repo', {
+      method: 'POST',
       headers: bearerHeaders(),
+      body: JSON.stringify({ diff: 'x' }),
     });
     expect(res.status).toBe(403);
   });

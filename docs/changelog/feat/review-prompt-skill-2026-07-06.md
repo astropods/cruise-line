@@ -1,19 +1,20 @@
-# Local review loop via a pinned Cruise Line sub-agent
+# Local pre-PR review via a pinned Cruise Line sub-agent
 
 ## Summary
 
-Coding agents were still round-tripping to the remote Cruise Line analysis
-service to review a PR, which is fine for a one-shot review but breaks
-down when the agent wants to iterate — fix a finding, re-review, fix
-again — because each round trip clones the repo, spins up a sandbox, and
-posts back through GitHub webhooks.
+Developers regularly want to review their own changes before opening a
+PR — they've made a batch of edits on a feature branch, want a critical
+read pass, and don't want to push a WIP branch just to trigger the remote
+Cruise Line analyzer. Round-tripping through GitHub also breaks the tight
+review-fix-review loop: local edits aren't visible to the server until
+they're pushed.
 
-This change gives agents a way to run the same review locally inside a
-Claude Code session. The methodology, severity taxonomy, and user-prompt
-shape are identical to what the server would produce — no local reim­
-plementation of the review logic — but the actual reasoning happens in a
-sub-agent spawned inside the caller's session, so the fix-review-fix
-loop is fast and doesn't push commits.
+This change lets that loop run entirely inside a Claude Code session.
+The methodology, severity taxonomy, and output shape are identical to
+what the server would produce — no local reimplementation of the review
+logic — but the actual reasoning happens in a sub-agent spawned inside
+the caller's session, driven by `git diff` against the base branch. No
+PR needed, no push needed, no commit needed between iterations.
 
 ## Design
 
@@ -24,14 +25,14 @@ by `cruise-line install-skills`:
 
 - **`~/.claude/skills/cruise-line-review/SKILL.md`** — the entry point.
   Runs deterministic bash prelude directives (`` !`command` ``) that
-  fetch the target PR, the current diff, and the assembled user prompt
-  before the main agent sees the task.
+  determine the target repo and assemble the review inputs before the
+  main agent sees the task.
 
 - **`~/.claude/agents/cruise-line-reviewer.md`** — a sub-agent
   definition. Its body is the *exact* server-side `SYSTEM_PROMPT`,
-  fetched at install time from `GET /api/cli/review-prompt`. That's the
-  sub-agent's system slot; it can't be injected at Agent-tool call time,
-  so it's pinned on disk.
+  fetched at install time from `GET /api/cli/review-prompt`. Claude
+  Code loads agent definitions from disk, so the sub-agent's system
+  slot is pinned to what the server had at install time.
 
 The skill invokes the sub-agent via Claude Code's `Agent` tool:
 
@@ -39,50 +40,78 @@ The skill invokes the sub-agent via Claude Code's `Agent` tool:
 Agent(
   subagent_type: "cruise-line-reviewer",   // resolves to the pinned agent
   model: "opus",                            // same tier as the server
-  prompt: <user prompt from `cruise-line pr prompt`>
+  prompt: <output of `cruise-line user-prompt owner/repo`>
 )
 ```
 
 The sub-agent's system prompt is server-controlled, the user prompt is
-server-assembled from PR metadata + rules + diff (see below), and the
-model tier matches the server's Opus deployment. Behaviorally the sub-
-agent runs the same review the analyzer would run.
+server-assembled from the caller's local diff + repo rules (see below),
+and the model tier matches the server's Opus deployment. Behaviorally
+the sub-agent runs the same review the analyzer would run — with the
+critical difference that its inputs come from the local working tree
+rather than a GitHub PR.
 
-### Server assembles the user prompt
+### Server assembles the user prompt from client-provided diff
 
-`GET /api/walkthroughs/:owner/:repo/:pr/prompt` is new and returns the
-fully-assembled user prompt for a PR — the same one `buildUserPrompt`
-produces server-side when the analysis job runs. It:
+`POST /api/cli/user-prompt/:owner/:repo` is new. Body:
 
-- Fetches PR metadata via the installation token (same call the analyzer
-  uses).
-- Pulls the diff via GitHub's `application/vnd.github.v3.diff` media
-  type.
-- Reads configured rules from the DB.
-- Runs them all through `buildUserPrompt` — the exact same helper the
-  analyzer imports.
+```json
+{
+  "diff":     "<git diff output>",
+  "title":    "feature branch name",
+  "author":   "<git user.name>",
+  "baseRef":  "main",
+  "headRef":  "feat/x",
+  "baseSha":  "aaa",
+  "headSha":  "bbb"
+}
+```
 
-Auth + repo access are inherited from the walkthroughs router. Bearer
-callers reach it, non-collaborators don't.
+Only `diff` is required. Every metadata field has a defensible default
+so a caller can send just the diff and get a usable prompt back.
 
-Keeping the template server-side means there's one source of truth. If
-the analyzer's prompt shape changes, the local review picks it up on
-next invocation.
+The endpoint fetches the repo's configured review rules from the DB and
+runs everything through `buildUserPrompt` — the same helper the server-
+side analyzer uses. Auth: `requireAuth` + `requireRepoAccess`, so a
+caller only assembles prompts for repos they can actually see.
+
+Rate-limited at 30/min per user. The review loop calls this once per
+iteration; the limit is generous enough for interactive use and tight
+enough that a runaway loop can't hammer the endpoint.
+
+### Diff comes from the working tree, not GitHub
+
+`cruise-line user-prompt <owner/repo>` runs `git diff <base>` against
+the working tree, so the diff picks up:
+
+- committed changes on the branch
+- staged changes
+- unstaged working-copy edits
+
+The `<base>` ref is auto-detected via `origin/HEAD` (what `git clone`
+points at, usually `main`) with a `--base` flag for overrides. The
+resulting diff is the client-provided `diff` field in the POST body
+above.
+
+This is what makes the review-fix-review loop converge without any
+`git commit` between iterations: the main agent applies fixes via
+`Edit`, and the next `cruise-line user-prompt` call sees them.
 
 ### Loop control: judgment, not counting
 
-The skill doesn't cap iterations at a fixed number. The main agent
-decides whether another pass is worth running based on the review it
-just got back — unresolved criticals or regressions warrant another
-iteration, an `approve` verdict or repeat flags on findings already
-considered-and-rejected are signals to stop.
+The skill doesn't cap iterations. The main agent decides whether another
+pass is worth running based on the review it just got back — unresolved
+criticals or regressions warrant another iteration, an `approve` verdict
+or repeat flags on findings already considered-and-rejected are signals
+to stop.
 
 Each iteration is the same shape:
 
-1. Fetch a fresh user prompt (the diff includes any local edits from
-   the previous iteration's fixes).
-2. Spawn the sub-agent with that prompt.
-3. Read JSON findings.
+1. `cruise-line user-prompt <owner/repo>` — assembles a fresh user
+   prompt from the current working tree.
+2. `Agent(subagent_type="cruise-line-reviewer", model="opus", prompt=…)`
+   — sub-agent produces findings.
+3. Parse JSON findings.
 4. Either apply fixes with `Edit` and loop, or stop and report.
 
 The loop never commits or pushes. Local file edits are enough to make
@@ -91,17 +120,16 @@ the next iteration see updated context.
 ### Why pinning the system prompt is the right trade-off
 
 Claude Code loads agent definitions from disk; there's no runtime API
-for injecting a system prompt into an `Agent` tool call. That leaves two
-options: pin the prompt at install time and require an occasional
+for injecting a system prompt into an `Agent` tool call. That leaves
+two options: pin the prompt at install time and require an occasional
 `install-skills --force` to resync after Cruise Line server upgrades,
 or put everything in the user prompt and use a generic sub-agent (losing
 the identity signal a system-slot prompt carries).
 
 We went with pinning. The methodology moves rarely enough that a manual
-resync after a server upgrade is acceptable, and preserving the exact
-system-slot semantics is what makes "runs the same review as the server"
-true rather than approximately true. The pinned file carries an inline
-regen note explaining how to update.
+resync is acceptable, and preserving the exact system-slot semantics is
+what makes "runs the same review as the server" true rather than
+approximately true. The pinned file carries an inline regen note.
 
 ## Migration
 
@@ -115,8 +143,11 @@ cruise-line login <host>       # if not already logged in
 cruise-line install-skills     # writes skill + sub-agent definition
 ```
 
-Then in a Claude Code session, ask the agent to "review with Cruise
-Line" (or explicitly `/cruise-line-review`). After a Cruise Line server
-upgrade that changes the review prompt, rerun `cruise-line install-
-skills --force` to resync the pinned sub-agent definition; the CLI's
-lazy update check will nag when a newer CLI is available.
+Then in a Claude Code session, from inside your feature branch's working
+tree, ask the agent to "review with Cruise Line" (or explicitly invoke
+`/cruise-line-review`). No PR needs to exist yet.
+
+After a Cruise Line server upgrade that changes the review prompt, rerun
+`cruise-line install-skills --force` to resync the pinned sub-agent
+definition; the CLI's lazy update check will nag when a newer CLI is
+available.

@@ -173,11 +173,17 @@ export function buildUserPrompt(pr: PrMetadata, diffContent: string, prBody?: st
         '\n\n... [diff truncated — use tools to read full files]'
       : diffContent;
 
+  // number=0 marks a pre-PR local review (the CLI's user-prompt endpoint
+  // for developers reviewing their working tree before opening a PR).
+  // Every other caller passes a real GitHub PR number.
+  const isPrePR = !pr.number;
+  const heading = isPrePR
+    ? `## Change Details\n- Repository: ${pr.owner}/${pr.repo}\n- ${pr.title}`
+    : `## PR Details\n- Repository: ${pr.owner}/${pr.repo}\n- PR #${pr.number}: ${pr.title}`;
+
   let prompt = `Review this pull request.
 
-## PR Details
-- Repository: ${pr.owner}/${pr.repo}
-- PR #${pr.number}: ${pr.title}
+${heading}
 - Author: ${pr.author}
 - Base: ${pr.baseSha} (${pr.baseRef}) → Head: ${pr.headSha} (${pr.headRef})`;
 

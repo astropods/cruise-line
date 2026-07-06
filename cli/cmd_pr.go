@@ -13,7 +13,7 @@ import (
 
 func cmdPR(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: cruise-line pr <status|walkthrough|review|prompt> owner/repo#N")
+		return errors.New("usage: cruise-line pr <status|walkthrough|review> owner/repo#N")
 	}
 	sub := args[0]
 	rest := args[1:]
@@ -24,10 +24,8 @@ func cmdPR(args []string) error {
 		return prWalkthrough(rest)
 	case "review":
 		return prReview(rest)
-	case "prompt":
-		return prPrompt(rest)
 	default:
-		return fmt.Errorf("unknown pr subcommand %q (expected status, walkthrough, review, or prompt)", sub)
+		return fmt.Errorf("unknown pr subcommand %q (expected status, walkthrough, or review)", sub)
 	}
 }
 
@@ -213,45 +211,3 @@ func prReview(args []string) error {
 	return jsonPrint(out)
 }
 
-// prPrompt implements `cruise-line pr prompt owner/repo#N`.
-//
-// Fetches the exact user prompt the server would feed to its analysis job
-// for this PR — assembled server-side via the same buildUserPrompt helper
-// the analyzer uses, so a local review reads identical inputs. The
-// cruise-line-review skill pipes this straight into a sub-agent's user
-// slot; pairs with the SYSTEM_PROMPT that install-skills pins to the
-// sub-agent definition.
-func prPrompt(args []string) error {
-	fs := flag.NewFlagSet("pr prompt", flag.ContinueOnError)
-	fs.Usage = func() {
-		fmt.Fprintln(os.Stderr, "usage: cruise-line pr prompt <owner/repo#N>")
-	}
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-	if fs.NArg() != 1 {
-		fs.Usage()
-		return errors.New("expected exactly one positional argument: owner/repo#N")
-	}
-	ref, err := parsePRRef(fs.Arg(0))
-	if err != nil {
-		return err
-	}
-	cfg, err := RequireLoggedIn()
-	if err != nil {
-		return err
-	}
-	client := NewClient(cfg)
-
-	var out struct {
-		UserPrompt string `json:"userPrompt"`
-	}
-	path := fmt.Sprintf("/api/walkthroughs/%s/%s/%d/prompt", ref.Owner, ref.Repo, ref.Number)
-	if err := client.GetJSON(path, &out); err != nil {
-		return err
-	}
-	// Print with trailing newline so `!\`cruise-line pr prompt ...\``
-	// inlining in a skill file terminates cleanly.
-	fmt.Println(out.UserPrompt)
-	return nil
-}

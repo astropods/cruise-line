@@ -7,12 +7,10 @@ import {
   getWalkthroughById,
   deleteWalkthrough,
 } from '../db/walkthroughs.js';
-import { getPrMetadata, getInstallationForRepo, getPrDiff } from '../github/client.js';
+import { getPrMetadata, getInstallationForRepo } from '../github/client.js';
 import { jobManager } from '../analysis/jobs.js';
 import { AppError } from '../middleware/error.js';
 import { rateLimit } from '../middleware/rate-limit.js';
-import { buildUserPrompt } from '../analysis/prompt.js';
-import { listRules } from '../db/rules.js';
 import type { AppEnv } from '../env.js';
 
 export const walkthroughRoutes = new Hono<AppEnv>();
@@ -26,6 +24,7 @@ const generateLimiter = rateLimit<AppEnv>('generate', {
     return session?.userId ? String(session.userId) : 'unknown';
   },
 });
+
 
 // All walkthrough routes require authentication and repo access
 walkthroughRoutes.use('/:owner/:repo/:pr/*', requireAuth, requireRepoAccess);
@@ -135,42 +134,6 @@ walkthroughRoutes.post('/:owner/:repo/:pr/generate', generateLimiter, async (c) 
   jobManager.enqueue(row.id, pr);
 
   return c.json({ walkthroughId: row.id, status: 'queued' }, 202);
-});
-
-/**
- * GET /api/walkthroughs/:owner/:repo/:pr/prompt
- *
- * Returns the exact user prompt the server would feed to its analysis job
- * for this PR — PR metadata, description, configured rules, and the diff,
- * all assembled by the same `buildUserPrompt` helper the analyzer uses.
- * The local-review skill hands this straight to a sub-agent so the review
- * behaves identically to a server-driven run.
- *
- * Inherits requireAuth + requireRepoAccess from the router-level use()
- * calls above — bearer callers reach it, non-collaborators don't.
- */
-walkthroughRoutes.get('/:owner/:repo/:pr/prompt', async (c) => {
-  const owner = c.req.param('owner');
-  const repo = c.req.param('repo');
-  const prNumber = Number(c.req.param('pr'));
-
-  if (!owner || !repo) throw new AppError(400, 'Missing route parameters');
-  if (isNaN(prNumber)) throw new AppError(400, 'Invalid PR number');
-
-  const installationId = await getInstallationForRepo(owner, repo);
-  const pr = await getPrMetadata(installationId, owner, repo, prNumber);
-  const diff = await getPrDiff(installationId, owner, repo, prNumber);
-  const repoRules = await listRules(owner, repo);
-  const rules = repoRules.map((r) => ({ ruleNumber: r.ruleNumber, rule: r.rule }));
-
-  const userPrompt = buildUserPrompt(
-    pr,
-    diff,
-    pr.body,
-    rules.length > 0 ? rules : undefined,
-  );
-
-  return c.json({ userPrompt });
 });
 
 /**
