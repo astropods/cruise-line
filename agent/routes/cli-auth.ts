@@ -120,7 +120,7 @@ export function validateAuthorizeParams(input: Partial<AuthorizeParams>): Author
  * this — no auth so an unauthenticated CLI can still check for updates.
  */
 cliAuthRoutes.get('/latest', async (c) => {
-  const version = await readCliVersion();
+  const version = readCliVersion();
   const host = config.appUrl.replace(/\/$/, '');
   const downloadUrls: Record<string, string> = {};
   for (const target of SUPPORTED_TARGETS) {

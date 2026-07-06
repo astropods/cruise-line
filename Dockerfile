@@ -20,12 +20,15 @@ RUN bun run build
 # Only pure-stdlib Go, so cross-compile has no CGO complications. Binaries
 # are what `curl <host>/install.sh | sh` downloads; the server serves them
 # straight off the runtime image's disk.
+#
+# The binary is not version-stamped at build time. The version identifier
+# for update comparisons comes from Astropods's runtime env var
+# ASTRO_AGENT_BUILD (returned by /api/cli/latest), and the CLI tracks the
+# version it installed in its local config. This means an identical build
+# always ships an identical binary — no timestamp drift or cache-miss
+# churn — and update comparisons are driven by the deploy's real build
+# hash, not by when the image happened to be baked.
 FROM --platform=linux/amd64 golang:1.25-alpine AS cli-builder
-
-# BUILD_VERSION is baked into the binary via -ldflags so `cruise-line version`
-# reports something meaningful. The astropods build system can pass a git
-# SHA here; falls back to "dev" for local docker build.
-ARG BUILD_VERSION=dev
 
 WORKDIR /src
 
@@ -45,10 +48,9 @@ RUN mkdir -p /out && \
       arch=$(echo "$target" | cut -d/ -f2); \
       out="/out/cruise-line-${os}-${arch}"; \
       GOOS=$os GOARCH=$arch CGO_ENABLED=0 \
-        go build -trimpath -ldflags="-s -w -X main.version=${BUILD_VERSION}" -o "$out" . && \
+        go build -trimpath -ldflags="-s -w" -o "$out" . && \
       sha256sum "$out" | awk '{print $1}' > "${out}.sha256"; \
-    done && \
-    echo "${BUILD_VERSION}" > /out/VERSION
+    done
 
 # Stage 4: Runtime
 FROM --platform=linux/amd64 oven/bun:1-slim

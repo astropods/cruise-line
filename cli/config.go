@@ -18,6 +18,19 @@ type Config struct {
 	Token   string     `json:"token,omitempty"`
 	TokenID string     `json:"token_id,omitempty"`
 	User    *UserBlock `json:"user,omitempty"`
+	// InstalledVersion is the server's build hash at the time the current
+	// binary was installed (via install.sh) or last upgraded (via
+	// `cruise-line upgrade`). It's the source of truth for "what version
+	// am I" — the binary itself carries no baked-in version stamp. When
+	// the server later returns a different build hash, the CLI knows to
+	// nag.
+	//
+	// Bootstrapped on the first successful update check if unset — a
+	// fresh install with no config yet assumes the server's current
+	// version matches whatever binary was just downloaded (a reasonable
+	// assumption for a curl|sh flow that pulled straight from the same
+	// server).
+	InstalledVersion string `json:"installed_version,omitempty"`
 	// UpdateCheck caches the last-known upstream CLI version so we don't hit
 	// /api/cli/latest on every command. See update.go.
 	UpdateCheck *UpdateCheckState `json:"update_check,omitempty"`

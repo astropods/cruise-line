@@ -37,48 +37,70 @@ func TestNotifyIfOutdated(t *testing.T) {
 		return <-done
 	}
 
-	// Preserve + restore package-level `version` since it's linker-injected.
-	origVersion := version
-	defer func() { version = origVersion }()
-
-	t.Run("prints notice when upstream is newer", func(t *testing.T) {
-		version = "0.1.0"
+	t.Run("prints notice when server version differs from installed", func(t *testing.T) {
+		cfg := &Config{InstalledVersion: "abc123"}
 		out := captureStderr(func() {
-			notifyIfOutdated(&latestResponse{Version: "0.2.0"})
+			notifyIfOutdated(cfg, &latestResponse{Version: "def456"})
 		})
-		if !strings.Contains(out, "0.2.0") || !strings.Contains(out, "upgrade") {
+		if !strings.Contains(out, "def456") || !strings.Contains(out, "upgrade") {
 			t.Errorf("expected upgrade notice, got %q", out)
 		}
 	})
 
 	t.Run("silent when versions match", func(t *testing.T) {
-		version = "0.1.0"
+		cfg := &Config{InstalledVersion: "abc123"}
 		out := captureStderr(func() {
-			notifyIfOutdated(&latestResponse{Version: "0.1.0"})
+			notifyIfOutdated(cfg, &latestResponse{Version: "abc123"})
 		})
 		if out != "" {
 			t.Errorf("expected silence when versions match, got %q", out)
 		}
 	})
 
-	t.Run("silent on dev builds", func(t *testing.T) {
-		// A dev build has no upstream to be older than — never nag.
-		version = "dev"
+	t.Run("silent when installed version is unset (fresh install)", func(t *testing.T) {
+		// A binary that has never checked in still has InstalledVersion="".
+		// maybeCheckForUpdate bootstraps this on the next successful fetch,
+		// but until then the comparison has no meaningful "current" side
+		// and must stay silent — otherwise every fresh install would nag
+		// on its first command.
+		cfg := &Config{InstalledVersion: ""}
 		out := captureStderr(func() {
-			notifyIfOutdated(&latestResponse{Version: "1.0.0"})
+			notifyIfOutdated(cfg, &latestResponse{Version: "abc123"})
 		})
 		if out != "" {
-			t.Errorf("expected silence on dev build, got %q", out)
+			t.Errorf("expected silence with unset InstalledVersion, got %q", out)
+		}
+	})
+
+	t.Run("silent on nil cfg", func(t *testing.T) {
+		out := captureStderr(func() {
+			notifyIfOutdated(nil, &latestResponse{Version: "abc123"})
+		})
+		if out != "" {
+			t.Errorf("expected silence on nil cfg, got %q", out)
 		}
 	})
 
 	t.Run("silent on nil response (offline / server down)", func(t *testing.T) {
-		version = "0.1.0"
+		cfg := &Config{InstalledVersion: "abc123"}
 		out := captureStderr(func() {
-			notifyIfOutdated(nil)
+			notifyIfOutdated(cfg, nil)
 		})
 		if out != "" {
 			t.Errorf("expected silence on nil response, got %q", out)
+		}
+	})
+
+	t.Run("silent when CRUISE_LINE_NO_UPDATE_CHECK is set", func(t *testing.T) {
+		// The env-var escape hatch for developers who don't want any
+		// upgrade nag even when versions differ.
+		t.Setenv("CRUISE_LINE_NO_UPDATE_CHECK", "1")
+		cfg := &Config{InstalledVersion: "abc123"}
+		out := captureStderr(func() {
+			notifyIfOutdated(cfg, &latestResponse{Version: "def456"})
+		})
+		if out != "" {
+			t.Errorf("expected silence when CRUISE_LINE_NO_UPDATE_CHECK is set, got %q", out)
 		}
 	})
 }
@@ -166,6 +188,31 @@ func TestMaybeCheckForUpdate(t *testing.T) {
 		}
 		if cfg.UpdateCheck == nil || cfg.UpdateCheck.LatestVersion != "9.9.9" {
 			t.Errorf("cache not written: %+v", cfg.UpdateCheck)
+		}
+	})
+
+	t.Run("bootstraps InstalledVersion on first check when unset", func(t *testing.T) {
+		// Fresh install (curl|sh) doesn't touch the config. The first
+		// successful update check adopts the server's current version as
+		// "what I was installed as." Without this, the very next call
+		// to notifyIfOutdated would nag on a brand-new install.
+		callCount = 0
+		cfg := &Config{Host: srv.URL}
+		maybeCheckForUpdate(cfg)
+		if cfg.InstalledVersion != "9.9.9" {
+			t.Errorf("expected bootstrap to set InstalledVersion=9.9.9, got %q", cfg.InstalledVersion)
+		}
+	})
+
+	t.Run("does not overwrite an existing InstalledVersion", func(t *testing.T) {
+		// If the user has upgraded before, InstalledVersion is already
+		// set. A subsequent update check must not stomp it — that's what
+		// enables the "server has moved past my installed version" nag.
+		callCount = 0
+		cfg := &Config{Host: srv.URL, InstalledVersion: "5.5.5"}
+		maybeCheckForUpdate(cfg)
+		if cfg.InstalledVersion != "5.5.5" {
+			t.Errorf("InstalledVersion clobbered: expected 5.5.5, got %q", cfg.InstalledVersion)
 		}
 	})
 

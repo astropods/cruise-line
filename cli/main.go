@@ -15,11 +15,25 @@ import (
 	"os"
 )
 
-// version is overwritten at link time by prod builds via
-//   -ldflags="-X main.version=<version>"
-// Dev builds see "dev" so `cruise-line version` reports something honest
-// before the ldflags step runs.
-var version = "dev"
+// fallbackVersion is used only when the local config has no installed
+// version recorded yet — e.g. a freshly-downloaded binary that has never
+// hit /api/cli/latest, or a local `go build .` binary. The version the
+// CLI actually reports and compares against the server lives in
+// config.InstalledVersion, populated on install/upgrade and bootstrapped
+// on the first successful update check. See resolvedVersion() below.
+const fallbackVersion = "dev"
+
+// resolvedVersion returns the version the CLI should report for itself.
+// Prefer the config-tracked installed version; fall back to the constant
+// when no config is available. Never blocks — a config-read error just
+// falls through to the constant.
+func resolvedVersion() string {
+	cfg, err := LoadConfig()
+	if err != nil || cfg == nil || cfg.InstalledVersion == "" {
+		return fallbackVersion
+	}
+	return cfg.InstalledVersion
+}
 
 func main() {
 	if len(os.Args) < 2 {
@@ -36,6 +50,7 @@ func main() {
 	// print the notice AFTER the command runs — never interleaved with
 	// stdout output the caller is likely piping into another tool.
 	var updateNotice *latestResponse
+	var updateCfg *Config
 	switch cmd {
 	case "version", "--version", "-v", "help", "--help", "-h", "upgrade", "login":
 		// skip — these commands don't touch the server, or would be self-referential.
@@ -43,6 +58,7 @@ func main() {
 		cfg, err := LoadConfig()
 		if err == nil {
 			updateNotice = maybeCheckForUpdate(cfg)
+			updateCfg = cfg
 		}
 	}
 
@@ -70,7 +86,7 @@ func main() {
 	case "upgrade":
 		run(cmdUpgrade, args)
 	case "version", "--version", "-v":
-		fmt.Println("cruise-line", version)
+		fmt.Println("cruise-line", resolvedVersion())
 	case "help", "--help", "-h":
 		printRootHelp(os.Stdout)
 	default:
@@ -79,7 +95,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	notifyIfOutdated(updateNotice)
+	notifyIfOutdated(updateCfg, updateNotice)
 }
 
 type commandFunc func(args []string) error
