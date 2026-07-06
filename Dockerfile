@@ -24,8 +24,11 @@ FROM --platform=linux/amd64 golang:1.25-alpine AS cli-builder
 
 # BUILD_VERSION is baked into the binary via -ldflags so `cruise-line version`
 # reports something meaningful. The astropods build system can pass a git
-# SHA here; falls back to "dev" for local docker build.
-ARG BUILD_VERSION=dev
+# SHA here. When empty, the RUN step below falls back to a UTC timestamp
+# so every deploy still ships a distinct version string — otherwise the
+# server would return the same value forever and the CLI's update check
+# would never notice new releases.
+ARG BUILD_VERSION=
 
 WORKDIR /src
 
@@ -40,15 +43,17 @@ COPY cli/ ./
 # server rejects downloads for anything not in that TS list, so a target
 # built here but missing there is unreachable, and vice versa.
 RUN mkdir -p /out && \
+    VERSION="${BUILD_VERSION:-$(date -u +%Y%m%dT%H%M%SZ)}" && \
+    echo "Building CLI at version: ${VERSION}" && \
     for target in "darwin/arm64" "darwin/amd64"; do \
       os=$(echo "$target" | cut -d/ -f1); \
       arch=$(echo "$target" | cut -d/ -f2); \
       out="/out/cruise-line-${os}-${arch}"; \
       GOOS=$os GOARCH=$arch CGO_ENABLED=0 \
-        go build -trimpath -ldflags="-s -w -X main.version=${BUILD_VERSION}" -o "$out" . && \
+        go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o "$out" . && \
       sha256sum "$out" | awk '{print $1}' > "${out}.sha256"; \
     done && \
-    echo "${BUILD_VERSION}" > /out/VERSION
+    echo "${VERSION}" > /out/VERSION
 
 # Stage 4: Runtime
 FROM --platform=linux/amd64 oven/bun:1-slim

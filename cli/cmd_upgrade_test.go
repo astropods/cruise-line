@@ -61,14 +61,30 @@ func TestNotifyIfOutdated(t *testing.T) {
 		}
 	})
 
-	t.Run("silent on dev builds", func(t *testing.T) {
-		// A dev build has no upstream to be older than — never nag.
+	t.Run("silent when both sides are dev", func(t *testing.T) {
+		// A locally-built dev binary talking to a server that also reports
+		// "dev" (either a dev deploy, or a Dockerfile that didn't stamp
+		// BUILD_VERSION) has nothing to nag about — versions match.
 		version = "dev"
 		out := captureStderr(func() {
-			notifyIfOutdated(&latestResponse{Version: "1.0.0"})
+			notifyIfOutdated(&latestResponse{Version: "dev"})
 		})
 		if out != "" {
-			t.Errorf("expected silence on dev build, got %q", out)
+			t.Errorf("expected silence when both sides are dev, got %q", out)
+		}
+	})
+
+	t.Run("nags dev-versioned local when server has a real version", func(t *testing.T) {
+		// This is the "existing installs that got the old dev-stamped
+		// binary should upgrade once" path. Without this exit, users who
+		// pulled from a deploy that predates the version-stamping fix
+		// would never learn a real release exists.
+		version = "dev"
+		out := captureStderr(func() {
+			notifyIfOutdated(&latestResponse{Version: "20260706T210000Z"})
+		})
+		if !strings.Contains(out, "20260706T210000Z") || !strings.Contains(out, "upgrade") {
+			t.Errorf("expected upgrade notice, got %q", out)
 		}
 	})
 

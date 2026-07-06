@@ -95,8 +95,14 @@ func maybeCheckForUpdate(cfg *Config) *latestResponse {
 // version is available. Called after the main command completes so it never
 // interleaves with the command's own output.
 //
-// Version comparison is exact-string: `dev` builds never match anything
-// upstream (which is fine — nobody wants a dev build nagging to upgrade).
+// Comparison is exact-string. A local dev-build (`go build .` with no
+// linker flags) reports version="dev" — we skip nagging in that case
+// UNLESS the server is on a real, non-dev version, which means there's a
+// released upgrade the user probably wants. The pre-fix Dockerfile also
+// stamped binaries "dev", so this exit exists specifically to nudge those
+// existing installs to grab a properly-stamped binary once at the next
+// server release; after the upgrade, both sides are on real versions and
+// the normal comparison takes over.
 func notifyIfOutdated(latest *latestResponse) {
 	if latest == nil || latest.Version == "" {
 		return
@@ -104,7 +110,7 @@ func notifyIfOutdated(latest *latestResponse) {
 	if version == latest.Version {
 		return
 	}
-	if version == "dev" {
+	if version == "dev" && latest.Version == "dev" {
 		return
 	}
 	fmt.Fprintf(os.Stderr,
