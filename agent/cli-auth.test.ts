@@ -461,3 +461,52 @@ describe('GET /api/cli/repos', () => {
     expect(body.installations).toEqual([]);
   });
 });
+
+// ---------------------------------------------------------------------
+// GET /api/cli/review-prompt
+// ---------------------------------------------------------------------
+
+describe('GET /api/cli/review-prompt', () => {
+  const app = new Hono();
+  app.onError(errorHandler);
+  app.route('/api/cli', cliAuthRoutes);
+
+  const bearerUser = {
+    userId: 42,
+    login: 'testuser',
+    avatarUrl: '',
+    firstSeenAt: '2026-01-01T00:00:00.000Z',
+    lastSeenAt: '2026-01-01T00:00:00.000Z',
+    loginCount: 1,
+    role: 'user' as const,
+  };
+
+  beforeEach(() => {
+    mockResolveCliToken.mockReset();
+    mockGetUser.mockReset();
+  });
+
+  it('rejects an unauthenticated request with 401', async () => {
+    const res = await app.request('/api/cli/review-prompt');
+    expect(res.status).toBe(401);
+  });
+
+  it('returns the SYSTEM_PROMPT to authed bearer callers', async () => {
+    mockResolveCliToken.mockResolvedValueOnce({ id: 'tok', userId: 42 });
+    mockGetUser.mockResolvedValueOnce(bearerUser);
+
+    const res = await app.request('/api/cli/review-prompt', {
+      headers: { authorization: 'Bearer cl_live_test' },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { prompt: string };
+    // Lock in that the endpoint returns the actual server prompt, not a
+    // placeholder — the phrase below is the opening line of SYSTEM_PROMPT.
+    // A refactor that swapped the source without updating this test would
+    // catch our attention.
+    expect(body.prompt).toContain('senior engineer reviewing a pull request');
+    // Prompt is non-trivial — a length sanity check guards against a
+    // regression that ships an empty string.
+    expect(body.prompt.length).toBeGreaterThan(1000);
+  });
+});

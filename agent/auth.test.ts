@@ -87,6 +87,15 @@ mock.module(path.resolve(import.meta.dir, './analysis/jobs.ts'), () => ({
   jobManager: mockJobManager,
 }));
 
+const mockListRules = mock(() => Promise.resolve([] as any[]));
+
+mock.module(path.resolve(import.meta.dir, './db/rules.ts'), () => ({
+  listRules: mockListRules,
+  addRule: mock(),
+  updateRule: mock(),
+  deleteRule: mock(),
+}));
+
 mock.module(path.resolve(import.meta.dir, './db/cli-tokens.ts'), () => ({
   resolveCliToken: mockResolveCliToken,
   touchCliTokenUsed: mockTouchCliTokenUsed,
@@ -868,5 +877,104 @@ describe('POST /api/walkthroughs/:owner/:repo/:pr/generate — auth boundary', (
     });
     expect(res.status).toBe(403);
     expect(mockJobManager.enqueue).not.toHaveBeenCalled();
+  });
+});
+
+// =====================================================================
+// GET /api/walkthroughs/:owner/:repo/:pr/prompt — local review inputs
+// =====================================================================
+//
+// The prompt endpoint returns the exact user prompt the server would feed
+// to its analysis job for this PR. The cruise-line-review skill relies on
+// two invariants this test locks in:
+//   1. Auth + repo access are enforced (inherited from router middleware).
+//   2. The response body includes the rule text — a regression that
+//      dropped the rules join would silently make local reviews diverge
+//      from server reviews without any obvious symptom.
+
+describe('GET /api/walkthroughs/:owner/:repo/:pr/prompt — local review inputs', () => {
+  const app = generateApp; // Same Hono app; walkthroughRoutes already mounted.
+
+  beforeEach(() => {
+    mockGetPermissionLevel.mockReset();
+    mockGetRepoInstallation.mockReset();
+    mockPullsGet.mockReset();
+    mockResolveCliToken.mockReset();
+    mockGetUser.mockReset();
+    mockListRules.mockReset();
+
+    // Baseline: user has write access, PR exists at head SHA bbb, no
+    // rules configured (individual tests override for rule assertion).
+    mockGetRepoInstallation.mockResolvedValue({ data: { id: 12345 } });
+    mockGetPermissionLevel.mockResolvedValue({ data: { permission: 'write' } });
+    // pulls.get is called twice inside the /prompt handler — once for
+    // metadata (default mediaType) and once for the diff (format: 'diff').
+    // Same mock serves both because getPrDiff casts the response `.data`
+    // as string; getPrMetadata reads structured fields off it.
+    mockPullsGet.mockImplementation(async (opts: { mediaType?: { format?: string } }) => {
+      if (opts.mediaType?.format === 'diff') {
+        return { data: 'diff --git a/foo b/foo\n@@ -1,1 +1,1 @@\n-old\n+new\n' };
+      }
+      return {
+        data: {
+          title: 'Add feature',
+          user: { login: 'author' },
+          base: { ref: 'main', sha: 'aaa' },
+          head: { ref: 'feat/x', sha: 'bbb' },
+          body: 'PR description body',
+        },
+      };
+    });
+    mockListRules.mockResolvedValue([]);
+  });
+
+  function bearerHeaders() {
+    mockResolveCliToken.mockResolvedValue({ id: 'tok', userId: 42 });
+    mockGetUser.mockResolvedValue(generateBearerUser);
+    return { authorization: 'Bearer cl_live_test' };
+  }
+
+  it('returns a user prompt containing the PR metadata and diff', async () => {
+    const res = await app.request('/api/walkthroughs/acme/app/1/prompt', {
+      headers: bearerHeaders(),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { userPrompt: string };
+    expect(body.userPrompt).toContain('acme/app');
+    expect(body.userPrompt).toContain('Add feature');
+    expect(body.userPrompt).toContain('PR description body');
+    expect(body.userPrompt).toContain('+new'); // diff content survives
+  });
+
+  it('injects repo-configured rules into the prompt when present', async () => {
+    mockListRules.mockResolvedValue([
+      { id: 1, ruleNumber: 1, rule: 'Always use tagged-template SQL', createdAt: '2026-01-01T00:00:00Z' },
+      { id: 2, ruleNumber: 2, rule: 'Never duplicate SQL queries', createdAt: '2026-01-01T00:00:00Z' },
+    ]);
+    const res = await app.request('/api/walkthroughs/acme/app/1/prompt', {
+      headers: bearerHeaders(),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { userPrompt: string };
+    expect(body.userPrompt).toContain('Rule #1');
+    expect(body.userPrompt).toContain('Always use tagged-template SQL');
+    expect(body.userPrompt).toContain('Rule #2');
+  });
+
+  it('returns 401 when the request has no auth', async () => {
+    const res = await app.request('/api/walkthroughs/acme/app/1/prompt');
+    expect(res.status).toBe(401);
+  });
+
+  it('returns 403 when the bearer user is not a collaborator', async () => {
+    // Loosening the write path doesn't loosen the read path. If you can't
+    // see the repo on GitHub, you can't fetch its PR contents via
+    // Cruise Line either.
+    mockGetPermissionLevel.mockReset();
+    mockGetPermissionLevel.mockResolvedValue({ data: { permission: 'read' } });
+    const res = await app.request('/api/walkthroughs/acme/other-app/1/prompt', {
+      headers: bearerHeaders(),
+    });
+    expect(res.status).toBe(403);
   });
 });
