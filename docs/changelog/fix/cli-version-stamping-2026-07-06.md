@@ -9,61 +9,70 @@ a new version shipped.
 
 ## Design
 
-Two independent bugs, each individually incorrect, combined to silence
-the notice entirely.
+Root cause: the Dockerfile stamped every deployed binary with the
+literal string `dev` (its `ARG BUILD_VERSION` default, unset by
+astropods), and the server's `/api/cli/latest` returned the same `dev`
+by reading a Dockerfile-baked `VERSION` file. Both ends of the version
+comparison were always the same string — the update check couldn't
+detect a new release.
 
-### The Dockerfile stamped every deploy with the literal string "dev"
+The fix rebuilds the version-identity path on top of a signal astropods
+already provides: `ASTRO_AGENT_BUILD` — the runtime env var Astropods
+injects, documented for use as OpenTelemetry `service.version`. It
+changes exactly when a new deploy actually ships and stays stable across
+identical rebuilds.
 
-The `cli-builder` stage had `ARG BUILD_VERSION=dev` — a placeholder for
-the astropods pipeline to fill in. The pipeline doesn't currently pass
-anything, so every deploy shipped binaries stamped `main.version="dev"`
-and wrote `dev` into the `VERSION` file the server reads from.
+### Server: return `ASTRO_AGENT_BUILD`, drop the VERSION file
 
-Result: `/api/cli/latest` returned `{version: "dev"}` from every deploy,
-and every downloaded CLI also reported `dev`. Two ends of the same
-string comparison — always matched, always silent.
+`/api/cli/latest` now returns `process.env.ASTRO_AGENT_BUILD ?? 'dev'`.
+The old `dist/cli/VERSION` file is gone from both the Dockerfile and the
+server code. The Dockerfile's `cli-builder` stage no longer takes a
+`BUILD_VERSION` build-arg or bakes anything via `-ldflags` — the CLI
+binary carries no version stamp at all.
 
-The fix: fall back to a UTC timestamp inside the `RUN` step when the
-build arg is missing. Astropods can start passing a git SHA whenever
-it's convenient; until then, every deploy ships a distinct version
-string like `20260706T210702Z` and the update check has something real
-to compare.
+### CLI: track "what I installed" in local config
 
-```
-ARG BUILD_VERSION=
-...
-RUN VERSION="${BUILD_VERSION:-$(date -u +%Y%m%dT%H%M%SZ)}" && \
-    go build ... -X main.version=${VERSION} ... && \
-    echo "${VERSION}" > /out/VERSION
-```
+Since the binary has no baked version, the CLI reads its identity from
+`config.installed_version` at `~/.config/cruise-line/config.json`:
 
-Both the `-ldflags` value and the on-disk `VERSION` file now use the
-same resolved string.
+- `cruise-line upgrade` writes the server's current version to
+  `installed_version` after the atomic rename succeeds. That's the
+  primary path — every subsequent update check compares against it.
+- Fresh installs (curl|sh) don't touch the config. The first successful
+  update check adopts the server's current version as the installed
+  version (bootstrap) — a reasonable assumption for a curl|sh flow
+  that pulled straight from the same server.
+- `cruise-line version` prints `config.installed_version` when set,
+  otherwise the literal `dev` — the fallback that also covers local
+  `go build .` binaries.
+- `notifyIfOutdated` compares `cfg.InstalledVersion` against a fresh
+  `/api/cli/latest`. Different strings → nag. Stays silent when either
+  side is missing (fresh install pre-bootstrap, offline, config
+  unreadable) rather than nagging on incomplete info.
+- `CRUISE_LINE_NO_UPDATE_CHECK=1` still suppresses all nagging as an
+  escape hatch for developers hacking on the CLI.
 
-### The CLI silenced "dev builds" unconditionally
+### Why this is deterministic
 
-`notifyIfOutdated` had a defensive rule: if `version == "dev"`, don't
-nag. The intent was "someone who ran `go build .` locally doesn't want
-their scratch binary complaining about updates." Correct in isolation
-— but the pre-fix Dockerfile also stamped deployed binaries `dev`, so
-the rule silenced the exact population that most needed to hear about
-the upgrade.
-
-The rule is now scoped to the case that motivated it. Silence only
-when *both* the local binary and the server report `dev`; when the
-local is `dev` and the server has a real version, nag once. That's the
-one-time nudge existing `dev`-stamped installs need to pull a
-properly-stamped binary. After the upgrade both sides are on real
-versions and the normal exact-string comparison takes over.
+- `ASTRO_AGENT_BUILD` is a build hash astropods sets at deploy time,
+  not a timestamp. A no-op rebuild of the same source produces the same
+  value, so users don't get spuriously nagged after infra-triggered
+  redeploys.
+- The binary itself is version-free. No Docker-build-time value can
+  drift out of sync with the server's runtime signal — there's just one
+  authoritative source (the server), and the CLI's config remembers what
+  it saw at install/upgrade.
 
 ## Migration
 
-Users with existing installs will get one "cruise-line ... is available"
-notice the next time they run any CLI command after this ships. They
-run `cruise-line upgrade` once; from then on their binary reports a
-real timestamp and the update check works as designed for every future
-deploy.
+Users on the currently-broken deployment (`version == "dev"` on both
+sides) will get one nag from this fix the first time they run a command
+after the new deploy lands: the server will start returning
+`ASTRO_AGENT_BUILD`, their config's `installed_version` will still be
+unset, and the update check will bootstrap it — silently on that first
+call. From the second call onwards, if the server has moved past that
+snapshot, the nag fires. One `cruise-line upgrade` later, they're on
+current and the loop works as designed for every future deploy.
 
-No action needed from repo maintainers. Astropods can start passing a
-`BUILD_VERSION` build-arg to Docker when it's convenient — the fallback
-just goes away in favor of the passed value.
+No repo-side action needed. Astropods sets `ASTRO_AGENT_BUILD` on its
+own; there's nothing to configure in `astropods.yml`.

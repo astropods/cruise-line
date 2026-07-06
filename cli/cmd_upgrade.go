@@ -60,6 +60,14 @@ func fetchLatest(host string, timeout time.Duration) (*latestResponse, error) {
 // config, and returns the fetched response. Errors are non-fatal — an
 // offline user shouldn't see failures from a background check.
 //
+// Bootstraps cfg.InstalledVersion on the first successful check. Fresh
+// installs (curl|sh) don't record a version anywhere — the binary is
+// downloaded and dropped in place with no config touch. The first update
+// check that succeeds is a reasonable place to assume "the current
+// server version is what I was just installed as," so we adopt it. From
+// then on, upgrades update InstalledVersion, and comparisons compare
+// InstalledVersion to whatever /api/cli/latest currently returns.
+//
 // Only fires when the user has a Host in config. Pre-login users don't
 // know which deployment to check against.
 func maybeCheckForUpdate(cfg *Config) *latestResponse {
@@ -85,45 +93,54 @@ func maybeCheckForUpdate(cfg *Config) *latestResponse {
 		LastCheckedAt: time.Now().UTC().Format(time.RFC3339),
 		LatestVersion: latest.Version,
 	}
+	// Bootstrap for freshly-installed binaries that never went through
+	// `cruise-line upgrade`. Without this, the first check would see
+	// InstalledVersion="" and immediately nag — annoying and wrong on
+	// day 1.
+	if cfg.InstalledVersion == "" {
+		cfg.InstalledVersion = latest.Version
+	}
 	// Save is best-effort — failing to persist just means we'll check again
 	// on the next command, which is harmless.
 	_ = SaveConfig(cfg)
 	return latest
 }
 
-// notifyIfOutdated prints a one-line upgrade notice to stderr when a newer
-// version is available. Called after the main command completes so it never
-// interleaves with the command's own output.
+// notifyIfOutdated prints a one-line upgrade notice to stderr when the
+// server's version differs from what the CLI installed. Called after the
+// main command completes so it never interleaves with the command's own
+// output.
 //
-// Comparison is exact-string. A local dev-build (`go build .` with no
-// linker flags) reports version="dev" — we skip nagging in that case
-// UNLESS the server is on a real, non-dev version, which means there's a
-// released upgrade the user probably wants. The pre-fix Dockerfile also
-// stamped binaries "dev", so this exit exists specifically to nudge those
-// existing installs to grab a properly-stamped binary once at the next
-// server release; after the upgrade, both sides are on real versions and
-// the normal comparison takes over.
+// Compares cfg.InstalledVersion (set on upgrade, bootstrapped on first
+// check) against the freshly-fetched /api/cli/latest. Both come from the
+// server's ASTRO_AGENT_BUILD env var, which changes exactly when a new
+// deploy actually ships — no timestamp drift, no cache-invalidation
+// churn.
 //
-// Escape hatch: developers hacking on the CLI itself (via `go build .`)
-// don't want to be told to `cruise-line upgrade` — that would replace
-// their locally-modified binary with a downloaded one. Setting
-// CRUISE_LINE_NO_UPDATE_CHECK=1 suppresses the nag entirely.
-func notifyIfOutdated(latest *latestResponse) {
+// Escape hatches:
+//   - CRUISE_LINE_NO_UPDATE_CHECK=1 suppresses the nag entirely, for
+//     developers hacking on the CLI itself who don't want to be told
+//     to `cruise-line upgrade` (which would replace their locally-
+//     modified binary with a downloaded one).
+//   - No cfg.InstalledVersion means the first check hasn't happened
+//     yet OR the config is corrupt; silence is right — the check
+//     will bootstrap on its next run.
+func notifyIfOutdated(cfg *Config, latest *latestResponse) {
 	if os.Getenv("CRUISE_LINE_NO_UPDATE_CHECK") != "" {
 		return
 	}
 	if latest == nil || latest.Version == "" {
 		return
 	}
-	if version == latest.Version {
+	if cfg == nil || cfg.InstalledVersion == "" {
 		return
 	}
-	if version == "dev" && latest.Version == "dev" {
+	if cfg.InstalledVersion == latest.Version {
 		return
 	}
 	fmt.Fprintf(os.Stderr,
 		"\n(cruise-line %s is available; you're on %s. Run `cruise-line upgrade` to update.)\n",
-		latest.Version, version,
+		latest.Version, cfg.InstalledVersion,
 	)
 }
 
@@ -155,8 +172,8 @@ func cmdUpgrade(args []string) error {
 		return fmt.Errorf("checking for updates: %w", err)
 	}
 
-	if !*force && latest.Version == version {
-		fmt.Printf("Already on latest version (%s)\n", version)
+	if !*force && latest.Version == cfg.InstalledVersion {
+		fmt.Printf("Already on latest version (%s)\n", cfg.InstalledVersion)
 		return nil
 	}
 
@@ -189,6 +206,18 @@ func cmdUpgrade(args []string) error {
 	}
 	if err := os.Rename(binPath, self); err != nil {
 		return fmt.Errorf("replacing %s: %w (try running with sudo if the file is owned by root)", self, err)
+	}
+
+	// Record what we just installed so subsequent update checks can
+	// compare against it. This is the ONLY source of truth for "what
+	// version is the running binary"; nothing is baked into the file
+	// itself.
+	cfg.InstalledVersion = latest.Version
+	if err := SaveConfig(cfg); err != nil {
+		// The binary is already swapped; a config-write failure isn't
+		// worth rolling back, but do surface it so the user knows the
+		// next update check won't know they upgraded.
+		fmt.Fprintf(os.Stderr, "warning: upgrade succeeded but couldn't persist installed version: %v\n", err)
 	}
 
 	fmt.Printf("Upgraded to %s\n", latest.Version)

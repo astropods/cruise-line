@@ -20,23 +20,15 @@ RUN bun run build
 # Only pure-stdlib Go, so cross-compile has no CGO complications. Binaries
 # are what `curl <host>/install.sh | sh` downloads; the server serves them
 # straight off the runtime image's disk.
-FROM --platform=linux/amd64 golang:1.25-alpine AS cli-builder
-
-# BUILD_VERSION is baked into the binary via -ldflags so `cruise-line version`
-# reports something meaningful. The astropods build system can pass a git
-# SHA here. When empty, the RUN step below falls back to a UTC timestamp
-# so every deploy still ships a distinct version string — otherwise the
-# server would return the same value forever and the CLI's update check
-# would never notice new releases.
 #
-# The timestamp fallback is a stopgap: it also changes when the image is
-# rebuilt with no source changes (cache miss on an earlier layer, infra-
-# triggered redeploy), so every rebuild is a "new release" from the CLI's
-# perspective and users get nagged again. Fine for now — the fix is to
-# pass a real BUILD_VERSION (git SHA / release tag) from the astropods
-# pipeline as soon as it's available. Passing "" makes the fallback fire;
-# passing any non-empty value takes precedence.
-ARG BUILD_VERSION=
+# The binary is not version-stamped at build time. The version identifier
+# for update comparisons comes from Astropods's runtime env var
+# ASTRO_AGENT_BUILD (returned by /api/cli/latest), and the CLI tracks the
+# version it installed in its local config. This means an identical build
+# always ships an identical binary — no timestamp drift or cache-miss
+# churn — and update comparisons are driven by the deploy's real build
+# hash, not by when the image happened to be baked.
+FROM --platform=linux/amd64 golang:1.25-alpine AS cli-builder
 
 WORKDIR /src
 
@@ -51,17 +43,14 @@ COPY cli/ ./
 # server rejects downloads for anything not in that TS list, so a target
 # built here but missing there is unreachable, and vice versa.
 RUN mkdir -p /out && \
-    VERSION="${BUILD_VERSION:-$(date -u +%Y%m%dT%H%M%SZ)}" && \
-    echo "Building CLI at version: ${VERSION}" && \
     for target in "darwin/arm64" "darwin/amd64"; do \
       os=$(echo "$target" | cut -d/ -f1); \
       arch=$(echo "$target" | cut -d/ -f2); \
       out="/out/cruise-line-${os}-${arch}"; \
       GOOS=$os GOARCH=$arch CGO_ENABLED=0 \
-        go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o "$out" . && \
+        go build -trimpath -ldflags="-s -w" -o "$out" . && \
       sha256sum "$out" | awk '{print $1}' > "${out}.sha256"; \
-    done && \
-    echo "${VERSION}" > /out/VERSION
+    done
 
 # Stage 4: Runtime
 FROM --platform=linux/amd64 oven/bun:1-slim
