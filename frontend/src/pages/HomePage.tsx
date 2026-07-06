@@ -64,8 +64,8 @@ export function HomePage() {
           <img
             src="/logo.png"
             alt="Cruise Line"
-            width={220}
-            height={220}
+            width={180}
+            height={180}
             className="mb-4 select-none"
             draggable={false}
           />

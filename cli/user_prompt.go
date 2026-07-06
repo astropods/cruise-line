@@ -5,21 +5,18 @@ import (
 	"strings"
 )
 
-// prMetadata mirrors the shape server-side buildUserPrompt consumes.
-// Number == 0 marks a pre-PR local review (no GitHub PR exists yet), which
-// swaps the "## PR Details" heading for "## Change Details" and drops the
-// "PR #N:" prefix from the title line.
+// prMetadata is the pre-PR context passed into the user prompt. There's
+// no GitHub PR number — the developer hasn't opened one yet — so the
+// template omits the "PR #N" framing entirely.
 type prMetadata struct {
 	Owner   string
 	Repo    string
-	Number  int
 	Title   string
 	Author  string
 	BaseRef string
 	HeadRef string
 	BaseSha string
 	HeadSha string
-	Body    string // PR description; empty is fine
 }
 
 type reviewRule struct {
@@ -27,56 +24,32 @@ type reviewRule struct {
 	Rule       string
 }
 
-// maxDiffChars is the same cap the server-side buildUserPrompt uses. A diff
-// larger than this gets truncated with a note pointing the reviewer at the
-// tools they have. Counted in Unicode code points (same unit TS uses after
-// spreading the string into an array) — NOT bytes — so a multi-byte
-// character can't cause the Go and TS ports to truncate at different
-// positions or leave Go emitting broken UTF-8.
-const maxDiffChars = 100_000
-
-// buildUserPrompt renders the review's user prompt for a given change.
-// This is a Go port of the TypeScript buildUserPrompt in
-// agent/analysis/prompt.ts. Both implementations are pinned to the same
-// golden file (agent/analysis/testdata/user-prompt-pre-pr-golden.txt) so
-// drift shows up in tests.
+// buildUserPrompt assembles the user-slot prompt for a local pre-PR review.
 //
-// The template lives in two languages because the server-side analyzer
-// still calls the TS version, and the CLI's local-review loop calls this
-// Go version. The alternative — serving the template as a string from the
-// server for the CLI to fetch and render — was ruled out because the
-// template contains conditional structure (pre-PR vs. PR, rules present or
-// not, description present or not) that neither language can render
-// without an interpreter for the other's template DSL.
-func buildUserPrompt(pr prMetadata, diffContent string, rules []reviewRule) string {
-	// Slice by code point, not byte — a byte cut mid-rune would emit
-	// broken UTF-8, and byte length disagrees with TS's `.length` on any
-	// multi-byte character. See the maxDiffChars comment above.
-	runes := []rune(diffContent)
-	truncatedDiff := diffContent
-	if len(runes) > maxDiffChars {
-		truncatedDiff = string(runes[:maxDiffChars]) +
-			"\n\n... [diff truncated — use tools to read full files]"
-	}
-
-	isPrePR := pr.Number == 0
-
-	var heading string
-	if isPrePR {
-		heading = fmt.Sprintf("## Change Details\n- Repository: %s/%s\n- %s",
-			pr.Owner, pr.Repo, pr.Title)
-	} else {
-		heading = fmt.Sprintf("## PR Details\n- Repository: %s/%s\n- PR #%d: %s",
-			pr.Owner, pr.Repo, pr.Number, pr.Title)
-	}
-
+// Deliberately does NOT include the diff. The sub-agent runs inside the
+// developer's working tree with Bash + Read + Grep + Glob, so it can look
+// at the change directly (`git diff`, `git ls-files`, individual files)
+// rather than reading a bundled diff that would go stale as fixes accrue.
+// This sidesteps all the merge-base semantics / intent-to-add for
+// untracked files / UTF-8-safe truncation edge cases that plagued the
+// previous diff-embedding version.
+//
+// The server-side buildUserPrompt in agent/analysis/prompt.ts is separate
+// and unchanged — its caller (the analyzer running inside a headless
+// sandbox) genuinely needs the diff embedded, because the sandbox has no
+// developer working tree to read from.
+func buildUserPrompt(pr prMetadata, rules []reviewRule) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "Review this pull request.\n\n%s\n- Author: %s\n- Base: %s (%s) → Head: %s (%s)",
-		heading, pr.Author, pr.BaseSha, pr.BaseRef, pr.HeadSha, pr.HeadRef)
 
-	if trimmed := strings.TrimSpace(pr.Body); trimmed != "" {
-		fmt.Fprintf(&b, "\n\n## PR Description\n%s", trimmed)
-	}
+	fmt.Fprintf(&b, `Review the local changes in the developer's working tree.
+
+## Change Details
+- Repository: %s/%s
+- %s
+- Author: %s
+- Base: %s (%s) → Head: %s (%s)`,
+		pr.Owner, pr.Repo, pr.Title, pr.Author,
+		pr.BaseSha, pr.BaseRef, pr.HeadSha, pr.HeadRef)
 
 	if len(rules) > 0 {
 		b.WriteString("\n\n## Repository Review Rules\n\n")
@@ -90,8 +63,14 @@ func buildUserPrompt(pr prMetadata, diffContent string, rules []reviewRule) stri
 		}
 	}
 
-	fmt.Fprintf(&b, "\n\n## Diff\n```diff\n%s\n```\n\nRead the files to understand context, check callers and tests, and determine accurate line numbers for your directives.",
-		truncatedDiff)
+	fmt.Fprintf(&b, "\n\n## Where to look\n\n"+
+		"You are running in the developer's working tree. The changes are on the local filesystem — no diff is bundled with this prompt. Use your tools to investigate:\n\n"+
+		"- `git diff $(git merge-base %[1]s HEAD)` — full pre-PR delta including committed, staged, and unstaged edits. Merge-base semantics so unrelated advances on %[1]s don't pollute the diff.\n"+
+		"- `git ls-files --others --exclude-standard` — new files that aren't tracked yet. Plain `git diff` won't show them.\n"+
+		"- `git log %[1]s..HEAD --oneline` — the commit history on this branch.\n"+
+		"- The Read tool for individual files. Grep and Glob for cross-file searches — check callers, tests, and neighbouring patterns.\n\n"+
+		"Read the actual files, verify accurate line numbers for your directives, and base severity on the code you actually saw.",
+		pr.BaseRef)
 
 	return b.String()
 }

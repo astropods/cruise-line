@@ -13,24 +13,23 @@ import (
 // cmdUserPrompt implements `cruise-line user-prompt <owner/repo>`.
 //
 // Assembles the user prompt for a *local pre-PR* review. The developer is
-// on a feature branch with local changes (committed and/or uncommitted)
-// and wants a Cruise Line-style review before opening a PR on GitHub.
+// on a feature branch with local changes (committed, staged, unstaged, or
+// untracked) and wants a Cruise Line-style review before opening a PR on
+// GitHub.
 //
-// Runs almost entirely against the local working tree:
-//   - Diff comes from `git diff <base>` (base ref auto-detected from
-//     origin/HEAD, overridable with --base).
-//   - PR-shaped metadata is inferred from git (branch names, SHAs,
-//     `user.name` for author).
-//   - Rules come from the server via GET /api/rules/:owner/:repo — the
-//     only server call per invocation, since rules are the one input
-//     that can change without a CLI upgrade.
+// Deliberately does NOT bundle a diff into the prompt. The sub-agent that
+// consumes the output runs in the developer's working tree with Bash +
+// Read + Grep + Glob — it can call `git diff` (or ls-files, or Read) for
+// itself and see the current state, including any uncommitted or
+// untracked changes. This cuts out all the merge-base / intent-to-add /
+// UTF-8-safe-truncation complexity a bundled diff would need.
 //
-// The user prompt is then assembled locally via buildUserPrompt (a Go
-// port of the TS analyzer helper, cross-tested against the same golden
-// file — see cli/user_prompt.go and agent/analysis/prompt.test.ts).
+// The command still shells out to git for a small amount of *metadata*
+// (branch names, SHAs, author) that goes into the prompt header. It also
+// hits the server once for the repo's configured review rules.
 func cmdUserPrompt(args []string) error {
 	fs := flag.NewFlagSet("user-prompt", flag.ContinueOnError)
-	baseFlag := fs.String("base", "", "base ref to diff against (default: origin/HEAD, or main)")
+	baseFlag := fs.String("base", "", "base ref (default: origin/HEAD, or main)")
 	titleFlag := fs.String("title", "", "override the change title (default: current branch name)")
 	fs.Usage = func() {
 		fmt.Fprintln(os.Stderr, "usage: cruise-line user-prompt <owner/repo> [--base <ref>] [--title <text>]")
@@ -58,18 +57,10 @@ func cmdUserPrompt(args []string) error {
 		base = detectDefaultBase()
 	}
 
-	// Verify the base ref resolves to something. A clear early error is
-	// better than a cryptic `git diff` failure buried in the loop.
+	// Verify the base resolves. A clean early error beats a cryptic
+	// failure downstream when the sub-agent tries `git diff <base>`.
 	if _, err := gitOutput("rev-parse", "--verify", base); err != nil {
 		return fmt.Errorf("base ref %q not found (use --base to override): %w", base, err)
-	}
-
-	diff, err := gitOutput("diff", base)
-	if err != nil {
-		return fmt.Errorf("git diff %s: %w", base, err)
-	}
-	if strings.TrimSpace(diff) == "" {
-		return fmt.Errorf("no changes against %s — nothing to review", base)
 	}
 
 	headRef, _ := gitOutput("rev-parse", "--abbrev-ref", "HEAD")
@@ -87,7 +78,9 @@ func cmdUserPrompt(args []string) error {
 
 	// Strip "origin/" or similar remote prefix from the reported base ref
 	// so the prompt reads naturally ("Base: main → Head: feat/x" rather
-	// than "Base: origin/main → Head: feat/x").
+	// than "Base: origin/main → Head: feat/x"). The sub-agent's `git diff
+	// $(git merge-base <baseRef> HEAD)` still resolves — plain "main"
+	// picks up the local branch which normally tracks origin/main.
 	baseRef := base
 	if _, after, ok := strings.Cut(base, "/"); ok {
 		baseRef = after
@@ -99,10 +92,8 @@ func cmdUserPrompt(args []string) error {
 	}
 	client := NewClient(cfg)
 
-	// Fetch rules from the server. This is the ONLY server round-trip per
-	// iteration — the prompt is assembled locally via buildUserPrompt (Go
-	// port of the server-side TS helper, cross-tested against a golden
-	// file). Same review methodology, no bespoke assembly endpoint.
+	// Only server call per invocation: rules are the one input that can
+	// change without a CLI upgrade.
 	var rulesResp struct {
 		Rules []struct {
 			RuleNumber int    `json:"ruleNumber"`
@@ -120,14 +111,13 @@ func cmdUserPrompt(args []string) error {
 	prompt := buildUserPrompt(prMetadata{
 		Owner:   owner,
 		Repo:    repo,
-		Number:  0, // pre-PR local review — no GitHub PR number
 		Title:   title,
 		Author:  strings.TrimSpace(author),
 		BaseRef: baseRef,
 		HeadRef: strings.TrimSpace(headRef),
 		BaseSha: strings.TrimSpace(baseSha),
 		HeadSha: strings.TrimSpace(headSha),
-	}, diff, rules)
+	}, rules)
 
 	fmt.Println(prompt)
 	return nil

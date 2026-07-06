@@ -51,34 +51,44 @@ the sub-agent runs the same review the analyzer would run — with the
 critical difference that its inputs come from the local working tree
 rather than a GitHub PR.
 
-### The user prompt is assembled client-side
+### No bundled diff: the sub-agent inspects the working tree directly
 
-`cruise-line user-prompt <owner/repo>` runs entirely in the CLI:
+`cruise-line user-prompt <owner/repo>` builds a small prompt that
+contains:
 
-1. `git diff <base>` against the working tree — picks up committed,
-   staged, and unstaged edits. Base ref auto-detected via `origin/HEAD`
-   (usually `main`); overridable with `--base`.
-2. PR-shaped metadata inferred from git (branch, SHAs, `user.name`).
-3. `GET /api/rules/:owner/:repo` — the one server call per iteration,
-   since rules are the only input that can change without a CLI upgrade.
-4. Locally renders the assembled user prompt via `buildUserPrompt`, a
-   Go port of the TS analyzer helper.
+1. Change metadata (repo, branch names, SHAs, author) inferred locally
+   from git.
+2. The repo's configured review rules from
+   `GET /api/rules/:owner/:repo` — the only server call per iteration,
+   since rules are the one input that changes without a CLI upgrade.
+3. A "where to look" section that points the sub-agent at git and
+   filesystem tools: `git diff $(git merge-base <base> HEAD)` for the
+   PR-shaped delta, `git ls-files --others --exclude-standard` for
+   untracked files, plus Read/Grep/Glob for the actual code.
 
-Both implementations of `buildUserPrompt` are cross-tested against a
-shared golden file (`agent/analysis/testdata/user-prompt-pre-pr-golden.txt`).
-If the TS version in `agent/analysis/prompt.ts` and the Go version in
-`cli/user_prompt.go` ever drift, one of `agent/analysis/prompt.test.ts`
-or `cli/user_prompt_test.go` fails with a clear "which side moved"
-message. A separate pair of tests pins truncation semantics to code
-points (rune-safe) so a multi-byte diff can't be cut mid-character or
-produce mismatched output between the two ports.
+The sub-agent has `Bash + Read + Grep + Glob`, so it runs those git
+commands itself and reads whichever files it wants — no diff is
+embedded in the prompt. This deliberately trades a diff-in-prompt
+model for direct filesystem access, because the sub-agent runs in the
+developer's working tree. Concrete wins:
+
+- No merge-base semantics hard-coded into a diff string; the sub-agent
+  can vary its commands as it explores.
+- Untracked new files are visible via the normal `git ls-files` flow.
+- Fixes applied between iterations are picked up automatically — the
+  next invocation asks the sub-agent to look at the live filesystem,
+  not a stale snapshot.
+- No diff truncation, no UTF-8 slicing, no cross-language template
+  synchronization: the CLI's `buildUserPrompt` is a small Go function
+  that renders metadata + rules + git-tool guidance. It shares
+  intent with the server's `buildUserPrompt` (same methodology, same
+  rules formatting) but doesn't need byte-for-byte parity, because
+  each is talking to a different environment (server sandbox with
+  bundled diff vs. local sub-agent with filesystem access).
 
 This design contributes ~zero server surface for the local review flow
 — the pre-existing `/api/rules/:owner/:repo` endpoint is the only thing
-touched per iteration. And it's what makes the review-fix-review loop
-converge without any `git commit` between iterations: the main agent
-applies fixes via `Edit`, and the next `cruise-line user-prompt` call
-picks them up automatically from the working tree.
+touched per iteration.
 
 ### Loop control: judgment, not counting
 

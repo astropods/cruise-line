@@ -1,6 +1,6 @@
 ---
 name: cruise-line-review
-description: Review local changes with Cruise Line's methodology before opening a PR. Spawns a sub-agent (cruise-line-reviewer) using the exact server-side system prompt and a user prompt assembled from `git diff` against the base branch. Loops until you're satisfied — you use your judgment on when to stop, no fixed iteration count. Use this when the user asks to "review with Cruise Line", "run a local Cruise Line review", or wants to iterate on their changes before pushing.
+description: Review local changes with Cruise Line's methodology before opening a PR. Spawns a sub-agent (cruise-line-reviewer) using the exact server-side system prompt; the sub-agent inspects the developer's working tree directly via git. Loops until you're satisfied — you use your judgment on when to stop, no fixed iteration count. Use this when the user asks to "review with Cruise Line", "run a local Cruise Line review", or wants to iterate on their changes before pushing.
 allowed-tools: Bash, Read, Edit, Glob, Grep, Agent
 user-invocable: true
 disable-model-invocation: true
@@ -16,19 +16,19 @@ If that fails (no `gh`, no origin remote, or the repo isn't on GitHub), ask the 
 
 ## Loop
 
-Each iteration is deterministic: the sub-agent's system prompt is pinned in the `cruise-line-reviewer` agent definition (updated by `cruise-line install-skills`), and the user prompt is assembled fresh from `git diff <base>` against the current working tree — so any local fixes the previous iteration applied are visible to the next review.
+Each iteration is deterministic: the sub-agent's system prompt is pinned in the `cruise-line-reviewer` agent definition (updated by `cruise-line install-skills`), and the user prompt points the sub-agent at the current working tree via `git` commands it runs itself. Any local fixes the previous iteration applied are visible to the next review automatically, because the sub-agent inspects the live filesystem rather than a bundled diff.
 
 The **number of iterations is your judgment call**, not a fixed count. Keep looping while another pass looks likely to surface actionable issues, and stop when it doesn't. Worthwhile signals: unresolved critical or high findings, findings the last pass flagged as regressions from a recent fix, a `needs_discussion` verdict on something you can now address. Stop signals: an `approve` verdict, findings you've already declined to fix (repeat flags aren't new information), or diminishing returns.
 
 Each iteration:
 
-1. Assemble the user prompt from the current working tree:
+1. Assemble the user prompt:
 
    ```
    cruise-line user-prompt <owner/repo>
    ```
 
-   Captures the full `git diff` against the auto-detected base (usually `origin/HEAD` → `main`). Pass `--base <ref>` if the user is targeting a non-default base branch. The diff includes committed, staged, and unstaged changes — so fixes from the previous iteration are picked up automatically without needing to commit.
+   Emits the sub-agent's user-slot prompt: repo metadata, configured review rules, and instructions pointing at git commands (`git diff $(git merge-base <base> HEAD)`, `git ls-files --others --exclude-standard`) plus the Read/Grep tools. Base ref auto-detects to `origin/HEAD` (usually `main`); pass `--base <ref>` for a non-default target.
 
    Capture the entire output verbatim.
 
@@ -42,7 +42,7 @@ Each iteration:
 3. The sub-agent returns findings shaped like a server-driven Cruise Line review — JSON with `summary`, `verdict`, `findings[]`, each finding carrying `title`, `severity`, `category`, `body`, and (for non-info) `fixPrompt` + `commentAnchor`. Parse it.
 
 4. Decide what to do next based on the review:
-   - **Act on findings worth fixing.** Read the affected files with the Read tool (paths come from `commentAnchor.file`). Apply the fix guided by `fixPrompt` using the Edit tool. Don't commit — the next iteration's `git diff` will pick up the edits regardless.
+   - **Act on findings worth fixing.** Read the affected files with the Read tool (paths come from `commentAnchor.file`). Apply the fix guided by `fixPrompt` using the Edit tool. Don't commit — the sub-agent inspects the working tree live, so fixes are visible to the next iteration automatically.
    - **Skip findings you've considered and rejected.** If the review re-raises something you already decided not to fix (design trade-off, disagreement with the finding), don't keep churning. Note it in the final report and either stop or move on to other findings.
    - **Stop when you're done.** Approve verdicts, no remaining actionable findings, or the last iteration surfaced nothing new — any of these are a signal to end the loop.
 
@@ -58,6 +58,6 @@ Do **not** commit or push — leave that to the user. If they ask you to commit 
 
 ## Notes
 
-- If `cruise-line user-prompt` reports "no changes against <base>", the user's working tree matches the base branch — nothing to review. Ask if they meant a different base.
-- If `cruise-line user-prompt` fails on auth or network, stop and report — don't fall back to a local prompt-assembly path. That would defeat the "same inputs as server" contract.
+- The sub-agent (`cruise-line-reviewer`) has `Bash`, `Read`, `Grep`, `Glob` — it runs its own `git diff`, reads its own files. Don't hand-hold it or feed it a diff separately.
 - If the sub-agent's response isn't parseable JSON, treat that as a failed iteration and stop; don't attempt to fix an unparseable review.
+- If `cruise-line user-prompt` fails on auth or network, stop and report — don't skip the fetch and hand-assemble a prompt yourself. The point is to run the same review methodology the server would.

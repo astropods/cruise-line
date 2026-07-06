@@ -166,30 +166,18 @@ If a finding is genuinely about something that has no anchor in the diff (e.g. "
 - The \`lines\` attribute is always 1-indexed and refers to the new (head) version of the file.`;
 
 export function buildUserPrompt(pr: PrMetadata, diffContent: string, prBody?: string, rules?: Array<{ ruleNumber: number; rule: string }>): string {
-  // Truncate by Unicode code point, not UTF-16 code unit. `String.length`
-  // and `String.slice` count code units, which would mis-truncate diffs
-  // containing supplementary-plane characters and disagree with Go's
-  // rune-based counterpart in cli/user_prompt.go. Spreading into an array
-  // gives us code-point granularity in both languages.
   const maxDiffLength = 100_000;
-  const codepoints = [...diffContent];
   const truncatedDiff =
-    codepoints.length > maxDiffLength
-      ? codepoints.slice(0, maxDiffLength).join('') +
+    diffContent.length > maxDiffLength
+      ? diffContent.slice(0, maxDiffLength) +
         '\n\n... [diff truncated — use tools to read full files]'
       : diffContent;
 
-  // number=0 marks a pre-PR local review (the CLI's user-prompt endpoint
-  // for developers reviewing their working tree before opening a PR).
-  // Every other caller passes a real GitHub PR number.
-  const isPrePR = !pr.number;
-  const heading = isPrePR
-    ? `## Change Details\n- Repository: ${pr.owner}/${pr.repo}\n- ${pr.title}`
-    : `## PR Details\n- Repository: ${pr.owner}/${pr.repo}\n- PR #${pr.number}: ${pr.title}`;
-
   let prompt = `Review this pull request.
 
-${heading}
+## PR Details
+- Repository: ${pr.owner}/${pr.repo}
+- PR #${pr.number}: ${pr.title}
 - Author: ${pr.author}
 - Base: ${pr.baseSha} (${pr.baseRef}) → Head: ${pr.headSha} (${pr.headRef})`;
 
