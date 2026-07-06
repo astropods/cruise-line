@@ -39,7 +39,7 @@ Each iteration:
    - `description`: brief label for this iteration
    - `prompt`: the user prompt string from step 1
 
-3. The sub-agent returns findings shaped like a server-driven Cruise Line review — JSON with `summary`, `verdict`, `findings[]`, each finding carrying `title`, `severity`, `category`, `body`, and (for non-info) `fixPrompt` + `commentAnchor`. Parse it.
+3. The sub-agent returns a single JSON object (the user prompt from step 1 explicitly asks for this shape): `summary`, `verdict`, `verdictRationale`, and `findings[]` — each finding carrying `title`, `severity`, `category`, `body`, and (for non-info) `fixPrompt` + `commentAnchor`. Parse it.
 
 4. Decide what to do next based on the review:
    - **Act on findings worth fixing.** Read the affected files with the Read tool (paths come from `commentAnchor.file`). Apply the fix guided by `fixPrompt` using the Edit tool. Don't commit — the sub-agent inspects the working tree live, so fixes are visible to the next iteration automatically.

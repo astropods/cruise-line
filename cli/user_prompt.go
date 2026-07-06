@@ -72,5 +72,20 @@ func buildUserPrompt(pr prMetadata, rules []reviewRule) string {
 		"Read the actual files, verify accurate line numbers for your directives, and base severity on the code you actually saw.",
 		pr.BaseRef)
 
+	// Explicit output shape. The server enforces JSON out-of-band via the
+	// SDK's json_schema outputFormat; the Agent-tool path has no
+	// equivalent, so if we don't ask for JSON here, the sub-agent might
+	// return prose and the skill's JSON.parse step would fail. Fields
+	// listed here match the methodology in SYSTEM_PROMPT — pinning them
+	// here too is a small duplication that keeps the contract legible in
+	// one place for the local flow.
+	b.WriteString("\n\n## Output\n\n" +
+		"Return your review as a single JSON object — no prose before or after — with these top-level fields, matching the methodology above:\n\n" +
+		"- `summary` (string): 1-2 paragraphs on what changed and your overall assessment.\n" +
+		"- `verdict` (string): `\"approve\"`, `\"request_changes\"`, or `\"needs_discussion\"`.\n" +
+		"- `verdictRationale` (string): brief explanation of what drove the verdict.\n" +
+		"- `findings` (array): each finding is an object with `title`, `severity`, `category`, `body` (markdown, may contain ::diff / ::code / ::suggestion directives), and — for any non-`info` finding — `fixPrompt` and `commentAnchor` per the methodology.\n\n" +
+		"Order `findings` by severity (critical → info). Output the JSON object only — the caller parses your entire response as JSON.")
+
 	return b.String()
 }

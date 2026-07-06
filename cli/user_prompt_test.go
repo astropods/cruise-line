@@ -63,6 +63,22 @@ func TestBuildUserPromptRendersMetadataAndRules(t *testing.T) {
 	if strings.Contains(got, "```diff") {
 		t.Error("prompt embeds a ```diff fence — the local review no longer bundles the diff")
 	}
+
+	// Explicit JSON output contract. The server's analyzer enforces JSON
+	// via the SDK's json_schema outputFormat; the Agent-tool path has no
+	// equivalent, so if we don't tell the sub-agent to return JSON here,
+	// the skill's JSON.parse step will fail on prose responses.
+	if !strings.Contains(got, "## Output") {
+		t.Error("missing '## Output' section — sub-agent has no instruction to emit JSON")
+	}
+	if !strings.Contains(got, "single JSON object") {
+		t.Error("'## Output' section doesn't ask for a single JSON object")
+	}
+	for _, field := range []string{"summary", "verdict", "verdictRationale", "findings"} {
+		if !strings.Contains(got, "`"+field+"`") {
+			t.Errorf("output schema doesn't mention required field %q", field)
+		}
+	}
 }
 
 func TestBuildUserPromptOmitsRulesSectionWhenEmpty(t *testing.T) {

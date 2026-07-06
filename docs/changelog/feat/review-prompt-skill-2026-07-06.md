@@ -65,6 +65,12 @@ contains:
    filesystem tools: `git diff $(git merge-base <base> HEAD)` for the
    PR-shaped delta, `git ls-files --others --exclude-standard` for
    untracked files, plus Read/Grep/Glob for the actual code.
+4. An "output" section that explicitly asks for a single JSON object
+   with `summary`, `verdict`, `verdictRationale`, `findings[]` — the
+   same shape the server produces. The server enforces JSON out-of-band
+   via the SDK's `json_schema` outputFormat; the Agent-tool path has
+   no equivalent, so we have to ask in the prompt itself. The skill's
+   parse step relies on this.
 
 The sub-agent has `Bash + Read + Grep + Glob`, so it runs those git
 commands itself and reads whichever files it wants — no diff is
