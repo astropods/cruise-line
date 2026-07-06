@@ -16,16 +16,18 @@ import (
 // on a feature branch with local changes (committed and/or uncommitted)
 // and wants a Cruise Line-style review before opening a PR on GitHub.
 //
-// Runs entirely against the local working tree:
+// Runs almost entirely against the local working tree:
 //   - Diff comes from `git diff <base>` (base ref auto-detected from
 //     origin/HEAD, overridable with --base).
 //   - PR-shaped metadata is inferred from git (branch names, SHAs,
 //     `user.name` for author).
+//   - Rules come from the server via GET /api/rules/:owner/:repo — the
+//     only server call per invocation, since rules are the one input
+//     that can change without a CLI upgrade.
 //
-// Sends everything to POST /api/cli/user-prompt/:owner/:repo, which
-// contributes only the repo's configured review rules and assembles
-// the prompt via the server's buildUserPrompt template — so a local
-// review shares one source of truth with the server-driven one.
+// The user prompt is then assembled locally via buildUserPrompt (a Go
+// port of the TS analyzer helper, cross-tested against the same golden
+// file — see cli/user_prompt.go and agent/analysis/prompt.test.ts).
 func cmdUserPrompt(args []string) error {
 	fs := flag.NewFlagSet("user-prompt", flag.ContinueOnError)
 	baseFlag := fs.String("base", "", "base ref to diff against (default: origin/HEAD, or main)")

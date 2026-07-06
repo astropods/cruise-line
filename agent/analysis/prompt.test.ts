@@ -52,4 +52,44 @@ describe('buildUserPrompt — cross-language golden', () => {
     }
     expect(got).toBe(expected);
   });
+
+  it('truncates the diff by Unicode code point, not UTF-16 code unit', () => {
+    // The Go port in cli/user_prompt.go slices by rune. If the TS side
+    // slices by UTF-16 code unit (i.e. plain `.slice`), multi-byte
+    // characters would produce a different truncation position and the
+    // two languages would silently disagree — exactly the drift this
+    // cross-language test is here to prevent. A matching Go test lives
+    // in cli/user_prompt_test.go (TestBuildUserPromptTruncationIsRuneSafe).
+    const maxDiffChars = 100_000;
+    const pr: PrMetadata = {
+      owner: 'acme',
+      repo: 'app',
+      number: 0,
+      title: 'big',
+      author: 'chris',
+      baseRef: 'main',
+      headRef: 'feat/x',
+      baseSha: 'aaa',
+      headSha: 'bbb',
+      installationId: 0,
+    };
+    // A diff exactly one code-point over the limit, made of a
+    // supplementary-plane character (U+1F6A2 SHIP) so `str.length`
+    // (UTF-16 code units) diverges from `[...str].length` (code points).
+    const oversized = '🚢'.repeat(maxDiffChars + 1);
+    const got = buildUserPrompt(pr, oversized, undefined, undefined);
+
+    expect(got).toContain('[diff truncated');
+
+    // Extract the fenced diff block and count code points — must be
+    // exactly maxDiffChars.
+    const openIdx = got.indexOf('```diff\n');
+    expect(openIdx).toBeGreaterThanOrEqual(0);
+    const payloadStart = openIdx + '```diff\n'.length;
+    const notice = '\n\n... [diff truncated';
+    const noticeIdx = got.indexOf(notice, payloadStart);
+    expect(noticeIdx).toBeGreaterThan(payloadStart);
+    const payload = got.slice(payloadStart, noticeIdx);
+    expect([...payload].length).toBe(maxDiffChars);
+  });
 });

@@ -166,10 +166,16 @@ If a finding is genuinely about something that has no anchor in the diff (e.g. "
 - The \`lines\` attribute is always 1-indexed and refers to the new (head) version of the file.`;
 
 export function buildUserPrompt(pr: PrMetadata, diffContent: string, prBody?: string, rules?: Array<{ ruleNumber: number; rule: string }>): string {
+  // Truncate by Unicode code point, not UTF-16 code unit. `String.length`
+  // and `String.slice` count code units, which would mis-truncate diffs
+  // containing supplementary-plane characters and disagree with Go's
+  // rune-based counterpart in cli/user_prompt.go. Spreading into an array
+  // gives us code-point granularity in both languages.
   const maxDiffLength = 100_000;
+  const codepoints = [...diffContent];
   const truncatedDiff =
-    diffContent.length > maxDiffLength
-      ? diffContent.slice(0, maxDiffLength) +
+    codepoints.length > maxDiffLength
+      ? codepoints.slice(0, maxDiffLength).join('') +
         '\n\n... [diff truncated — use tools to read full files]'
       : diffContent;
 

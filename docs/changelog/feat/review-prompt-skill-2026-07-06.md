@@ -51,51 +51,34 @@ the sub-agent runs the same review the analyzer would run — with the
 critical difference that its inputs come from the local working tree
 rather than a GitHub PR.
 
-### Server assembles the user prompt from client-provided diff
+### The user prompt is assembled client-side
 
-`POST /api/cli/user-prompt/:owner/:repo` is new. Body:
+`cruise-line user-prompt <owner/repo>` runs entirely in the CLI:
 
-```json
-{
-  "diff":     "<git diff output>",
-  "title":    "feature branch name",
-  "author":   "<git user.name>",
-  "baseRef":  "main",
-  "headRef":  "feat/x",
-  "baseSha":  "aaa",
-  "headSha":  "bbb"
-}
-```
+1. `git diff <base>` against the working tree — picks up committed,
+   staged, and unstaged edits. Base ref auto-detected via `origin/HEAD`
+   (usually `main`); overridable with `--base`.
+2. PR-shaped metadata inferred from git (branch, SHAs, `user.name`).
+3. `GET /api/rules/:owner/:repo` — the one server call per iteration,
+   since rules are the only input that can change without a CLI upgrade.
+4. Locally renders the assembled user prompt via `buildUserPrompt`, a
+   Go port of the TS analyzer helper.
 
-Only `diff` is required. Every metadata field has a defensible default
-so a caller can send just the diff and get a usable prompt back.
+Both implementations of `buildUserPrompt` are cross-tested against a
+shared golden file (`agent/analysis/testdata/user-prompt-pre-pr-golden.txt`).
+If the TS version in `agent/analysis/prompt.ts` and the Go version in
+`cli/user_prompt.go` ever drift, one of `agent/analysis/prompt.test.ts`
+or `cli/user_prompt_test.go` fails with a clear "which side moved"
+message. A separate pair of tests pins truncation semantics to code
+points (rune-safe) so a multi-byte diff can't be cut mid-character or
+produce mismatched output between the two ports.
 
-The endpoint fetches the repo's configured review rules from the DB and
-runs everything through `buildUserPrompt` — the same helper the server-
-side analyzer uses. Auth: `requireAuth` + `requireRepoAccess`, so a
-caller only assembles prompts for repos they can actually see.
-
-Rate-limited at 30/min per user. The review loop calls this once per
-iteration; the limit is generous enough for interactive use and tight
-enough that a runaway loop can't hammer the endpoint.
-
-### Diff comes from the working tree, not GitHub
-
-`cruise-line user-prompt <owner/repo>` runs `git diff <base>` against
-the working tree, so the diff picks up:
-
-- committed changes on the branch
-- staged changes
-- unstaged working-copy edits
-
-The `<base>` ref is auto-detected via `origin/HEAD` (what `git clone`
-points at, usually `main`) with a `--base` flag for overrides. The
-resulting diff is the client-provided `diff` field in the POST body
-above.
-
-This is what makes the review-fix-review loop converge without any
-`git commit` between iterations: the main agent applies fixes via
-`Edit`, and the next `cruise-line user-prompt` call sees them.
+This design contributes ~zero server surface for the local review flow
+— the pre-existing `/api/rules/:owner/:repo` endpoint is the only thing
+touched per iteration. And it's what makes the review-fix-review loop
+converge without any `git commit` between iterations: the main agent
+applies fixes via `Edit`, and the next `cruise-line user-prompt` call
+picks them up automatically from the working tree.
 
 ### Loop control: judgment, not counting
 

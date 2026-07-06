@@ -29,8 +29,10 @@ type reviewRule struct {
 
 // maxDiffChars is the same cap the server-side buildUserPrompt uses. A diff
 // larger than this gets truncated with a note pointing the reviewer at the
-// tools they have. Kept in sync with agent/analysis/prompt.ts by the golden
-// test — a divergence in this constant surfaces there.
+// tools they have. Counted in Unicode code points (same unit TS uses after
+// spreading the string into an array) — NOT bytes — so a multi-byte
+// character can't cause the Go and TS ports to truncate at different
+// positions or leave Go emitting broken UTF-8.
 const maxDiffChars = 100_000
 
 // buildUserPrompt renders the review's user prompt for a given change.
@@ -47,9 +49,13 @@ const maxDiffChars = 100_000
 // not, description present or not) that neither language can render
 // without an interpreter for the other's template DSL.
 func buildUserPrompt(pr prMetadata, diffContent string, rules []reviewRule) string {
+	// Slice by code point, not byte — a byte cut mid-rune would emit
+	// broken UTF-8, and byte length disagrees with TS's `.length` on any
+	// multi-byte character. See the maxDiffChars comment above.
+	runes := []rune(diffContent)
 	truncatedDiff := diffContent
-	if len(truncatedDiff) > maxDiffChars {
-		truncatedDiff = truncatedDiff[:maxDiffChars] +
+	if len(runes) > maxDiffChars {
+		truncatedDiff = string(runes[:maxDiffChars]) +
 			"\n\n... [diff truncated — use tools to read full files]"
 	}
 
