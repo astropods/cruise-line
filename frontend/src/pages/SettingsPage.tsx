@@ -517,9 +517,7 @@ function RepoRow({ owner, repo }: { owner: string; repo: ConnectedRepo }) {
   );
 }
 
-// Rows carry a stable client-side id so React doesn't reuse input DOM nodes
-// across index shifts when a user removes a middle row — otherwise the
-// cursor and focus would jump to whatever value slid up into that slot.
+// Stable id (not array index) — avoids focus jump when removing middle rows.
 interface ScopeRow {
   id: string;
   value: string;

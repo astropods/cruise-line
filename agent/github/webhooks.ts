@@ -29,15 +29,8 @@ function registerHandlers(wh: Webhooks) {
         // Check if an analysis already exists — post the right state
         const existing = await getLatestWalkthrough(owner, repo, prNumber);
 
-        // Scope gate: scope is a ONE-SHOT filter, checked exactly once per
-        // PR — at the first webhook event with no existing walkthrough. If
-        // no changed file matches, we skip posting the "ready" comment and
-        // Cruise Line stays silent on this PR. Once a walkthrough exists,
-        // scope is never re-evaluated: tightening the scope later won't
-        // retroactively silence in-flight PRs, and manually-triggered
-        // walkthroughs on out-of-scope PRs stay updated on future
-        // synchronizes. This is deliberate — owners were explicit that
-        // scope changes should not surprise reviewers on live PRs.
+        // One-shot: scope is checked only for PRs without a walkthrough yet.
+        // Changing scope later won't retroactively silence in-flight PRs.
         const settings = await getRepoSettings(owner, repo);
         const scopePaths = settings?.scopePaths ?? [];
         if (scopePaths.length > 0 && !existing) {

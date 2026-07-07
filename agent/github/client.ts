@@ -36,17 +36,7 @@ export async function getPrMetadata(
   };
 }
 
-/**
- * List all changed file paths in a PR (aggregate diff, not per-commit).
- * Auto-paginated — GitHub caps `pulls.listFiles` at 100 per page.
- *
- * NOTE: GitHub also caps the total response at 3,000 files. A PR that
- * touches more than that gets truncated silently. Callers relying on
- * this list for a "does anything match" gate should be aware — for a
- * pathological monster PR whose in-scope files land past the truncation
- * point, the gate could return a false negative. Not a concern in
- * practice for typical PR sizes.
- */
+// GitHub caps the response at 3,000 files; larger PRs are silently truncated.
 export async function listPrChangedFiles(
   installationId: number,
   owner: string,

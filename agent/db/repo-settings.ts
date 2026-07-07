@@ -23,21 +23,6 @@ function toRepoSettings(row: RepoSettingsRow): RepoSettings {
   };
 }
 
-/**
- * Normalize a raw scope-path entry:
- *   - trim whitespace
- *   - strip a leading "./" or "/"
- *   - collapse repeated slashes
- *   - strip any trailing "/" so a single stored form works for both
- *     directory-prefix and exact-file scopes
- *
- * Directory-vs-file semantics are handled at match time by
- * `anyFileMatchesScope`: an entry matches a file if the file equals the
- * entry OR the file starts with `entry + '/'`. That way `Makefile`
- * matches the top-level `Makefile` (but not `Makefile.old`), and
- * `agent` matches `agent/foo.ts` (but not `agent-other/foo.ts`).
- * Empty strings are returned as "" and filtered out by the caller.
- */
 export function normalizeScopePath(raw: string): string {
   let s = raw.trim();
   if (!s) return '';
@@ -88,18 +73,12 @@ export async function setRepoScopePaths(
   return toRepoSettings(row);
 }
 
-/**
- * Returns true if the repo has no scope configured (analyze everything) or if
- * at least one changed file matches a configured scope entry. A file matches
- * when it equals the scope entry exactly (single-file scope) OR starts with
- * `entry + '/'` (directory-prefix scope). This avoids false positives from
- * plain `startsWith`, so `agent` doesn't match `agent-other/foo.ts`.
- */
 export function anyFileMatchesScope(
   files: readonly string[],
   scopePaths: readonly string[],
 ): boolean {
   if (scopePaths.length === 0) return true;
+  // Exact-file OR dir-prefix — `agent` must not match `agent-other/foo.ts`.
   return files.some((f) =>
     scopePaths.some((p) => f === p || f.startsWith(p + '/')),
   );

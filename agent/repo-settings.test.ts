@@ -1,21 +1,7 @@
-/**
- * Tests for the pure functions in agent/db/repo-settings.ts:
- *   - normalizeScopePath / normalizeScopePaths (trim, slash stripping,
- *     dedupe, empty filtering)
- *   - anyFileMatchesScope (empty scope = match-all, prefix vs exact,
- *     no false positives for sibling directories)
- *
- * SQL-touching functions (getRepoSettings/setRepoScopePaths) aren't
- * covered here — the surface is a straight tagged-template upsert and
- * the existing bun:test harness doesn't yet stub the `postgres` client.
- */
 import { describe, it, expect, mock } from 'bun:test';
 import path from 'path';
 
-// The db/client module reads `config.db.url` at import time to construct
-// the postgres client. Stub config with a well-formed placeholder URL —
-// postgres won't actually connect until a query fires, which these pure-
-// function tests never do.
+// db/client evaluates postgres(config.db.url) at import; stub so it loads.
 mock.module(path.resolve(import.meta.dir, './config.ts'), () => ({
   config: {
     db: { url: 'postgres://mock@localhost:5432/mock' },
@@ -135,13 +121,6 @@ describe('anyFileMatchesScope', () => {
   });
 });
 
-/**
- * The scope editor's dirty-check compares user rows against the server's
- * stored (normalized) form, so `normalizeScopePathClient` in the frontend
- * MUST behave identically to `normalizeScopePath` on the server. This
- * table pins both implementations against a shared set of inputs — any
- * drift fails CI.
- */
 describe('client/server normalize parity', () => {
   const inputs = [
     '',
