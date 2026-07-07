@@ -226,6 +226,30 @@ export function fetchConnectedRepos() {
   return apiFetch<{ installations: ConnectedInstallation[] }>('/api/settings/repos');
 }
 
+export interface RepoSettings {
+  owner: string;
+  repo: string;
+  scopePaths: string[];
+  updatedAt: string | null;
+}
+
+export function fetchRepoSettings(owner: string, repo: string) {
+  return apiFetch<{ settings: RepoSettings }>(
+    `/api/settings/repos/${owner}/${repo}`,
+  );
+}
+
+export function updateRepoScopePaths(owner: string, repo: string, scopePaths: string[]) {
+  return apiFetch<{ settings: RepoSettings }>(
+    `/api/settings/repos/${owner}/${repo}/scope`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scopePaths }),
+    },
+  );
+}
+
 export function fetchKnownUsers() {
   return apiFetch<{ users: KnownUser[] }>('/api/settings/users');
 }
