@@ -1,7 +1,13 @@
 import { Webhooks } from '@octokit/webhooks';
 import { config } from '../config.js';
-import { postAnalysisComment, type CommentState } from './client.js';
+import { postAnalysisComment, listPrChangedFiles, type CommentState } from './client.js';
 import { getLatestWalkthrough } from '../db/walkthroughs.js';
+import { anyFileMatchesScope, getRepoSettings } from '../db/repo-settings.js';
+import {
+  deletePrScopeDecision,
+  getPrScopeDecision,
+  setPrScopeDecision,
+} from '../db/pr-scope-decisions.js';
 import { sandboxCleanup, sandboxRepoPath } from '../sandbox-client.js';
 import { deleteChatSessionsForPr } from '../db/chat-sessions.js';
 
@@ -27,6 +33,28 @@ function registerHandlers(wh: Webhooks) {
       try {
         // Check if an analysis already exists — post the right state
         const existing = await getLatestWalkthrough(owner, repo, prNumber);
+
+        // Scope gate. Decision is sticky per PR (cleared on close): the
+        // first event for a scoped repo makes one listFiles call and caches
+        // the result. Later events reuse the cached answer, so out-of-scope
+        // PRs cost zero GitHub calls after the first event.
+        const settings = await getRepoSettings(owner, repo);
+        const scopePaths = settings?.scopePaths ?? [];
+        if (scopePaths.length > 0 && !existing) {
+          let inScope = await getPrScopeDecision(owner, repo, prNumber);
+          if (inScope === null) {
+            const changed = await listPrChangedFiles(installation.id, owner, repo, prNumber);
+            inScope = anyFileMatchesScope(changed, scopePaths);
+            await setPrScopeDecision(owner, repo, prNumber, inScope);
+          }
+          if (!inScope) {
+            console.log(
+              `Skipping ${owner}/${repo}#${prNumber}: no changed files match scope (${scopePaths.join(', ')})`,
+            );
+            return;
+          }
+        }
+
         const currentHeadSha = pr.head.sha;
         let state: CommentState = { status: 'ready' };
 
@@ -75,6 +103,7 @@ function registerHandlers(wh: Webhooks) {
     try {
       await sandboxCleanup(sandboxRepoPath(owner, repo, prNumber));
       await deleteChatSessionsForPr(owner, repo, prNumber);
+      await deletePrScopeDecision(owner, repo, prNumber);
     } catch (err) {
       console.error(`Cleanup failed for ${owner}/${repo}#${prNumber}:`, err);
     }

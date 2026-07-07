@@ -36,6 +36,26 @@ export async function getPrMetadata(
   };
 }
 
+// GitHub caps the response at 3,000 files; larger PRs are silently truncated.
+export async function listPrChangedFiles(
+  installationId: number,
+  owner: string,
+  repo: string,
+  prNumber: number,
+): Promise<string[]> {
+  const token = await getInstallationToken(installationId);
+  const octokit = createInstallationOctokit(token);
+
+  const files = await octokit.paginate(octokit.pulls.listFiles, {
+    owner,
+    repo,
+    pull_number: prNumber,
+    per_page: 100,
+  });
+
+  return files.map((f) => f.filename);
+}
+
 /**
  * Get the current head SHA for a PR (to detect staleness).
  */

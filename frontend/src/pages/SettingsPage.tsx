@@ -6,13 +6,17 @@ import {
   claimOwnership,
   fetchConnectedRepos,
   fetchKnownUsers,
+  fetchRepoSettings,
+  updateRepoScopePaths,
   setUserRole,
   type SetupStatus,
   type UserInfo,
   type ConnectedInstallation,
+  type ConnectedRepo,
   type KnownUser,
   type UserRole,
 } from '../api';
+import { normalizeScopePathClient } from '../lib/scopePath';
 
 export function SettingsPage() {
   const [searchParams] = useSearchParams();
@@ -456,27 +460,215 @@ function RepositoriesSection({ installUrl }: { installUrl: string | null }) {
                   </li>
                 )}
                 {inst.repositories.map((repo) => (
-                  <li key={repo.id} className="flex items-center gap-2 text-sm">
-                    <a
-                      href={repo.htmlUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-[var(--text-primary)] hover:text-[var(--accent)] transition-colors"
-                    >
-                      {repo.fullName}
-                    </a>
-                    {repo.private && (
-                      <span className="text-[10px] uppercase tracking-wide text-[var(--text-secondary)] border border-[var(--border)] rounded px-1.5 py-0.5">
-                        private
-                      </span>
-                    )}
-                  </li>
+                  <RepoRow
+                    key={repo.id}
+                    owner={inst.account.login}
+                    repo={repo}
+                  />
                 ))}
               </ul>
             </div>
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function RepoRow({ owner, repo }: { owner: string; repo: ConnectedRepo }) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <li className="text-sm">
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          aria-expanded={expanded}
+          aria-label={expanded ? 'Collapse repo settings' : 'Expand repo settings'}
+          className="w-4 h-4 flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+        >
+          <span
+            className={`inline-block transition-transform ${expanded ? 'rotate-90' : ''}`}
+          >
+            ▶
+          </span>
+        </button>
+        <a
+          href={repo.htmlUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="text-[var(--text-primary)] hover:text-[var(--accent)] transition-colors"
+        >
+          {repo.fullName}
+        </a>
+        {repo.private && (
+          <span className="text-[10px] uppercase tracking-wide text-[var(--text-secondary)] border border-[var(--border)] rounded px-1.5 py-0.5">
+            private
+          </span>
+        )}
+      </div>
+      {expanded && (
+        <div className="mt-3 mb-4 ml-6 pl-4 border-l border-[var(--border)]">
+          <RepoScopeEditor owner={owner} repo={repo.name} />
+        </div>
+      )}
+    </li>
+  );
+}
+
+// Stable id (not array index) — avoids focus jump when removing middle rows.
+interface ScopeRow {
+  id: string;
+  value: string;
+}
+
+function toRows(paths: readonly string[]): ScopeRow[] {
+  return paths.map((value) => ({ id: crypto.randomUUID(), value }));
+}
+
+function RepoScopeEditor({ owner, repo }: { owner: string; repo: string }) {
+  const [rows, setRows] = useState<ScopeRow[] | null>(null);
+  const [savedPaths, setSavedPaths] = useState<string[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchRepoSettings(owner, repo)
+      .then((res) => {
+        if (cancelled) return;
+        const list = res.settings.scopePaths ?? [];
+        setRows(toRows(list));
+        setSavedPaths(list);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setError(err instanceof Error ? err.message : 'Failed to load settings');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [owner, repo]);
+
+  function updatePath(id: string, value: string) {
+    setRows((prev) => (prev ? prev.map((r) => (r.id === id ? { ...r, value } : r)) : prev));
+    setSaved(false);
+  }
+
+  function removePath(id: string) {
+    setRows((prev) => (prev ? prev.filter((r) => r.id !== id) : prev));
+    setSaved(false);
+  }
+
+  function addPath() {
+    const next: ScopeRow = { id: crypto.randomUUID(), value: '' };
+    setRows((prev) => (prev ? [...prev, next] : [next]));
+    setSaved(false);
+  }
+
+  async function handleSave() {
+    if (!rows) return;
+    setSaving(true);
+    setError(null);
+    setSaved(false);
+    try {
+      const cleaned = rows.map((r) => r.value.trim()).filter((p) => p.length > 0);
+      const res = await updateRepoScopePaths(owner, repo, cleaned);
+      const list = res.settings.scopePaths ?? [];
+      setRows(toRows(list));
+      setSavedPaths(list);
+      setSaved(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const normalizedRowValues =
+    rows?.map((r) => normalizeScopePathClient(r.value)).filter((v) => v.length > 0) ?? [];
+  const dirty =
+    rows !== null &&
+    savedPaths !== null &&
+    (normalizedRowValues.length !== savedPaths.length ||
+      normalizedRowValues.some((v, i) => v !== savedPaths[i]));
+
+  if (loading) {
+    return <div className="text-xs text-[var(--text-secondary)]">Loading settings…</div>;
+  }
+
+  return (
+    <div>
+      <h4 className="text-xs font-semibold uppercase tracking-wide text-[var(--text-secondary)] mb-1">
+        Scope paths
+      </h4>
+      <p className="text-xs text-[var(--text-secondary)] mb-3">
+        Only post the Cruise Line comment on PRs that touch files matching one
+        of these entries. Leave empty to analyze every PR. Entries can be a
+        directory (e.g. <code className="text-[var(--accent)]">agent</code>{' '}
+        matches everything inside <code className="text-[var(--accent)]">agent/</code>)
+        or an exact file (e.g.{' '}
+        <code className="text-[var(--accent)]">.github/workflows/deploy.yml</code>).
+      </p>
+
+      {error && (
+        <div className="mb-3 p-2 rounded bg-red-900/20 border border-red-700/50 text-red-400 text-xs">
+          {error}
+        </div>
+      )}
+
+      <div className="space-y-2 mb-3">
+        {(rows ?? []).length === 0 && (
+          <div className="text-xs text-[var(--text-secondary)] italic">
+            No scope configured — every PR is analyzed.
+          </div>
+        )}
+        {(rows ?? []).map((row) => (
+          <div key={row.id} className="flex items-center gap-2">
+            <input
+              type="text"
+              value={row.value}
+              onChange={(e) => updatePath(row.id, e.target.value)}
+              placeholder="e.g. packages/api or Makefile"
+              className="flex-1 px-2 py-1.5 rounded-md bg-[var(--bg-primary)] border border-[var(--border)] text-[var(--text-primary)] text-xs placeholder-[var(--text-secondary)]"
+            />
+            <button
+              type="button"
+              onClick={() => removePath(row.id)}
+              className="text-xs px-2 py-1.5 rounded-md border border-[var(--border)] text-[var(--text-secondary)] hover:text-red-400 hover:border-red-700/50 transition-colors"
+            >
+              Remove
+            </button>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={addPath}
+          className="text-xs px-3 py-1.5 rounded-md border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--accent)] transition-colors"
+        >
+          + Add path
+        </button>
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={saving || !dirty}
+          className="text-xs px-3 py-1.5 rounded-md bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        >
+          {saving ? 'Saving…' : 'Save'}
+        </button>
+        {saved && !dirty && (
+          <span className="text-xs text-green-400">Saved</span>
+        )}
+      </div>
     </div>
   );
 }
