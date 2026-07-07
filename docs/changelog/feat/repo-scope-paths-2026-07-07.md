@@ -64,22 +64,48 @@ The pure normalize + match functions live in `agent/db/repo-settings.ts`
 and are unit-tested against sibling-directory, file-vs-dir, and
 mixed-scope cases.
 
-### Webhook gate: one-shot at first analysis
+### Webhook gate: one decision per PR, cached to spare GitHub
 
 The scope check runs in the `pull_request.opened/reopened/synchronize`
-handler *before* posting the "ready" comment, but only when no
-walkthrough for the PR exists yet. Once a walkthrough is stored, scope
-is never re-evaluated for that PR — the comment keeps updating on future
-synchronizes regardless of whether the scope tightened in between.
+handler *before* posting the "ready" comment, and only for PRs that
+don't already have a walkthrough.
 
-This is a deliberate contract:
+Naively, that check would call `pulls.listFiles` on every subsequent
+event, because posting a "ready" comment doesn't create a walkthrough
+row — so `existing` stays null forever for un-analyzed PRs. On a repo
+with tight scope and lots of force-pushes, that would burn GitHub API
+budget on PRs we've already decided to ignore.
 
-- Tightening scope later doesn't retroactively silence in-flight PRs.
-  Reviewers who were already looking at a Cruise Line comment don't
-  suddenly find it gone the next time the PR is pushed to.
-- Manually-triggered walkthroughs on out-of-scope PRs continue to
-  update. Once someone explicitly opts a PR into analysis, scope has
-  yielded.
+Instead, the decision (in-scope or not) is cached in a small table
+keyed on `(owner, repo, pr_number)`:
+
+```sql
+CREATE TABLE pr_scope_decisions (
+  owner TEXT NOT NULL,
+  repo TEXT NOT NULL,
+  pr_number INTEGER NOT NULL,
+  in_scope BOOLEAN NOT NULL,
+  decided_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (owner, repo, pr_number)
+);
+```
+
+The webhook makes at most one `listPrChangedFiles` call per PR, ever.
+Every subsequent event on that PR reuses the cached answer. The row is
+deleted on `pull_request.closed` alongside the existing chat-session
+cleanup.
+
+Two other invariants fall out of this design:
+
+- **Sticky decision.** If a PR was decided out-of-scope, force-pushing
+  in-scope files later won't automatically post a comment. Developers
+  who need Cruise Line on such a PR can trigger analysis manually from
+  the walkthrough URL — scope only gates the proactive comment, not
+  the manual path.
+- **Scope changes don't retroactively silence in-flight PRs.** Once a
+  walkthrough exists (someone triggered analysis), scope isn't checked
+  again on that PR. Tightening scope later doesn't make an already-
+  posted comment vanish.
 
 Skip decisions log the reason (`no changed files match scope (...)`) so
 operators can see why silence is intentional rather than a bug.
