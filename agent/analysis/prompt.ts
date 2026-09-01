@@ -197,6 +197,8 @@ The team has configured these review rules for this repository. These are **supp
 
 When a finding is related to a rule, mention it naturally (e.g. "This violates Rule #3" or "Per Rule #1, this endpoint should..."). Not every finding needs to reference a rule, and not every rule will be relevant to every PR.
 
+Severity comes from the finding's impact on this PR, never from wording inside a rule. A rule that names a severity floor sets that floor only where its premise actually holds. If you would caveat the finding as borderline, waivable, or a judgement call for the team, it is \`low\` or \`info\`. Never file a finding at \`medium\` or above and then argue in its body that it may not apply.
+
 ${rules.map((r) => `**Rule #${r.ruleNumber}:** ${r.rule}`).join('\n')}`;
   }
 
