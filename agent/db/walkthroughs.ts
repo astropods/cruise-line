@@ -74,6 +74,20 @@ export async function deleteWalkthrough(
   `;
 }
 
+// Postgres TEXT/JSONB can't hold U+0000, so a NUL byte in a patch or file
+// fails the whole save. Swap it for the visible ␀ (U+2400); one char for one,
+// so line and column positions in patches are unchanged.
+export function replaceNul<T>(value: T): T {
+  if (typeof value === 'string') return value.replace(/\u0000/g, '␀') as T;
+  if (Array.isArray(value)) return value.map(replaceNul) as T;
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([k, v]) => [replaceNul(k), replaceNul(v)]),
+    ) as T;
+  }
+  return value;
+}
+
 export async function updateWalkthroughStatus(
   id: number,
   status: WalkthroughRow['status'],
@@ -83,8 +97,8 @@ export async function updateWalkthroughStatus(
   await sql`
     UPDATE walkthroughs
     SET status = ${status},
-        data = ${data ? sql.json(data) : null},
-        error = ${error ?? null},
+        data = ${data ? sql.json(replaceNul(data)) : null},
+        error = ${error ? replaceNul(error) : null},
         updated_at = NOW()
     WHERE id = ${id}
   `;

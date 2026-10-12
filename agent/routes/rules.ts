@@ -7,7 +7,6 @@ import type { AppEnv } from '../env.js';
 export const ruleRoutes = new Hono<AppEnv>();
 
 ruleRoutes.use('/:owner/:repo/*', requireAuth, requireRepoAccess);
-ruleRoutes.use('/:owner/:repo', requireAuth, requireRepoAccess);
 
 /**
  * GET /api/rules/:owner/:repo

@@ -309,6 +309,20 @@ describe('requireAuth', () => {
     }
     expect(next).not.toHaveBeenCalled();
   });
+
+  it('skips re-validation when the request is already authenticated', async () => {
+    // A second requireAuth in the same request would retry the refresh token
+    // the first one already rotated, and GitHub rejects it (bad_refresh_token).
+    const c = createAuthContext('expiring-token');
+    c.set('session', fakeSession);
+    const next = mock().mockResolvedValue(undefined);
+
+    await requireAuth(c, next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(mockVerifySessionToken).not.toHaveBeenCalled();
+    expect(mockRefreshGitHubToken).not.toHaveBeenCalled();
+  });
 });
 
 // =====================================================================
