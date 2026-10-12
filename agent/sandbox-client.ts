@@ -144,26 +144,6 @@ export async function* sandboxQuery(params: QueryParams): AsyncGenerator<SSEEven
 }
 
 // ---------------------------------------------------------------------------
-// POST /query — raw response proxy (for chat streaming to client)
-// ---------------------------------------------------------------------------
-
-export async function sandboxQueryRaw(params: QueryParams): Promise<Response> {
-  const res = await fetch(sandboxUrl('/query'), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(params),
-    signal: AbortSignal.timeout(600_000),
-  });
-
-  if (!res.ok) {
-    const body = await res.text().catch(() => 'Sandbox error');
-    throw new Error(`Sandbox error: ${body}`);
-  }
-
-  return res;
-}
-
-// ---------------------------------------------------------------------------
 // POST /file-content
 // ---------------------------------------------------------------------------
 

@@ -28,7 +28,6 @@ const generateLimiter = rateLimit<AppEnv>('generate', {
 
 // All walkthrough routes require authentication and repo access
 walkthroughRoutes.use('/:owner/:repo/:pr/*', requireAuth, requireRepoAccess);
-walkthroughRoutes.use('/:owner/:repo/:pr', requireAuth, requireRepoAccess);
 
 /**
  * GET /api/walkthroughs/:owner/:repo/:pr

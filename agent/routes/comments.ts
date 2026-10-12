@@ -11,7 +11,6 @@ export const commentRoutes = new Hono<AppEnv>();
 // callers don't carry a GitHub OAuth token, and by design the CLI surface only
 // exposes CruiseLine data — coding agents talk to GitHub directly via `gh`.
 commentRoutes.use('/:owner/:repo/:pr/*', requireAuth, requireCookieSession, requireRepoAccess);
-commentRoutes.use('/:owner/:repo/:pr', requireAuth, requireCookieSession, requireRepoAccess);
 
 function formatComment(c: any) {
   return {

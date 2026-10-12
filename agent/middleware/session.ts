@@ -60,6 +60,13 @@ function trackActiveUser(session: SessionPayload): void {
  * refresh token is available.
  */
 export async function requireAuth(c: Context<AppEnv>, next: Next) {
+  // Already authenticated earlier in this request. Running again would re-read
+  // the request cookie and retry a refresh token GitHub has already rotated.
+  if (c.get('session')) {
+    await next();
+    return;
+  }
+
   const authHeader = c.req.header('authorization');
   if (authHeader?.toLowerCase().startsWith('bearer ')) {
     const token = authHeader.slice(7).trim();

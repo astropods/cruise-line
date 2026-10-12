@@ -5,7 +5,8 @@ import { requireAuth, requireRepoAccess, requireCookieSession } from '../middlew
 import { AppError } from '../middleware/error.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import { getInstallationToken } from '../github/app.js';
-import { sandboxEnsureClone, sandboxRepoPath, sandboxQueryRaw, sandboxSessionMessages } from '../sandbox-client.js';
+import { sandboxEnsureClone, sandboxRepoPath, sandboxQuery, sandboxSessionMessages } from '../sandbox-client.js';
+import { chatRuns, streamRunEvents } from '../chat/runs.js';
 import { getOrCreateChatSession, getChatSession, touchChatSession, deleteChatSession } from '../db/chat-sessions.js';
 import { getLatestWalkthrough } from '../db/walkthroughs.js';
 import { listRules } from '../db/rules.js';
@@ -29,11 +30,11 @@ const chatLimiter = rateLimit<AppEnv>('chat', {
 // fetch PR context, and the surface (streaming SSE, session management) is not
 // meant for headless callers. Block Bearer callers at the router level.
 chatRoutes.use('/:owner/:repo/:pr/*', requireAuth, requireCookieSession, requireRepoAccess);
-chatRoutes.use('/:owner/:repo/:pr', requireAuth, requireCookieSession, requireRepoAccess);
 
 /**
  * POST /api/chat/:owner/:repo/:pr/message
- * Proxies the chat query to the sandbox container and streams results back.
+ * Starts a chat run and returns its id right away. The run (clone, sandbox
+ * query) continues in the background; the browser reads it from /runs/:id/events.
  */
 chatRoutes.post('/:owner/:repo/:pr/message', chatLimiter, async (c) => {
   const session = c.get('session');
@@ -47,73 +48,77 @@ chatRoutes.post('/:owner/:repo/:pr/message', chatLimiter, async (c) => {
   const { message } = await c.req.json<{ message: string }>();
   if (!message?.trim()) throw new AppError(400, 'Message is required');
 
+  if (chatRuns.getActive(owner, repo, prNumber, session.userId)) {
+    throw new AppError(409, 'A reply is already in progress');
+  }
+
   const chatSession = await getOrCreateChatSession(
     owner, repo, prNumber, session.userId, session.login,
   );
+  const prompt = message.trim();
 
-  const installationId = await getInstallationForRepo(owner, repo);
-  const pr = await getPrMetadata(installationId, owner, repo, prNumber);
+  const run = chatRuns.start(
+    { owner, repo, prNumber, userId: session.userId, prompt },
+    async (emit) => {
+      const installationId = await getInstallationForRepo(owner, repo);
+      const pr = await getPrMetadata(installationId, owner, repo, prNumber);
 
-  // Ensure clone exists in the sandbox's persistent volume
-  const token = await getInstallationToken(installationId);
-  const host = new URL(config.github.htmlUrl).host;
-  const cloneUrl = `https://x-access-token:${token}@${host}/${owner}/${repo}.git`;
-  const repoPath = sandboxRepoPath(owner, repo, prNumber);
-
-  const cloneResult = await sandboxEnsureClone({
-    cloneUrl,
-    repoPath,
-    headSha: pr.headSha,
-    headRef: pr.headRef,
-    prNumber,
-  });
-
-  const walkthrough = await getLatestWalkthrough(owner, repo, prNumber);
-  const summary = walkthrough?.data?.summary ?? undefined;
-  const repoRules = await listRules(owner, repo);
-  const rules = repoRules.map((r) => ({ ruleNumber: r.ruleNumber, rule: r.rule }));
-  const systemPrompt = buildChatSystemPrompt(owner, repo, prNumber, pr.title, summary, rules.length > 0 ? rules : undefined);
-
-  // Proxy the query to the sandbox container
-  const sandboxRes = await sandboxQueryRaw({
-    prompt: message.trim(),
-    systemPrompt,
-    sessionId: chatSession.session_id,
-    repoPath: cloneResult.repoDir,
-    model: config.claude.model,
-    maxTurns: 30,
-  });
-
-  // Stream the sandbox SSE response through to the client
-  return streamSSE(c, async (stream) => {
-    try {
-      const reader = sandboxRes.body!.getReader();
-      const decoder = new TextDecoder();
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        const chunk = decoder.decode(value, { stream: true });
-        // Forward raw SSE data — the sandbox already formats as SSE
-        const lines = chunk.split('\n');
-        for (const line of lines) {
-          if (line.startsWith('data:')) {
-            await stream.writeSSE({ data: line.slice(5).trim() });
-          }
-        }
-      }
-    } catch (err) {
-      await stream.writeSSE({
-        data: JSON.stringify({
-          type: 'error',
-          message: err instanceof Error ? err.message : 'Stream failed',
-        }),
+      // Ensure clone exists in the sandbox's persistent volume
+      const token = await getInstallationToken(installationId);
+      const host = new URL(config.github.htmlUrl).host;
+      const cloneUrl = `https://x-access-token:${token}@${host}/${owner}/${repo}.git`;
+      const cloneResult = await sandboxEnsureClone({
+        cloneUrl,
+        repoPath: sandboxRepoPath(owner, repo, prNumber),
+        headSha: pr.headSha,
+        headRef: pr.headRef,
+        prNumber,
       });
-    }
 
-    await touchChatSession(chatSession.session_id);
-  });
+      const walkthrough = await getLatestWalkthrough(owner, repo, prNumber);
+      const summary = walkthrough?.data?.summary ?? undefined;
+      const repoRules = await listRules(owner, repo);
+      const rules = repoRules.map((r) => ({ ruleNumber: r.ruleNumber, rule: r.rule }));
+      const systemPrompt = buildChatSystemPrompt(owner, repo, prNumber, pr.title, summary, rules.length > 0 ? rules : undefined);
+
+      try {
+        for await (const event of sandboxQuery({
+          prompt,
+          systemPrompt,
+          sessionId: chatSession.session_id,
+          repoPath: cloneResult.repoDir,
+          model: config.claude.model,
+          maxTurns: 30,
+        })) {
+          emit(event);
+        }
+      } finally {
+        await touchChatSession(chatSession.session_id);
+      }
+    },
+  );
+
+  return c.json({ runId: run.id }, 202);
+});
+
+/**
+ * GET /api/chat/:owner/:repo/:pr/runs/:runId/events
+ * Streams a run's events as SSE, starting after `Last-Event-ID` (reconnects)
+ * or `?after=` (first connect). Sends an `end` event once the run is done.
+ */
+chatRoutes.get('/:owner/:repo/:pr/runs/:runId/events', async (c) => {
+  const session = c.get('session');
+  const run = chatRuns.get(c.req.param('runId'));
+  if (
+    !run || run.userId !== session.userId || run.owner !== c.req.param('owner')
+    || run.repo !== c.req.param('repo') || run.prNumber !== Number(c.req.param('pr'))
+  ) {
+    throw new AppError(404, 'Chat run not found');
+  }
+
+  const after = Number(c.req.header('last-event-id') ?? c.req.query('after') ?? 0) || 0;
+
+  return streamSSE(c, (stream) => streamRunEvents(stream, chatRuns, run, after));
 });
 
 /**
@@ -130,11 +135,12 @@ chatRoutes.get('/:owner/:repo/:pr/session', async (c) => {
 
   const chatSession = await getChatSession(owner, repo, prNumber, session.userId);
   if (!chatSession) {
-    return c.json({ session: null, messages: [] });
+    return c.json({ session: null, messages: [], activeRun: null });
   }
 
   const repoPath = sandboxRepoPath(owner, repo, prNumber);
   const messages = await sandboxSessionMessages(chatSession.session_id, repoPath);
+  const activeRun = chatRuns.getActive(owner, repo, prNumber, session.userId);
 
   return c.json({
     session: {
@@ -144,6 +150,7 @@ chatRoutes.get('/:owner/:repo/:pr/session', async (c) => {
       lastMessageAt: chatSession.last_message_at,
     },
     messages,
+    activeRun: activeRun ? { id: activeRun.id, prompt: activeRun.prompt } : null,
   });
 });
 
