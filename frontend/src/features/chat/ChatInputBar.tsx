@@ -1,47 +1,37 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState } from 'react';
+import { ChatCircle } from '@phosphor-icons/react';
+import { Button } from '../../ui';
 
-interface ChatInputBarProps {
-  onSubmit: (message: string) => void;
-}
-
-export function ChatInputBar({ onSubmit }: ChatInputBarProps) {
+/** The floating "ask a question" box on the Analysis view; sending opens Chat */
+export function ChatInputBar({ onSubmit }: { onSubmit: (message: string) => void }) {
   const [input, setInput] = useState('');
-  const inputRef = useRef<HTMLInputElement>(null);
 
-  function handleSubmit() {
-    if (!input.trim()) return;
-    onSubmit(input.trim());
+  function submit() {
+    const message = input.trim();
+    if (!message) return;
+    onSubmit(message);
     setInput('');
   }
 
-  function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      handleSubmit();
-    }
-  }
-
   return (
-    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-40 w-full max-w-[600px] px-4">
-      <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-surface border border-line shadow-2xl backdrop-blur-sm">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="var(--color-fg-muted)" className="flex-shrink-0 opacity-50">
-          <path d="M1 2.75C1 1.784 1.784 1 2.75 1h10.5c.966 0 1.75.784 1.75 1.75v7.5A1.75 1.75 0 0 1 13.25 12H9.06l-2.573 2.573A1.458 1.458 0 0 1 4 13.543V12H2.75A1.75 1.75 0 0 1 1 10.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h2a.75.75 0 0 1 .75.75v2.19l2.72-2.72a.749.749 0 0 1 .53-.22h4.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"/>
-        </svg>
+    <div className="absolute bottom-6 left-1/2 z-40 w-full max-w-[600px] -translate-x-1/2 px-4">
+      <div className="flex items-center gap-2 rounded-xl border border-line bg-surface px-4 py-3 shadow-2xl backdrop-blur-sm">
+        <ChatCircle size={16} className="flex-shrink-0 text-fg-muted opacity-50" aria-hidden="true" />
         <input
-          ref={inputRef}
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              submit();
+            }
+          }}
           placeholder="Ask Claude about this PR..."
+          aria-label="Ask Claude about this PR"
           className="flex-1 bg-transparent text-sm text-fg placeholder:text-fg-muted focus:outline-none"
         />
         {input.trim() && (
-          <button
-            onClick={handleSubmit}
-            className="px-3 py-1 rounded-md bg-accent text-white text-xs hover:bg-accent-strong transition-colors flex-shrink-0"
-          >
-            Ask
-          </button>
+          <Button variant="accent" size="sm" onClick={submit}>Ask</Button>
         )}
       </div>
     </div>

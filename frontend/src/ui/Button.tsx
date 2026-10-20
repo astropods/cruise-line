@@ -1,11 +1,12 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
 import { cx } from '../lib/cx';
 
-export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
+export type ButtonVariant = 'primary' | 'accent' | 'secondary' | 'ghost' | 'danger';
 export type ButtonSize = 'sm' | 'md';
 
 const VARIANTS: Record<ButtonVariant, string> = {
   primary: 'bg-success-emphasis text-white hover:bg-success-emphasis/85',
+  accent: 'bg-accent-emphasis text-white hover:bg-accent-emphasis/85',
   secondary: 'border border-line text-fg hover:bg-raised hover:text-fg-strong',
   ghost: 'text-fg-muted hover:bg-raised hover:text-fg',
   danger: 'border border-danger/40 text-danger-fg hover:bg-danger/10',

@@ -19,8 +19,10 @@ frontend/src/
     review/     ReviewPage, PrBar, BarStatePill, VerdictCard, FindingCard, queries;
                 content/ renders review bodies (RichContent, diffs, suggestions,
                 the file slideout) and parses their directives
-    architecture/
-    chat/       ChatPanel, ChatInputBar, useChat
+    architecture/ ArchitecturePanel, DiagramCard, MermaidDiagram; mermaid.ts
+                loads Mermaid once and themes it from the color tokens
+    chat/       ChatPanel, ChatComposer, ChatEntryView, ChatEmptyState,
+                ChatInputBar (the box on Analysis), useChat, toolCallDetail
     comments/   Inline PR comments and their context
     rules/      RulesPanel
     settings/   SettingsEntry (setup, claim), SettingsLayout, sections/, onboarding/
@@ -31,7 +33,7 @@ frontend/src/
                 severity.ts  severity order, tone, label, counts
   api/          client.ts (apiFetch, ApiError), one module per area, queryKeys;
                 types.ts re-exports the review types from agent/analysis/types.ts
-  lib/          Generic helpers (cx, time, useNow, scopePath)
+  lib/          Generic helpers (cx, time, useNow, useCopy, scopePath)
   dev/          The /__ui component sheet (dev builds only)
 ```
 
