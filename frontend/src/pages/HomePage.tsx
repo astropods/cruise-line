@@ -158,7 +158,7 @@ export function HomePage() {
         <section className="mb-12">
           <SectionHeading label="3" title="Try it" />
           <p className="text-sm text-[var(--text-secondary)] mb-4">
-            After you're logged in, poll for a walkthrough and fetch it as JSON:
+            After you're logged in, poll for a review and fetch it as JSON:
           </p>
           <div className="space-y-3">
             <CopyBlock value="cruise-line pr status owner/repo#42 --wait" />
