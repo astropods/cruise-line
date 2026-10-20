@@ -12,6 +12,16 @@
     "declaration": true,
     "outDir": "./dist"
   },
-  "include": ["agent/**/*", "frontend/src/lib/scopePath.ts"],
-  "exclude": ["node_modules", "dist"]
+  "include": [
+    "agent/**/*",
+    "frontend/src/lib/scopePath.ts",
+    "frontend/src/domain/**/*",
+    "frontend/src/api/types.ts",
+    "frontend/src/api/prs.ts",
+    "frontend/src/api/client.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
 }
