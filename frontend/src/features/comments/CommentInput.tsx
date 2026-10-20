@@ -54,6 +54,8 @@ export function CommentInput({ onSubmit, onCancel, userAvatarUrl, prefill }: Com
       handleSubmit();
     }
     if (e.key === 'Escape') {
+      // Cancels the comment, not the slideout around it
+      e.preventDefault();
       onCancel();
     }
   }

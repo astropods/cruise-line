@@ -37,8 +37,10 @@ export function useReview(owner: string, repo: string, pr: number) {
   const run = res?.walkthrough ?? null;
   const runStatus: RunStatus = run?.status ?? 'none';
   const inFlight = isRunning(runStatus);
-  const progress = useReviewProgress(owner, repo, pr, inFlight);
   const start = useStartReview();
+  // Poll only once the start request lands: before that the server still
+  // reports the previous run, which would read as already finished
+  const progress = useReviewProgress(owner, repo, pr, inFlight && !start.isPending);
 
   const review = res?.latestReview ?? null;
   // The progress poll sees pending → running before the PR refetches

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import { useParams } from 'react-router';
 import { motion, AnimatePresence } from 'framer-motion';
-import { parseDiff, Diff, Hunk, tokenize, markEdits } from 'react-diff-view';
+import { parseDiff, Diff, Hunk, tokenize, markEdits, computeNewLineNumber, getChangeKey } from 'react-diff-view';
 import refractor from 'refractor';
 import { useSlideout } from './SlideoutContext';
 import { useCommentsContext } from '../../comments/CommentsContext';
@@ -39,7 +39,8 @@ export function FileSlideout({ files }: FileSlideoutProps) {
   useEffect(() => {
     if (!activeSlideout) return;
     function handleKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') closeFile();
+      // A comment box, menu, or popover inside handled it already
+      if (e.key === 'Escape' && !e.defaultPrevented) closeFile();
     }
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
@@ -259,7 +260,7 @@ function FilePickerDropdown({ currentFile, allFiles, onSelect }: {
 }
 
 function SlideoutDiffView({ filePath, fileContent, focusLines }: { filePath: string; fileContent: FileContent; focusLines?: [number, number] }) {
-  const { getCommentsForLine, addComment, activeCommentLine, setActiveCommentLine, userAvatarUrl } = useCommentsContext();
+  const { getCommentsForLine, addComment, activeCommentLine, setActiveCommentLine, userAvatarUrl, fetchError } = useCommentsContext();
   const parsed = useMemo(() => {
     try {
       return parseDiff(fileContent.patch!, { nearbySequences: 'zip' })[0] ?? null;
@@ -295,26 +296,18 @@ function SlideoutDiffView({ filePath, fileContent, focusLines }: { filePath: str
       const container = document.getElementById('slideout-scroll-container');
       if (!container) return;
 
-      // react-diff-view uses data-change-key with format:
-      //   "N{lineNum}" for normal, "I{lineNum}" for insert, "D{lineNum}" for delete
-      // Query all cells with change keys and extract line numbers
-      const cells = container.querySelectorAll('td[data-change-key]');
-
-      cells.forEach((cell) => {
-        const key = (cell as HTMLElement).dataset.changeKey ?? '';
-        const num = parseInt(key.slice(1), 10);
-        if (isNaN(num)) return;
-
-        const prefix = key[0];
-        const isNewSide = prefix === 'I' || prefix === 'N';
-        if (!isNewSide) return;
-
-        const row = cell.closest('tr');
-        if (!row) return;
-
-        if (num >= focusLines[0] && num <= focusLines[1]) {
-          row.classList.add('slideout-focus-row');
+      // Match by react-diff-view's own change keys. A context line's key uses
+      // its old line number, so the new-side range has to be mapped first.
+      const focusKeys = new Set<string>();
+      for (const hunk of parsed.hunks) {
+        for (const change of hunk.changes) {
+          if (change.type === 'delete') continue;
+          const newLine = computeNewLineNumber(change);
+          if (newLine >= focusLines[0] && newLine <= focusLines[1]) focusKeys.add(getChangeKey(change));
         }
+      }
+      container.querySelectorAll<HTMLElement>('td[data-change-key]').forEach((cell) => {
+        if (focusKeys.has(cell.dataset.changeKey ?? '')) cell.closest('tr')?.classList.add('slideout-focus-row');
       });
 
       const focusRows = container.querySelectorAll('.slideout-focus-row');
@@ -375,8 +368,9 @@ function SlideoutDiffView({ filePath, fileContent, focusLines }: { filePath: str
           side = 'RIGHT';
         }
 
-        const lineComments = getCommentsForLine(filePath, lineNum);
-        const isActiveInput = activeCommentLine?.path === filePath && activeCommentLine?.line === lineNum;
+        const lineComments = getCommentsForLine(filePath, lineNum, side);
+        const isActiveInput = activeCommentLine?.path === filePath && activeCommentLine?.line === lineNum
+          && (activeCommentLine.side ?? 'RIGHT') === side;
 
         // Separate top-level comments from replies
         const topLevel = lineComments.filter((c) => !c.inReplyToId);
@@ -397,6 +391,8 @@ function SlideoutDiffView({ filePath, fileContent, focusLines }: { filePath: str
               ))}
               {isActiveInput && (
                 <CommentInput
+                  // A new prefill (another finding on the same line) starts a fresh box
+                  key={activeCommentLine?.prefill ?? ''}
                   userAvatarUrl={userAvatarUrl}
                   prefill={activeCommentLine?.prefill}
                   onSubmit={async (body) => {
@@ -436,6 +432,11 @@ function SlideoutDiffView({ filePath, fileContent, focusLines }: { filePath: str
 
   return (
     <div className="cruise-diff-wrapper cruise-commentable-diff min-w-fit">
+      {fetchError && (
+        <p role="alert" className="border-b border-danger/40 bg-danger/10 px-4 py-2 text-xs text-danger-fg">
+          Couldn't load this PR's comments, so existing ones aren't shown. {fetchError}
+        </p>
+      )}
       <Diff
         viewType="unified"
         diffType={parsed.type}

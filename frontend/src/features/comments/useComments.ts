@@ -24,11 +24,11 @@ export function useComments({ owner, repo, pr, commitId }: UseCommentsOptions) {
       .finally(() => setLoading(false));
   }, [owner, repo, pr]);
 
-  // Group comments by path:line for easy lookup
+  // Group by path, side, and line: deleted line 10 and new line 10 are different lines
   const commentsByLine = useMemo(() => {
     const map = new Map<string, PRComment[]>();
     for (const c of comments) {
-      const key = `${c.path}:${c.line}`;
+      const key = `${c.path}:${c.side}:${c.line}`;
       const existing = map.get(key) ?? [];
       existing.push(c);
       map.set(key, existing);
@@ -37,8 +37,8 @@ export function useComments({ owner, repo, pr, commitId }: UseCommentsOptions) {
   }, [comments]);
 
   const getCommentsForLine = useCallback(
-    (path: string, line: number): PRComment[] => {
-      return commentsByLine.get(`${path}:${line}`) ?? [];
+    (path: string, line: number, side: 'LEFT' | 'RIGHT'): PRComment[] => {
+      return commentsByLine.get(`${path}:${side}:${line}`) ?? [];
     },
     [commentsByLine],
   );

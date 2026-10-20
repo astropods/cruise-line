@@ -287,25 +287,48 @@ function sanitizeDirectives(body: string): string {
   return result.join('\n');
 }
 
-/**
- * Process inline ::file{} directives within markdown text,
- * replacing them with a placeholder that react-markdown can render.
- * Returns markdown with ::file{} replaced by a custom link format.
- */
+// File pills and rule pills ride through react-markdown as links. Fragment
+// hrefs survive its URL sanitizer, which empties unknown schemes.
+const FILE_HREF = '#cl-file=';
+const RULE_HREF = '#cl-rule=';
+
+/** The file path behind a pill link from processInlineFileRefs, or null */
+export function fileFromHref(href: string | undefined): string | null {
+  return href?.startsWith(FILE_HREF) ? decodeURIComponent(href.slice(FILE_HREF.length)) : null;
+}
+
+/** The rule number behind a pill link from processRuleRefs, or null */
+export function ruleFromHref(href: string | undefined): number | null {
+  if (!href?.startsWith(RULE_HREF)) return null;
+  const n = Number(href.slice(RULE_HREF.length));
+  return Number.isInteger(n) ? n : null;
+}
+
+const CODE = /(```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]*`)/;
+
+/** Apply `fn` to the markdown outside code spans and fenced blocks */
+function outsideCode(markdown: string, fn: (text: string) => string): string {
+  return markdown
+    .split(CODE)
+    .map((part, i) => (i % 2 === 0 ? fn(part) : part))
+    .join('');
+}
+
+const escapeLinkText = (text: string) => text.replace(/[[\]]/g, '\\$&');
+
+/** Turn inline ::file{} directives into links that RichContent renders as file pills */
 export function processInlineFileRefs(markdown: string): string {
-  return markdown.replace(
-    /::file\{file="([^"]+)"\}/g,
-    (_, file) => `[${file}](::file::${file})`,
+  return outsideCode(markdown, (text) =>
+    text.replace(
+      /::file\{file="([^"]+)"\}/g,
+      (_, file: string) => `[${escapeLinkText(file)}](${FILE_HREF}${encodeURIComponent(file)})`,
+    ),
   );
 }
 
-/**
- * Process "Rule #N" references within markdown text,
- * replacing them with clickable links that the Md component renders as rule pills.
- */
+/** Turn "Rule #N" into links that RichContent renders as rule pills */
 export function processRuleRefs(markdown: string): string {
-  return markdown.replace(
-    /\bRule #(\d+)\b/g,
-    (match, num) => `[${match}](::rule::${num})`,
+  return outsideCode(markdown, (text) =>
+    text.replace(/\bRule #(\d+)\b/g, (match, num) => `[${match}](${RULE_HREF}${num})`),
   );
 }

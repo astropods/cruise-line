@@ -6,7 +6,7 @@ import { useCurrentUser } from '../../app/session';
 import { AnalysisProgress } from './AnalysisProgress';
 import { ArchitecturePanel } from '../architecture/ArchitecturePanel';
 import { ChatInputBar } from '../chat/ChatInputBar';
-import { ChatPanel } from '../chat/ChatPanel';
+import { ChatPanel, type ChatRequest } from '../chat/ChatPanel';
 import { FileSlideout } from './content/FileSlideout';
 import { Md } from './content/Md';
 import type { RuleRef } from './content/RichContent';
@@ -38,7 +38,8 @@ export function ReviewPage() {
     githubUrl, startedAt, prInfo, currentHeadSha, generate,
   } = useReview(owner, repo, prNumber);
 
-  const [chatInitialMessage, setChatInitialMessage] = useState<string | undefined>();
+  // A new object per question, so asking the same thing twice still sends it
+  const [chatRequest, setChatRequest] = useState<ChatRequest | undefined>();
   const [showRules, setShowRules] = useState(false);
   const [rulesPrefill, setRulesPrefill] = useState<string | undefined>();
   const [repoRules, setRepoRules] = useState<RuleRef[]>([]);
@@ -85,7 +86,7 @@ export function ReviewPage() {
   }
 
   function startChat(message: string) {
-    setChatInitialMessage(message);
+    setChatRequest({ text: message });
     setView('chat');
   }
 
@@ -172,7 +173,7 @@ export function ReviewPage() {
                   files={walkthrough?.files ?? {}}
                   onRuleClick={() => openRules()}
                   rules={repoRules}
-                  initialMessage={chatInitialMessage}
+                  request={chatRequest}
                 />
               </ViewPane>
 
