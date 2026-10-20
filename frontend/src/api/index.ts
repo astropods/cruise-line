@@ -7,3 +7,4 @@ export * from './cli';
 export * from './rules';
 export * from './comments';
 export * from './queryKeys';
+export * from './setup';

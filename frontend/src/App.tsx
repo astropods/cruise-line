@@ -4,7 +4,8 @@ import { AuthGate, SetupGate } from './app/gates';
 import { InboxHome } from './features/inbox/InboxHome';
 import { AppShell } from './shell/AppShell';
 import { ReviewPage } from './features/review/ReviewPage';
-import { SettingsPage } from './pages/SettingsPage';
+import { SettingsEntry } from './features/settings/SettingsEntry';
+import { SettingsLayout } from './features/settings/SettingsLayout';
 import { AuthCompletePage } from './pages/AuthCompletePage';
 import { LoginPage } from './pages/LoginPage';
 import { NotFoundPage } from './pages/NotFoundPage';
@@ -37,7 +38,8 @@ export function App() {
       <Routes>
         {/* Public: CLI install steps, plus the viewer's tokens when signed in */}
         <Route path="/cli" element={<HomePage />} />
-        <Route path="/settings" element={<SettingsPage />} />
+        {/* First-time setup and GitHub App callbacks; owners continue into the shell */}
+        <Route path="/settings" element={<SettingsEntry />} />
         <Route path="/setup" element={<LegacySetupRedirect />} />
         <Route path="/auth/complete" element={<AuthCompletePage />} />
         <Route path="/cli/authorize" element={<CliAuthorizePage />} />
@@ -54,6 +56,7 @@ export function App() {
             <Route element={<AppShell />}>
               <Route index element={<InboxHome />} />
               <Route path="/:owner/:repo/pull/:pr/:view?" element={<ReviewRoute />} />
+              <Route path="/settings/:section" element={<SettingsLayout />} />
             </Route>
           </Route>
         </Route>
