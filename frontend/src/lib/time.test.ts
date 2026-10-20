@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'bun:test';
-import { formatAgo, formatElapsed } from './time';
+import { formatAgo, formatAgoPhrase, formatElapsed } from './time';
 
 const NOW = new Date('2026-10-20T12:00:00').getTime();
 const ago = (ms: number) => new Date(NOW - ms).toISOString();
@@ -27,5 +27,15 @@ describe('formatElapsed', () => {
   it('shows seconds, then minutes and seconds', () => {
     expect(formatElapsed(42)).toBe('42s');
     expect(formatElapsed(102)).toBe('1m 42s');
+  });
+});
+
+describe('formatAgoPhrase', () => {
+  it('reads as part of a sentence', () => {
+    expect(formatAgoPhrase(ago(10_000), NOW)).toBe('just now');
+    expect(formatAgoPhrase(ago(12 * MIN), NOW)).toBe('12m ago');
+    expect(formatAgoPhrase(ago(30 * 60 * MIN), NOW)).toBe('yesterday');
+    expect(formatAgoPhrase(ago(3 * 24 * 60 * MIN), NOW)).toBe('3d ago');
+    expect(formatAgoPhrase(new Date('2026-09-30T09:00:00').toISOString(), NOW)).toBe('on Sep 30');
   });
 });

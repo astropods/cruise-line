@@ -7,7 +7,7 @@ import { Sidebar } from './Sidebar';
  * root, the PR on a PR page.
  */
 export function AppShell() {
-  const onPr = !!useMatch('/:owner/:repo/pull/:pr');
+  const onPr = !!useMatch('/:owner/:repo/pull/:pr/*');
   return (
     <div className="flex h-screen overflow-hidden bg-canvas text-fg">
       <Sidebar className={cx(onPr && 'hidden md:flex')} />

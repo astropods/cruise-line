@@ -195,7 +195,7 @@ walkthroughRoutes.post('/:owner/:repo/:pr/generate', generateLimiter, async (c) 
   // future authKind (say, an API-key session) doesn't silently inherit the
   // destructive branch. Same shape as requireCookieSession.
   if (force && c.get('authKind') !== 'cookie') {
-    throw new AppError(403, 'force=true is only available from a browser session; run this from the browser to re-generate an existing walkthrough');
+    throw new AppError(403, 'force=true is only available from a browser session; run this from the browser to rerun an existing review');
   }
 
   // Fetch current PR metadata

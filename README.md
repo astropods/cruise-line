@@ -100,7 +100,7 @@ Simulated runs take 15s (`MOCK_JOB_SECONDS` to change it);
 Cruise Line runs as a single container on Astro with two supporting services:
 
 - **Agent** — Hono web server (Bun runtime) serving the API, GitHub webhooks, OAuth, and the React frontend
-- **Database** — PostgreSQL for walkthroughs, chat sessions, review rules, and app configuration
+- **Database** — PostgreSQL for reviews, chat sessions, review rules, and app configuration
 - **Sandbox** — Isolated container for chat queries with codebase access
 
 The analysis engine uses the [Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk) to clone repositories and generate structured reviews with full tool access (file reading, grep, glob, bash).

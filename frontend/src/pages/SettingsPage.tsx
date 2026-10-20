@@ -147,7 +147,7 @@ export function SettingsPage() {
         <p className="text-[var(--text-secondary)] mb-8">
           {status?.configured
             ? 'Manage your GitHub integration.'
-            : 'Set up your GitHub integration to start generating PR walkthroughs.'}
+            : 'Set up your GitHub integration to start reviewing pull requests.'}
         </p>
 
         {user?.isOwner && (
@@ -690,7 +690,7 @@ const EFFORT_LABELS: Record<EffortLevel, string> = {
 };
 
 const MODEL_USES: { use: ModelUse; label: string; hint: string }[] = [
-  { use: 'review', label: 'Reviews', hint: 'Writes the walkthrough and findings for each PR.' },
+  { use: 'review', label: 'Reviews', hint: 'Writes the summary and findings for each PR.' },
   { use: 'chat', label: 'Chat', hint: 'Answers questions about a PR.' },
 ];
 

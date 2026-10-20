@@ -26,7 +26,7 @@ export function Sidebar({ className }: { className?: string }) {
   const list = usePrList();
   const { data: user } = useCurrentUser();
 
-  const match = useMatch('/:owner/:repo/pull/:pr');
+  const match = useMatch('/:owner/:repo/pull/:pr/*');
   const selectedKey = match
     ? prKey({ owner: match.params.owner!, repo: match.params.repo!, number: Number(match.params.pr) })
     : null;

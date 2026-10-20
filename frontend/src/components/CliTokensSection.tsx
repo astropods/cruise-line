@@ -61,7 +61,7 @@ export function CliTokensSection() {
       <p className="text-xs text-[var(--text-secondary)] mb-4">
         Bearer tokens issued to the Cruise Line CLI on your local machines. Each{' '}
         <code className="text-[var(--text-primary)]">cruise-line login</code>{' '}
-        mints a new one; they read walkthroughs and analysis status but cannot
+        mints a new one; they read reviews and review status but cannot
         post to GitHub. Tokens expire 90 days after issue.
       </p>
 

@@ -24,3 +24,12 @@ export function formatAgo(iso: string, now: number = Date.now()): string {
   const date = `${MONTHS[then.getMonth()]} ${then.getDate()}`;
   return then.getFullYear() === new Date(now).getFullYear() ? date : `${date}, ${then.getFullYear()}`;
 }
+
+/** Age as a phrase for sentences: "just now", "12m ago", "yesterday", "on Sep 30" */
+export function formatAgoPhrase(iso: string, now: number = Date.now()): string {
+  const short = formatAgo(iso, now);
+  if (short === 'now') return 'just now';
+  if (short === '1d') return 'yesterday';
+  if (/^\d+[mhd]$/.test(short)) return `${short} ago`;
+  return `on ${short}`;
+}
