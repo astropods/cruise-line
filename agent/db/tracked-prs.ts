@@ -122,7 +122,9 @@ export async function listPrsNeedingDetails(limit: number): Promise<{ owner: str
       WHERE head_ref IS NULL
         AND (details_checked_at IS NULL OR details_checked_at < NOW() - INTERVAL '1 day')
       UNION
-      SELECT DISTINCT w.owner, w.repo, w.pr_number, NULL::timestamptz FROM walkthroughs w
+      -- PRs reviewed before tracking existed have no row to mark when they
+      -- fail, so they're retried every startup; keep them behind the rest
+      SELECT DISTINCT w.owner, w.repo, w.pr_number, NOW() FROM walkthroughs w
       WHERE NOT EXISTS (
         SELECT 1 FROM tracked_prs t
         WHERE t.owner = w.owner AND t.repo = w.repo AND t.pr_number = w.pr_number

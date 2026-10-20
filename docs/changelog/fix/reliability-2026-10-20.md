@@ -11,7 +11,8 @@ long runs, busy PRs, and out-of-order webhooks.
   retry (`analysis/recover.ts`).
 - **Long reviews**: the 10-minute limit on the sandbox stream killed big
   reviews. It's now an idle timeout (2 minutes without even a heartbeat)
-  plus a 60-minute ceiling. Closing the stream, for any reason, aborts the
+  plus a 60-minute ceiling. The idle clock pauses while the caller handles
+  an event, so a slow consumer can't time out a healthy run. Closing the stream, for any reason, aborts the
   run in the sandbox through the SDK's `abortController`. `maxTurns` is
   capped at 100.
 - **PR comment**: comments are paginated and only the app's own comment
@@ -22,7 +23,9 @@ long runs, busy PRs, and out-of-order webhooks.
   analyzer, and recovery; the copy-pasted complete/stale bodies are one.
 - **Webhooks**: the route verifies the signature, answers 202, and handles
   the event after, so slow handlers no longer miss GitHub's 10s timeout.
-  Deliveries are de-duplicated by id. Tracked PRs store GitHub's
+  A delivery id counts as handled only once its handlers succeed, so
+  redelivering a failed event from GitHub's UI runs it again; copies that
+  arrive while it's in flight are skipped. Bodies that aren't JSON get 400. Tracked PRs store GitHub's
   `updated_at`, and older writes are ignored, so a late or redelivered
   event can't reopen a merged PR; state comes from the payload, and closed
   PRs get no comment.
@@ -41,7 +44,8 @@ long runs, busy PRs, and out-of-order webhooks.
 - **Migrations** take an advisory lock and apply in one transaction, so
   two instances starting together don't both apply them.
 - **Backfill**: PRs it can't fill wait a day and go to the back of the
-  queue instead of blocking it.
+  queue instead of blocking it. PRs reviewed before tracking existed have
+  no row to mark, so they're retried each startup, behind everything else.
 - Inline review comments are paginated; the model list is cached for five
   minutes in the agent.
 

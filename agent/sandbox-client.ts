@@ -135,7 +135,11 @@ export async function* sandboxQuery(params: QueryParams): AsyncGenerator<SSEEven
     }
 
     for await (const event of readEvents(res.body!, stillAlive)) {
-      if (event.type !== 'heartbeat') yield event;
+      if (event.type === 'heartbeat') continue;
+      // Time spent in the consumer isn't the sandbox going quiet
+      clearTimeout(idle);
+      yield event;
+      stillAlive();
     }
   } finally {
     clearTimeout(ceiling);

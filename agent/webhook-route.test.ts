@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, it } from 'bun:test';
 import { Hono } from 'hono';
 import { Webhooks } from '@octokit/webhooks';
 import { config } from './config.js';
-import { refreshWebhooks } from './github/webhooks.js';
+import { getWebhooks, refreshWebhooks } from './github/webhooks.js';
 import { webhookRoutes } from './routes/webhook.js';
 
 const SECRET = 'webhook-route-test-secret';
@@ -42,6 +42,26 @@ describe('POST /api/webhook/github', () => {
     const again = await deliver('d-2', body);
     expect(again.status).toBe(200);
     expect(await again.json()).toEqual({ ok: true, duplicate: true });
+  });
+
+  it('runs a delivery again if its handler failed, and not after it succeeded', async () => {
+    let calls = 0;
+    getWebhooks()!.on('ping', () => {
+      calls++;
+      if (calls === 1) throw new Error('transient');
+    });
+    const settle = () => new Promise((r) => setTimeout(r, 10));
+
+    expect((await deliver('d-4', body)).status).toBe(202);
+    await settle();
+    expect((await deliver('d-4', body)).status).toBe(202); // failed, so redelivery runs
+    await settle();
+    expect(await (await deliver('d-4', body)).json()).toEqual({ ok: true, duplicate: true });
+    expect(calls).toBe(2);
+  });
+
+  it('rejects a body that is not JSON', async () => {
+    expect((await deliver('d-5', 'not json')).status).toBe(400);
   });
 
   it('rejects a bad signature', async () => {

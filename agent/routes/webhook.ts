@@ -3,17 +3,18 @@ import { getWebhooks } from '../github/webhooks.js';
 
 export const webhookRoutes = new Hono();
 
-// GitHub retries and operators redeliver; one delivery is handled once
+// One delivery is handled once. An id counts as handled only after its
+// handlers succeed, so redelivering a failed event from GitHub's UI runs it
+// again; copies that arrive while it's in flight are skipped.
 const RECENT_DELIVERIES = 1000;
-const recentDeliveries = new Set<string>();
+const handledDeliveries = new Set<string>();
+const inFlightDeliveries = new Set<string>();
 
-function firstDelivery(id: string): boolean {
-  if (recentDeliveries.has(id)) return false;
-  recentDeliveries.add(id);
-  if (recentDeliveries.size > RECENT_DELIVERIES) {
-    recentDeliveries.delete(recentDeliveries.values().next().value!);
+function markHandled(id: string): void {
+  handledDeliveries.add(id);
+  if (handledDeliveries.size > RECENT_DELIVERIES) {
+    handledDeliveries.delete(handledDeliveries.values().next().value!);
   }
-  return true;
 }
 
 webhookRoutes.post('/github', async (c) => {
@@ -31,13 +32,25 @@ webhookRoutes.post('/github', async (c) => {
     return c.json({ error: 'Webhook verification failed' }, 401);
   }
 
-  if (!firstDelivery(deliveryId)) return c.json({ ok: true, duplicate: true });
+  let payload: unknown;
+  try {
+    payload = JSON.parse(body);
+  } catch {
+    return c.json({ error: 'Body is not JSON' }, 400);
+  }
+
+  if (handledDeliveries.has(deliveryId) || inFlightDeliveries.has(deliveryId)) {
+    return c.json({ ok: true, duplicate: true });
+  }
+  inFlightDeliveries.add(deliveryId);
 
   // Handlers can page through a PR's files and comments, which can outlast
   // GitHub's 10s delivery timeout, so acknowledge first and work after.
   webhooks
-    .receive({ id: deliveryId, name: event as any, payload: JSON.parse(body) })
-    .catch((err) => console.error(`Webhook ${event} (${deliveryId}) failed:`, err));
+    .receive({ id: deliveryId, name: event as any, payload: payload as any })
+    .then(() => markHandled(deliveryId))
+    .catch((err) => console.error(`Webhook ${event} (${deliveryId}) failed; redeliver it to retry:`, err))
+    .finally(() => inFlightDeliveries.delete(deliveryId));
 
   return c.json({ ok: true }, 202);
 });
