@@ -10,7 +10,7 @@ import { cx } from '../../lib/cx';
 import { Button, Card, CardBody, CardFooter, CardHeader, IconButton, Pill } from '../../ui';
 import { useFindingActions } from './useFindingActions';
 
-const CATEGORIES: Record<FindingCategory, { label: string; icon: Icon }> = {
+export const FINDING_CATEGORIES: Record<FindingCategory, { label: string; icon: Icon }> = {
   correctness: { label: 'Correctness', icon: Bug },
   security: { label: 'Security', icon: ShieldCheck },
   maintainability: { label: 'Maintainability', icon: Wrench },
@@ -23,20 +23,21 @@ interface FindingCardProps {
   files: Record<string, FileContent>;
   /** Anchor id, so a finding can be linked to */
   id: string;
-  onSaveAsRule: (ruleText: string) => void;
-  onRuleClick: (ruleNumber: number) => void;
-  rules: RuleRef[];
+  /** Omitted where rules can't be edited, like findings inside a chat answer */
+  onSaveAsRule?: (ruleText: string) => void;
+  onRuleClick?: (ruleNumber: number) => void;
+  rules?: RuleRef[];
 }
 
 export function FindingCard({ finding, files, id, onSaveAsRule, onRuleClick, rules }: FindingCardProps) {
   const [expanded, setExpanded] = useState(true);
   const actions = useFindingActions(finding, files);
-  const category = CATEGORIES[finding.category] ?? CATEGORIES.correctness;
+  const category = FINDING_CATEGORIES[finding.category] ?? FINDING_CATEGORIES.correctness;
   const CategoryIcon = category.icon;
   const bodyId = `${id}-body`;
   const otherFiles = new Set(finding.files.filter((f) => f !== actions.location?.file)).size;
   // Info findings stay advisory: no fix prompt or anchor, and not worth a rule
-  const canSaveRule = finding.severity !== 'info';
+  const canSaveRule = !!onSaveAsRule && finding.severity !== 'info';
   const hasActions = canSaveRule || !!finding.fixPrompt || actions.canComment;
 
   return (
@@ -80,7 +81,7 @@ export function FindingCard({ finding, files, id, onSaveAsRule, onRuleClick, rul
             {hasActions && (
               <div className="flex flex-wrap justify-end gap-2">
                 {canSaveRule && (
-                  <Button icon={<BookmarkSimple size={13} />} onClick={() => onSaveAsRule(finding.title)}>
+                  <Button icon={<BookmarkSimple size={13} />} onClick={() => onSaveAsRule?.(finding.title)}>
                     Save as rule
                   </Button>
                 )}

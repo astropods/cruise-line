@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { toolCallDetail } from './toolCallDetail';
+import { toolCallDetail } from './toolCalls';
 
 describe('toolCallDetail', () => {
   test('drops the tool prefix', () => {

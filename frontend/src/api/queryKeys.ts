@@ -9,4 +9,11 @@ export const queryKeys = {
   knownUsers: ['settings', 'users'] as const,
   pr: (owner: string, repo: string, number: number) => ['pr', owner, repo, number] as const,
   prProgress: (owner: string, repo: string, number: number) => ['pr', owner, repo, number, 'progress'] as const,
+  /** Keyed by head too: a push changes the file */
+  prFile: (owner: string, repo: string, number: number, headSha: string, path: string) =>
+    ['pr', owner, repo, number, 'file', headSha, path] as const,
+  prComments: (owner: string, repo: string, number: number) => ['pr', owner, repo, number, 'comments'] as const,
+  repoRules: (owner: string, repo: string) => ['rules', owner, repo] as const,
+  chatSession: (owner: string, repo: string, number: number) => ['pr', owner, repo, number, 'chat'] as const,
+  cliTokens: ['cli-tokens'] as const,
 };

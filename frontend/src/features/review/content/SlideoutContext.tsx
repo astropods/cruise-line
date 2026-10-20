@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, useMemo, type ReactNode } from 'react';
 
 interface SlideoutState {
   file: string;
@@ -11,6 +11,8 @@ interface SlideoutContextValue {
   closeFile: () => void;
   /** GitHub HTML URL for linking to files in the PR */
   githubFileUrl: (file: string) => string;
+  /** The PR whose files these are */
+  pr: { owner: string; repo: string; number: number; headSha: string } | null;
 }
 
 const SlideoutContext = createContext<SlideoutContextValue>({
@@ -18,6 +20,7 @@ const SlideoutContext = createContext<SlideoutContextValue>({
   openFile: () => {},
   closeFile: () => {},
   githubFileUrl: () => '',
+  pr: null,
 });
 
 interface SlideoutProviderProps {
@@ -44,8 +47,10 @@ export function SlideoutProvider({ children, githubUrl, owner, repo, prNumber, h
     return `${githubUrl}/${owner}/${repo}/blob/${headSha}/${file}`;
   }, [githubUrl, owner, repo, headSha]);
 
+  const pr = useMemo(() => ({ owner, repo, number: prNumber, headSha }), [owner, repo, prNumber, headSha]);
+
   return (
-    <SlideoutContext.Provider value={{ activeSlideout, openFile, closeFile, githubFileUrl }}>
+    <SlideoutContext.Provider value={{ activeSlideout, openFile, closeFile, githubFileUrl, pr }}>
       {children}
     </SlideoutContext.Provider>
   );

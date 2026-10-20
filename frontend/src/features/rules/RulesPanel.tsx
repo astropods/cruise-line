@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback, useId, useRef } from 'react';
+import { useState, useEffect, useId, useRef } from 'react';
 import { Plus, Trash, X, ListNumbers, PencilSimple } from '@phosphor-icons/react';
-import { fetchRules, addRuleApi, deleteRuleApi, updateRuleApi, type ReviewRule } from '../../api';
+import { addRuleApi, deleteRuleApi, updateRuleApi } from '../../api';
+import { useInvalidateRules, useRules } from './useRules';
 import { IconButton } from '../../ui';
 
 interface RulesPanelProps {
@@ -12,14 +13,11 @@ interface RulesPanelProps {
 }
 
 export function RulesPanel({ owner, repo, onClose, prefill }: RulesPanelProps) {
-  const [rules, setRules] = useState<ReviewRule[]>([]);
-  const [loading, setLoading] = useState(true);
   const [newRule, setNewRule] = useState(prefill ?? '');
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editText, setEditText] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [loadFailed, setLoadFailed] = useState(false);
   const newRuleRef = useRef<HTMLTextAreaElement>(null);
   const titleId = useId();
 
@@ -47,33 +45,22 @@ export function RulesPanel({ owner, repo, onClose, prefill }: RulesPanelProps) {
     }
   }, []);
 
-  const load = useCallback(async () => {
-    try {
-      const res = await fetchRules(owner, repo);
-      setRules(res.rules);
-      setLoadFailed(false);
-    } catch (err) {
-      setLoadFailed(true);
-      setError(err instanceof Error ? err.message : 'Failed to load rules');
-    } finally {
-      setLoading(false);
-    }
-  }, [owner, repo]);
+  const rulesQuery = useRules(owner, repo);
+  const invalidateRules = useInvalidateRules(owner, repo);
+  const rules = rulesQuery.data ?? [];
 
-  /** Run a change, then reload; a failure shows above the list instead of vanishing */
+  /** Run a change, then refetch; a failure shows above the list instead of vanishing */
   async function change(action: () => Promise<unknown>): Promise<boolean> {
     setError(null);
     try {
       await action();
-      await load();
+      await invalidateRules();
       return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong');
       return false;
     }
   }
-
-  useEffect(() => { load(); }, [load]);
 
   async function handleAdd() {
     if (!newRule.trim() || adding) return;
@@ -101,7 +88,7 @@ export function RulesPanel({ owner, repo, onClose, prefill }: RulesPanelProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="absolute inset-0 bg-sunken/70" onClick={onClose} />
 
       {/* Panel */}
       <div
@@ -124,12 +111,17 @@ export function RulesPanel({ owner, repo, onClose, prefill }: RulesPanelProps) {
 
         {/* Rules list */}
         <div className="flex-1 overflow-auto px-6 py-4">
+          {rulesQuery.isError && (
+            <p role="alert" className="mb-3 rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-xs text-danger-fg">
+              Couldn't load rules: {rulesQuery.error.message}
+            </p>
+          )}
           {error && (
             <p role="alert" className="mb-3 rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-xs text-danger-fg">{error}</p>
           )}
-          {loading ? (
+          {rulesQuery.isPending ? (
             <div className="text-center text-sm text-fg-muted py-8">Loading rules...</div>
-          ) : loadFailed ? null : rules.length === 0 ? (
+          ) : rulesQuery.isError ? null : rules.length === 0 ? (
             <div className="text-center py-8">
               <p className="text-sm text-fg-muted mb-1">No review rules configured</p>
               <p className="text-xs text-fg-muted/60">Rules guide the AI analysis — add rules for patterns, conventions, or areas to watch.</p>

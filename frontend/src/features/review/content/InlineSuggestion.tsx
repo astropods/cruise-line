@@ -84,8 +84,8 @@ export function InlineSuggestion({ file, lines, suggestion, fileContent }: Inlin
         <pre className="text-[13px] leading-[1.5] font-mono m-0">
           {/* Old lines (deletions) */}
           {highlightedOld.map((tokens, i) => (
-            <div key={`old-${i}`} className="flex" style={{ background: 'rgba(248, 81, 73, 0.10)' }}>
-              <span className="select-none w-8 flex-shrink-0 text-center text-xs text-red-400/60" style={{ lineHeight: '1.5em' }}>
+            <div key={`old-${i}`} className="flex bg-danger/10">
+              <span className="select-none w-8 flex-shrink-0 text-center text-xs text-danger-fg/60" style={{ lineHeight: '1.5em' }}>
                 -
               </span>
               <span className="select-none w-12 flex-shrink-0 text-right pr-4 text-xs text-fg-muted/40" style={{ lineHeight: '1.5em' }}>
@@ -96,8 +96,8 @@ export function InlineSuggestion({ file, lines, suggestion, fileContent }: Inlin
           ))}
           {/* New lines (additions) */}
           {highlightedNew.map((tokens, i) => (
-            <div key={`new-${i}`} className="flex" style={{ background: 'rgba(46, 160, 67, 0.12)' }}>
-              <span className="select-none w-8 flex-shrink-0 text-center text-xs text-green-400/60" style={{ lineHeight: '1.5em' }}>
+            <div key={`new-${i}`} className="flex bg-success/10">
+              <span className="select-none w-8 flex-shrink-0 text-center text-xs text-success/60" style={{ lineHeight: '1.5em' }}>
                 +
               </span>
               <span className="select-none w-12 flex-shrink-0 text-right pr-4 text-xs text-fg-muted/40" style={{ lineHeight: '1.5em' }}>

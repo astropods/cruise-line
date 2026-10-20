@@ -1,45 +1,32 @@
-import { useEffect, useState } from 'react';
-import {
-  fetchCliTokens,
-  revokeCliTokenApi,
-  type CliTokenRecord,
-} from '../../api';
+import { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { fetchCliTokens, queryKeys, revokeCliTokenApi, type CliTokenRecord } from '../../api';
+import { formatAgoPhrase } from '../../lib/time';
 
 /**
  * User's active CLI tokens with revoke buttons. Rendered on the home page
  * for any signed-in user — replaces the previous embedded-in-settings home.
  */
 export function CliTokensSection() {
-  const [tokens, setTokens] = useState<CliTokenRecord[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const tokensQuery = useQuery({
+    queryKey: queryKeys.cliTokens,
+    queryFn: () => fetchCliTokens().then((r) => r.tokens),
+  });
+  const tokens = tokensQuery.data ?? null;
+  const [revokeError, setRevokeError] = useState<string | null>(null);
   const [revokingId, setRevokingId] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const { tokens } = await fetchCliTokens();
-        if (!cancelled) setTokens(tokens);
-      } catch (err) {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'Failed to load tokens');
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const error = revokeError ?? (tokensQuery.isError ? tokensQuery.error.message : null);
 
   async function revoke(id: string) {
     if (!confirm('Revoke this CLI token? Any device using it will lose access immediately.')) return;
     setRevokingId(id);
-    setError(null);
+    setRevokeError(null);
     try {
       await revokeCliTokenApi(id);
-      setTokens((prev) => (prev ? prev.filter((t) => t.id !== id) : prev));
+      queryClient.setQueryData<CliTokenRecord[]>(queryKeys.cliTokens, (prev) => prev?.filter((t) => t.id !== id));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to revoke');
+      setRevokeError(err instanceof Error ? err.message : 'Failed to revoke');
     } finally {
       setRevokingId(null);
     }
@@ -66,7 +53,7 @@ export function CliTokensSection() {
       </p>
 
       {error && (
-        <div className="mb-3 p-3 rounded-lg bg-red-900/20 border border-red-700/50 text-red-400 text-sm">
+        <div role="alert" className="mb-3 p-3 rounded-lg bg-danger/10 border border-danger/40 text-danger-fg text-sm">
           {error}
         </div>
       )}
@@ -92,9 +79,9 @@ export function CliTokensSection() {
                   {t.tokenPrefix}…
                 </div>
                 <div className="text-xs text-fg-muted">
-                  Created {formatRelative(t.createdAt)}
+                  Created {formatAgoPhrase(t.createdAt)}
                   {t.lastUsedAt
-                    ? ` · Last used ${formatRelative(t.lastUsedAt)}`
+                    ? ` · Last used ${formatAgoPhrase(t.lastUsedAt)}`
                     : ' · Never used'}
                   {` · Expires ${new Date(t.expiresAt).toLocaleDateString()}`}
                 </div>
@@ -102,7 +89,7 @@ export function CliTokensSection() {
               <button
                 onClick={() => revoke(t.id)}
                 disabled={revokingId !== null}
-                className="text-xs px-3 py-1.5 rounded-md border border-line text-fg-muted hover:text-red-400 hover:border-red-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                className="text-xs px-3 py-1.5 rounded-md border border-line text-fg-muted hover:text-danger-fg hover:border-danger/40 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 {revokingId === t.id ? 'Revoking…' : 'Revoke'}
               </button>
@@ -112,17 +99,4 @@ export function CliTokensSection() {
       )}
     </div>
   );
-}
-
-function formatRelative(iso: string): string {
-  const then = new Date(iso).getTime();
-  const diffMs = Date.now() - then;
-  const diffMin = Math.floor(diffMs / 60_000);
-  if (diffMin < 1) return 'just now';
-  if (diffMin < 60) return `${diffMin}m ago`;
-  const diffHr = Math.floor(diffMin / 60);
-  if (diffHr < 24) return `${diffHr}h ago`;
-  const diffDay = Math.floor(diffHr / 24);
-  if (diffDay < 30) return `${diffDay}d ago`;
-  return new Date(iso).toLocaleDateString();
 }

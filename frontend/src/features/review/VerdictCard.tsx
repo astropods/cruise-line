@@ -1,9 +1,8 @@
 import type { Verdict } from '../../api';
-import { Md } from './content/Md';
+import { Md, StatusIcon, TONE_CLASSES } from '../../ui';
 import { verdictView } from '../../domain/prStatus';
 import { summarizeCounts, type SeverityCounts } from '../../domain/severity';
 import { cx } from '../../lib/cx';
-import { StatusIcon, TONE_CLASSES } from '../../ui';
 
 interface VerdictCardProps {
   verdict: Verdict;

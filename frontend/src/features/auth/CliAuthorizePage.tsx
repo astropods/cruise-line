@@ -90,7 +90,7 @@ export function CliAuthorizePage() {
         )}
 
         {state.kind === 'error' && (
-          <div className="rounded-lg bg-red-500/10 border border-red-500/30 p-4 text-sm text-red-400">
+          <div className="rounded-lg bg-danger/10 border border-danger/40 p-4 text-sm text-danger-fg">
             {state.message}
           </div>
         )}
@@ -134,14 +134,14 @@ export function CliAuthorizePage() {
               <button
                 onClick={deny}
                 disabled={state.kind === 'approving'}
-                className="flex-1 px-4 py-2 rounded-lg border border-[var(--border-subtle)] text-fg hover:bg-canvas disabled:opacity-50"
+                className="flex-1 px-4 py-2 rounded-lg border border-line text-fg hover:bg-canvas disabled:opacity-50"
               >
                 Deny
               </button>
               <button
                 onClick={approve}
                 disabled={state.kind === 'approving'}
-                className="flex-1 px-4 py-2 rounded-lg bg-accent text-white hover:bg-accent-strong disabled:opacity-50"
+                className="flex-1 px-4 py-2 rounded-lg bg-accent-emphasis text-white hover:bg-accent-emphasis/85 disabled:opacity-50"
               >
                 {state.kind === 'approving' ? 'Approving…' : 'Approve'}
               </button>
