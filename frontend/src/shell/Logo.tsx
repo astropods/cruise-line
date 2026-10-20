@@ -1,14 +1,18 @@
-/** The Cruise Line mark: a hull over a wave */
-export function Logo({ size = 24 }: { size?: number }) {
+import { cx } from '../lib/cx';
+
+/** The Cruise Line mark: the blueprint's avatar, a cruise ship at sea */
+export function Logo({ size = 24, className }: { size?: number; className?: string }) {
   return (
-    <span
+    <img
+      src="/logo.jpg"
+      alt=""
       aria-hidden="true"
-      className="inline-flex flex-shrink-0 items-center justify-center rounded-md bg-accent"
-      style={{ width: size, height: size }}
-    >
-      <svg width={size * 0.58} height={size * 0.58} viewBox="0 0 16 16" fill="none" stroke="var(--color-canvas)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M2 10.5c2 1.5 4 1.5 6 0s4-1.5 6 0M3 7l5-4 5 4" />
-      </svg>
-    </span>
+      width={size}
+      height={size}
+      draggable={false}
+      // A small radius that grows a little with size: 3px at 24, 17px at 120
+      style={{ borderRadius: Math.max(3, Math.round(size * 0.14)) }}
+      className={cx('flex-shrink-0 select-none object-cover', className)}
+    />
   );
 }

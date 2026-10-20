@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { claimOwnership, type UserInfo } from '../../../api';
 import { Avatar, Button } from '../../../ui';
+import { Logo } from '../../../shell/Logo';
 
 /** A configured install with no owner yet: the first person to claim it becomes owner */
 export function ClaimOwnership({ user }: { user: UserInfo }) {
@@ -24,6 +25,7 @@ export function ClaimOwnership({ user }: { user: UserInfo }) {
     <div className="flex min-h-screen items-center justify-center bg-canvas p-8 text-fg">
       <div className="flex w-full max-w-md flex-col gap-5">
         <div>
+          <Logo size={40} className="mb-4" />
           <h1 className="mb-2 text-2xl font-semibold tracking-tight text-fg-strong">Claim ownership</h1>
           <p className="text-sm text-fg-muted">
             This Cruise Line install has no owner yet. The first person to claim it can manage settings and make other

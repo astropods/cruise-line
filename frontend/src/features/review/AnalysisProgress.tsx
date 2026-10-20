@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  Anchor, FileText, MagnifyingGlass, FolderOpen, Terminal,
+  FileText, MagnifyingGlass, FolderOpen, Terminal,
   PencilSimpleLine, CircleNotch, WarningCircle, ArrowsClockwise,
 } from '@phosphor-icons/react';
 import type { ProgressEntry } from '../../api';
 import type { Icon } from '@phosphor-icons/react';
 import { formatElapsed } from '../../lib/time';
 import { useElapsed } from '../../lib/useNow';
+import { Logo } from '../../shell/Logo';
 
 interface AnalysisProgressProps {
   status: string;
@@ -100,9 +101,7 @@ export function AnalysisProgress({ status, progress, startedAt, error, onRetry }
     <div className="flex items-center justify-center h-full p-8">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-accent/10 mb-4">
-            <Anchor size={24} weight="duotone" className="text-accent" />
-          </div>
+          <Logo size={48} className="mx-auto mb-4" />
           <h1 className="text-lg font-semibold text-fg-strong mb-1">
             {isFailed ? 'Review failed' : 'Reviewing this PR'}
           </h1>
