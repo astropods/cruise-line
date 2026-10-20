@@ -6,10 +6,10 @@ import {
   type Icon,
 } from '@phosphor-icons/react';
 import { RichContent } from './RichContent';
-import { useSlideout } from '../contexts/SlideoutContext';
-import { useCommentsContext } from '../contexts/CommentsContext';
-import { extractCommentTargetFromBody, stripDirectives } from '../lib/findingUtils';
-import type { FileContent, Severity, FindingCategory } from '../api';
+import { useSlideout } from './SlideoutContext';
+import { useCommentsContext } from '../../comments/CommentsContext';
+import { extractCommentTargetFromBody, stripDirectives } from './findingUtils';
+import type { FileContent, Severity, FindingCategory } from '../../../api';
 
 interface InlineFindingProps {
   title: string;

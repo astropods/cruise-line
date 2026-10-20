@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
-import { logout, type SetupStatus, type UserInfo } from '../api';
-import { useCurrentUser, useSetupStatus } from '../app/session';
-import { CliTokensSection } from '../components/CliTokensSection';
+import { logout, type SetupStatus, type UserInfo } from '../../api';
+import { useCurrentUser, useSetupStatus } from '../../app/session';
+import { CliTokensSection } from './CliTokensSection';
 
 /**
  * Public landing page. Serves as the entry point for anyone downloading the

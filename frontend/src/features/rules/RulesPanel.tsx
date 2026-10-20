@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Plus, Trash, X, ListNumbers, PencilSimple, Check } from '@phosphor-icons/react';
-import { fetchRules, addRuleApi, deleteRuleApi, updateRuleApi, type ReviewRule } from '../api';
+import { fetchRules, addRuleApi, deleteRuleApi, updateRuleApi, type ReviewRule } from '../../api';
 
 interface RulesPanelProps {
   owner: string;

@@ -1,8 +1,8 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import { PencilSimpleLine, ChatText } from '@phosphor-icons/react';
-import type { FileContent } from '../api';
-import { useSlideout } from '../contexts/SlideoutContext';
-import { useCommentsContext } from '../contexts/CommentsContext';
+import type { FileContent } from '../../../api';
+import { useSlideout } from './SlideoutContext';
+import { useCommentsContext } from '../../comments/CommentsContext';
 
 interface InlineSuggestionProps {
   file: string;

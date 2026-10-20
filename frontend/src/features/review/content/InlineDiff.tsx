@@ -2,9 +2,9 @@ import { useMemo, useCallback } from 'react';
 import { parseDiff, Diff, Hunk, tokenize, markEdits } from 'react-diff-view';
 import refractor from 'refractor';
 import { ChatText } from '@phosphor-icons/react';
-import type { FileContent } from '../api';
-import { useSlideout } from '../contexts/SlideoutContext';
-import { useCommentsContext } from '../contexts/CommentsContext';
+import type { FileContent } from '../../../api';
+import { useSlideout } from './SlideoutContext';
+import { useCommentsContext } from '../../comments/CommentsContext';
 import 'react-diff-view/style/index.css';
 
 const REFRACTOR_LANG_MAP: Record<string, string> = {

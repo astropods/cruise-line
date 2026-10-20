@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { Md } from './Md';
-import { parseDirectives, processInlineFileRefs, processRuleRefs } from '../lib/parseDirectives';
-import { resolveFilePath } from '../lib/resolvePath';
+import { parseDirectives, processInlineFileRefs, processRuleRefs } from './parseDirectives';
+import { resolveFilePath } from './resolvePath';
 import { InlineDiff } from './InlineDiff';
 import { InlineCode } from './InlineCode';
 import { InlineSuggestion } from './InlineSuggestion';
@@ -9,7 +9,7 @@ import { LazyFileEmbed } from './LazyFileEmbed';
 import { InlineFinding } from './InlineFinding';
 import { FilePill } from './FilePill';
 import { Callout } from './Callout';
-import type { FileContent } from '../api';
+import type { FileContent } from '../../../api';
 
 export interface RuleRef {
   ruleNumber: number;

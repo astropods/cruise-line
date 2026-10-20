@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { chatRunEventsUrl, fetchChatSession, resetChatSession, sendChatMessage } from '../api';
+import { chatRunEventsUrl, fetchChatSession, resetChatSession, sendChatMessage } from '../../api';
 
 export interface ChatEntry {
   type: 'user' | 'text' | 'tool_call' | 'tool_result' | 'error';

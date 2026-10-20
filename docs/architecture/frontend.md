@@ -8,23 +8,31 @@ designs live in the "Cruise Line" Paper file.
 
 ```
 frontend/src/
-  app/          App, routes, providers (query client, auth)
+  main.tsx      Mounts the app with the query client
+  app/          App (routes), gates (sign-in, setup), session queries, NotFoundPage
   ui/           Visual building blocks. No data fetching, no domain types.
-                Button, IconButton, SegmentedControl, Pill, Avatar, Card, Spinner, …
-  shell/        AppShell (sidebar + outlet), Sidebar, AccountMenu
+                Avatar, Button, Card, EmptyState, IconButton, Kbd, Menu, PageSpinner,
+                Pill, Popover, ProgressBar, SegmentedControl, Spinner, StatusIcon
+  shell/        AppShell (sidebar + outlet), Sidebar, AccountMenu, Logo
   features/
-    inbox/      Sidebar PR list: tabs, rows, list query
-    review/     PR page: PrBar, VerdictCard, FindingCard, content/ renderers
+    inbox/      Sidebar PR list: tabs, rows, model, list query
+    review/     ReviewPage, PrBar, BarStatePill, VerdictCard, FindingCard, queries;
+                content/ renders review bodies (RichContent, diffs, suggestions,
+                the file slideout) and parses their directives
     architecture/
-    chat/
-    comments/
-    settings/   SettingsLayout + one folder per section
-    auth/
+    chat/       ChatPanel, ChatInputBar, useChat
+    comments/   Inline PR comments and their context
+    rules/      RulesPanel
+    settings/   SettingsEntry (setup, claim), SettingsLayout, sections/, onboarding/
+    auth/       Login, CLI consent, dev auth handoff
+    home/       Public home page and CLI tokens
   domain/       Pure TypeScript, no React. Tested with `bun test`.
                 prStatus.ts  run state + PR state + verdict → tone, icon, label
                 severity.ts  severity order, tone, label, counts
-  api/          client.ts (apiFetch, ApiError) + one module per area
-  lib/          Generic helpers (cx, time formatting)
+  api/          client.ts (apiFetch, ApiError), one module per area, queryKeys;
+                types.ts re-exports the review types from agent/analysis/types.ts
+  lib/          Generic helpers (cx, time, useNow, scopePath)
+  dev/          The /__ui component sheet (dev builds only)
 ```
 
 ## Rules
@@ -81,7 +89,8 @@ directly.
 3. Shell + inbox sidebar; `/reviews` and the old top bar go away.
 4. Review page: PR bar with states, verdict card, finding cards.
 5. Settings inside the shell, split into sections.
-6. Cleanup: dead components, types shared with `agent/`.
+6. Cleanup: types shared with `agent/`, every API call in `api/`, theme
+   tokens everywhere, legacy folders folded into `features/`.
 
 Each phase ships on its own and is checked in mock mode
 (`bun run dev:mock`).

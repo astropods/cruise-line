@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { ArrowsClockwise, GitMerge, GitPullRequest, XCircle } from '@phosphor-icons/react';
 import type { ProgressEntry } from '../../api';
-import { ActivityFeed } from '../../components/AnalysisProgress';
+import { ActivityFeed } from './AnalysisProgress';
 import type { BarState } from '../../domain/prStatus';
 import { cx } from '../../lib/cx';
 import { formatAgoPhrase, formatElapsed } from '../../lib/time';

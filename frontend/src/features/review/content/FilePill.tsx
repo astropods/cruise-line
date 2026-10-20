@@ -1,4 +1,4 @@
-import { useSlideout } from '../contexts/SlideoutContext';
+import { useSlideout } from './SlideoutContext';
 
 interface FilePillProps {
   file: string;

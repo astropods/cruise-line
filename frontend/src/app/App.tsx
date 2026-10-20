@@ -1,20 +1,20 @@
 import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useParams } from 'react-router';
-import { AuthGate, SetupGate } from './app/gates';
-import { InboxHome } from './features/inbox/InboxHome';
-import { AppShell } from './shell/AppShell';
-import { ReviewPage } from './features/review/ReviewPage';
-import { SettingsEntry } from './features/settings/SettingsEntry';
-import { SettingsLayout } from './features/settings/SettingsLayout';
-import { AuthCompletePage } from './pages/AuthCompletePage';
-import { LoginPage } from './pages/LoginPage';
-import { NotFoundPage } from './pages/NotFoundPage';
-import { CliAuthorizePage } from './pages/CliAuthorizePage';
-import { HomePage } from './pages/HomePage';
+import { AuthGate, SetupGate } from './gates';
+import { InboxHome } from '../features/inbox/InboxHome';
+import { AppShell } from '../shell/AppShell';
+import { ReviewPage } from '../features/review/ReviewPage';
+import { SettingsEntry } from '../features/settings/SettingsEntry';
+import { SettingsLayout } from '../features/settings/SettingsLayout';
+import { AuthCompletePage } from '../features/auth/AuthCompletePage';
+import { LoginPage } from '../features/auth/LoginPage';
+import { NotFoundPage } from './NotFoundPage';
+import { CliAuthorizePage } from '../features/auth/CliAuthorizePage';
+import { HomePage } from '../features/home/HomePage';
 
 // Dev-only component sheet; the import is dropped from production builds
 const UiGallery = import.meta.env.DEV
-  ? lazy(() => import('./dev/UiGallery').then((m) => ({ default: m.UiGallery })))
+  ? lazy(() => import('../dev/UiGallery').then((m) => ({ default: m.UiGallery })))
   : null;
 
 // Keyed by PR (not view) so moving between PRs remounts the page instead of

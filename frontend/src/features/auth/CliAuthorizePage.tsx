@@ -5,7 +5,7 @@ import {
   fetchCliAuthorizeInfo,
   type CliAuthorizeInfo as AuthorizeInfo,
   type CliAuthorizeParams,
-} from '../api';
+} from '../../api';
 
 type State =
   | { kind: 'loading' }

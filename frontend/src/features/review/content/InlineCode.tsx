@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from 'react';
-import type { FileContent } from '../api';
-import { useSlideout } from '../contexts/SlideoutContext';
+import type { FileContent } from '../../../api';
+import { useSlideout } from './SlideoutContext';
 
 interface InlineCodeProps {
   file: string;

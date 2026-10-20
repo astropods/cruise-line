@@ -3,19 +3,19 @@ import { useLocation, useNavigate, useParams } from 'react-router';
 import { WarningCircle } from '@phosphor-icons/react';
 import { fetchRules } from '../../api';
 import { useCurrentUser } from '../../app/session';
-import { AnalysisProgress } from '../../components/AnalysisProgress';
-import { ArchitecturePanel } from '../../components/ArchitecturePanel';
-import { ChatInputBar } from '../../components/ChatInputBar';
-import { ChatPanel } from '../../components/ChatPanel';
-import { FileSlideout } from '../../components/FileSlideout';
-import { Md } from '../../components/Md';
-import type { RuleRef } from '../../components/RichContent';
-import { RulesPanel } from '../../components/RulesPanel';
-import { CommentsProvider } from '../../contexts/CommentsContext';
-import { SlideoutProvider } from '../../contexts/SlideoutContext';
+import { AnalysisProgress } from './AnalysisProgress';
+import { ArchitecturePanel } from '../architecture/ArchitecturePanel';
+import { ChatInputBar } from '../chat/ChatInputBar';
+import { ChatPanel } from '../chat/ChatPanel';
+import { FileSlideout } from './content/FileSlideout';
+import { Md } from './content/Md';
+import type { RuleRef } from './content/RichContent';
+import { RulesPanel } from '../rules/RulesPanel';
+import { CommentsProvider } from '../comments/CommentsContext';
+import { SlideoutProvider } from './content/SlideoutContext';
 import { barState } from '../../domain/prStatus';
 import { countBySeverity, sortBySeverity } from '../../domain/severity';
-import { useWalkthrough } from '../../hooks/useWalkthrough';
+import { useReview } from './useReview';
 import { PageSpinner } from '../../ui';
 import { FindingCard } from './FindingCard';
 import { PrBar } from './PrBar';
@@ -36,7 +36,7 @@ export function ReviewPage() {
   const {
     walkthrough, status, error, isStale, commitsSinceReview, progress,
     githubUrl, startedAt, prInfo, currentHeadSha, generate,
-  } = useWalkthrough(owner, repo, prNumber);
+  } = useReview(owner, repo, prNumber);
 
   const [chatInitialMessage, setChatInitialMessage] = useState<string | undefined>();
   const [showRules, setShowRules] = useState(false);

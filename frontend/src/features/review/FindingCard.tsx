@@ -4,7 +4,7 @@ import {
   type Icon,
 } from '@phosphor-icons/react';
 import type { FileContent, Finding, FindingCategory } from '../../api';
-import { RichContent, type RuleRef } from '../../components/RichContent';
+import { RichContent, type RuleRef } from './content/RichContent';
 import { isBlocking, severityLabel, severityTone } from '../../domain/severity';
 import { cx } from '../../lib/cx';
 import { Button, Card, CardBody, CardFooter, CardHeader, IconButton, Pill } from '../../ui';

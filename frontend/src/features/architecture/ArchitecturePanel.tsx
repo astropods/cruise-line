@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Check, Copy } from '@phosphor-icons/react';
-import { Md } from './Md';
-import type { ArchitectureAnalysis, ArchitectureDiagram } from '../api';
+import { Md } from '../review/content/Md';
+import type { ArchitectureAnalysis, ArchitectureDiagram } from '../../api';
 
 interface ArchitecturePanelProps {
   architecture?: ArchitectureAnalysis;

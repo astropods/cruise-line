@@ -3,7 +3,7 @@ import {
   fetchCliTokens,
   revokeCliTokenApi,
   type CliTokenRecord,
-} from '../api';
+} from '../../api';
 
 /**
  * User's active CLI tokens with revoke buttons. Rendered on the home page

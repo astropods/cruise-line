@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { fetchComments, postComment, replyToComment, type PRComment } from '../api';
+import { fetchComments, postComment, replyToComment, type PRComment } from '../../api';
 
 interface UseCommentsOptions {
   owner: string;

@@ -3,10 +3,10 @@ import {
   Anchor, FileText, MagnifyingGlass, FolderOpen, Terminal,
   PencilSimpleLine, CircleNotch, WarningCircle, ArrowsClockwise,
 } from '@phosphor-icons/react';
-import type { ProgressEntry } from '../api';
+import type { ProgressEntry } from '../../api';
 import type { Icon } from '@phosphor-icons/react';
-import { formatElapsed } from '../lib/time';
-import { useElapsed } from '../lib/useNow';
+import { formatElapsed } from '../../lib/time';
+import { useElapsed } from '../../lib/useNow';
 
 interface AnalysisProgressProps {
   status: string;

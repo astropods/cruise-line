@@ -1,7 +1,7 @@
-import { Md } from './Md';
-import { useCommentsContext } from '../contexts/CommentsContext';
+import { Md } from '../review/content/Md';
+import { useCommentsContext } from './CommentsContext';
 import { CommentInput } from './CommentInput';
-import type { PRComment } from '../api';
+import type { PRComment } from '../../api';
 
 interface InlineCommentProps {
   comment: PRComment;

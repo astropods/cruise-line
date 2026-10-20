@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router';
-import { fetchFileContent, type FileContent } from '../api';
-import { normalizePath } from '../lib/resolvePath';
+import { fetchFileContent, type FileContent } from '../../../api';
+import { normalizePath } from './resolvePath';
 import { InlineDiff } from './InlineDiff';
 import { InlineCode } from './InlineCode';
 import { InlineSuggestion } from './InlineSuggestion';

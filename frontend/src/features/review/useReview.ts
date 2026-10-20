@@ -1,8 +1,8 @@
 import { useCallback } from 'react';
-import type { PrDetails, ProgressEntry, RunStatus, Walkthrough } from '../api';
-import { isRunning } from '../domain/prStatus';
-import { usePr, useReviewProgress } from '../features/review/usePr';
-import { useStartReview } from '../features/review/useStartReview';
+import type { PrDetails, ProgressEntry, RunStatus, Walkthrough } from '../../api';
+import { isRunning } from '../../domain/prStatus';
+import { usePr, useReviewProgress } from './usePr';
+import { useStartReview } from './useStartReview';
 
 interface WalkthroughState {
   /** The review to display — the latest one with content, even while a newer run is in flight */
@@ -28,10 +28,10 @@ interface WalkthroughState {
 }
 
 /**
- * The PR page's view of a review, built on the shared query cache (see
- * features/review). Kept as one hook until the page is rebuilt in phase 3.
+ * The PR page's view of a review: usePr, useReviewProgress, and
+ * useStartReview combined into what the page renders.
  */
-export function useWalkthrough(owner: string, repo: string, pr: number) {
+export function useReview(owner: string, repo: string, pr: number) {
   const prQuery = usePr(owner, repo, pr);
   const res = prQuery.data;
   const run = res?.walkthrough ?? null;

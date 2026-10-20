@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, type ReactNode } from 'react';
-import { useComments } from '../hooks/useComments';
-import type { PRComment } from '../api';
+import { useComments } from './useComments';
+import type { PRComment } from '../../api';
 
 export interface ActiveCommentLine {
   path: string;

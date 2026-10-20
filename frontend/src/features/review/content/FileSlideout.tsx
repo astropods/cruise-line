@@ -3,12 +3,12 @@ import { useParams } from 'react-router';
 import { motion, AnimatePresence } from 'framer-motion';
 import { parseDiff, Diff, Hunk, tokenize, markEdits } from 'react-diff-view';
 import refractor from 'refractor';
-import { useSlideout } from '../contexts/SlideoutContext';
-import { useCommentsContext } from '../contexts/CommentsContext';
-import { InlineComment } from './InlineComment';
-import { CommentInput } from './CommentInput';
-import { resolveFilePath } from '../lib/resolvePath';
-import { fetchFileContent, type FileContent } from '../api';
+import { useSlideout } from './SlideoutContext';
+import { useCommentsContext } from '../../comments/CommentsContext';
+import { InlineComment } from '../../comments/InlineComment';
+import { CommentInput } from '../../comments/CommentInput';
+import { resolveFilePath } from './resolvePath';
+import { fetchFileContent, type FileContent } from '../../../api';
 import 'react-diff-view/style/index.css';
 
 const REFRACTOR_LANG_MAP: Record<string, string> = {

@@ -3,9 +3,9 @@ import {
   PaperPlaneRight, Plus, GitPullRequest, ShieldCheck, TreeStructure, Lightning, Anchor,
   FileText, MagnifyingGlass, FolderOpen, Terminal, PencilSimple, FileArrowUp, type Icon,
 } from '@phosphor-icons/react';
-import { RichContent } from './RichContent';
-import { useChat, type ChatEntry } from '../hooks/useChat';
-import type { FileContent } from '../api';
+import { RichContent } from '../review/content/RichContent';
+import { useChat, type ChatEntry } from './useChat';
+import type { FileContent } from '../../api';
 
 interface ChatPanelProps {
   owner: string;
