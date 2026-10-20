@@ -1,14 +1,7 @@
-import { describe, it, expect, mock } from 'bun:test';
-import path from 'path';
-
-// db/client evaluates postgres(config.db.url) at import; stub so it loads.
-mock.module(path.resolve(import.meta.dir, './config.ts'), () => ({
-  config: {
-    db: { url: 'postgres://mock@localhost:5432/mock' },
-  },
-}));
-
-const { replaceNul } = await import('./db/walkthroughs.js');
+import { describe, it, expect } from 'bun:test';
+// Imported from its own module: auth.test.ts mocks db/walkthroughs.ts for
+// the whole test process, which would hide the real function.
+import { replaceNul } from './db/replace-nul.js';
 
 describe('replaceNul', () => {
   it('replaces raw NUL bytes in nested patch strings', () => {
