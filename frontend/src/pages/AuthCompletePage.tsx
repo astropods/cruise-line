@@ -11,7 +11,9 @@ export function AuthCompletePage() {
 
   useEffect(() => {
     const token = searchParams.get('token');
-    const returnTo = searchParams.get('return_to') ?? '/';
+    // Same rule as the server: only paths on this site
+    const raw = searchParams.get('return_to') ?? '/';
+    const returnTo = raw.startsWith('/') && !raw.startsWith('//') && !raw.startsWith('/\\') ? raw : '/';
 
     if (token) {
       document.cookie = `cruise_session=${token}; path=/; max-age=${7 * 24 * 3600}; samesite=lax`;
