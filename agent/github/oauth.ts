@@ -1,30 +1,6 @@
-import { SignJWT, jwtVerify, importJWK } from 'jose';
 import { config } from '../config.js';
 
-const ALGORITHM = 'HS256';
-
-async function getSecretKey() {
-  const encoder = new TextEncoder();
-  return await importJWK(
-    { kty: 'oct', k: Buffer.from(encoder.encode(config.session.secret)).toString('base64url') },
-    ALGORITHM,
-  );
-}
-
-export interface SessionPayload {
-  githubToken: string;
-  /** GitHub refresh token for renewing expired user tokens */
-  refreshToken?: string;
-  /** Epoch seconds when the GitHub token expires */
-  githubTokenExpiresAt?: number;
-  userId: number;
-  login: string;
-  avatarUrl: string;
-  /** JWT ID — used for session revocation */
-  jti?: string;
-  /** JWT expiration (epoch seconds) */
-  exp?: number;
-}
+export { createSessionToken, verifySessionToken, signStateToken, verifyStateToken, type SessionPayload } from './tokens.js';
 
 /**
  * Build the GitHub OAuth authorization URL.
@@ -134,20 +110,6 @@ export async function getGitHubUser(
 }
 
 /**
- * Create a signed session JWT cookie value.
- * Includes a JTI claim for revocation support.
- */
-export async function createSessionToken(payload: Omit<SessionPayload, 'jti' | 'exp'>): Promise<string> {
-  const key = await getSecretKey();
-  const jti = crypto.randomUUID();
-  return new SignJWT({ ...payload, jti } as unknown as Record<string, unknown>)
-    .setProtectedHeader({ alg: ALGORITHM })
-    .setIssuedAt()
-    .setExpirationTime('7d')
-    .sign(key);
-}
-
-/**
  * Set (or clear) the session cookie on a Hono response context.
  */
 export function setSessionCookie(c: { header: (name: string, value: string) => void }, token: string): void {
@@ -158,15 +120,3 @@ export function setSessionCookie(c: { header: (name: string, value: string) => v
   );
 }
 
-/**
- * Verify and decode a session JWT.
- */
-export async function verifySessionToken(token: string): Promise<SessionPayload | null> {
-  try {
-    const key = await getSecretKey();
-    const { payload } = await jwtVerify(token, key);
-    return payload as unknown as SessionPayload;
-  } catch {
-    return null;
-  }
-}

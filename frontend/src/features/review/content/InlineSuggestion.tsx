@@ -1,7 +1,8 @@
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useMemo, useCallback } from 'react';
 import { PencilSimpleLine, ChatText } from '@phosphor-icons/react';
 import type { FileContent } from '../../../api';
 import { useSlideout } from './SlideoutContext';
+import { CodeLine, useHighlightedLines } from './useHighlightedLines';
 import { useCommentsContext } from '../../comments/CommentsContext';
 
 interface InlineSuggestionProps {
@@ -15,8 +16,6 @@ interface InlineSuggestionProps {
 export function InlineSuggestion({ file, lines, suggestion, fileContent }: InlineSuggestionProps) {
   const { openFile, githubFileUrl } = useSlideout();
   const { setActiveCommentLine } = useCommentsContext();
-  const [highlightedOld, setHighlightedOld] = useState<string[]>([]);
-  const [highlightedNew, setHighlightedNew] = useState<string[]>([]);
 
   const content = fileContent?.after ?? '';
   const language = fileContent?.language ?? 'text';
@@ -28,41 +27,8 @@ export function InlineSuggestion({ file, lines, suggestion, fileContent }: Inlin
   const oldLines = allLines.slice(startLine - 1, endLine);
   const newLines = useMemo(() => suggestion.split('\n'), [suggestion]);
 
-  useEffect(() => {
-    let cancelled = false;
-    async function highlight() {
-      const { codeToTokens } = await import('shiki');
-      const renderTokens = (tokens: any) =>
-        tokens.map((lineTokens: any[]) =>
-          lineTokens.map((token: any) => {
-            const isValidColor = token.color && /^#[0-9a-fA-F]{3,8}$/.test(token.color);
-            const style = isValidColor ? ` style="color:${token.color}"` : '';
-            const escaped = token.content
-              .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-            return `<span${style}>${escaped}</span>`;
-          }).join('')
-        );
-
-      try {
-        const [oldResult, newResult] = await Promise.all([
-          codeToTokens(oldLines.join('\n'), { lang: language as any, theme: 'github-dark' }),
-          codeToTokens(newLines.join('\n'), { lang: language as any, theme: 'github-dark' }),
-        ]);
-        if (cancelled) return;
-        setHighlightedOld(renderTokens(oldResult.tokens));
-        setHighlightedNew(renderTokens(newResult.tokens));
-      } catch {
-        if (!cancelled) {
-          const escape = (l: string) =>
-            `<span>${l.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</span>`;
-          setHighlightedOld(oldLines.map(escape));
-          setHighlightedNew(newLines.map(escape));
-        }
-      }
-    }
-    highlight();
-    return () => { cancelled = true; };
-  }, [oldLines.join('\n'), newLines.join('\n'), language]);
+  const highlightedOld = useHighlightedLines(oldLines, language);
+  const highlightedNew = useHighlightedLines(newLines, language);
 
   const handleCommentSuggestion = useCallback(() => {
     if (!lines) return;
@@ -117,7 +83,7 @@ export function InlineSuggestion({ file, lines, suggestion, fileContent }: Inlin
       <div className="max-h-[500px] overflow-auto bg-surface">
         <pre className="text-[13px] leading-[1.5] font-mono m-0">
           {/* Old lines (deletions) */}
-          {(highlightedOld.length > 0 ? highlightedOld : oldLines).map((lineHtml, i) => (
+          {highlightedOld.map((tokens, i) => (
             <div key={`old-${i}`} className="flex" style={{ background: 'rgba(248, 81, 73, 0.10)' }}>
               <span className="select-none w-8 flex-shrink-0 text-center text-xs text-red-400/60" style={{ lineHeight: '1.5em' }}>
                 -
@@ -125,14 +91,11 @@ export function InlineSuggestion({ file, lines, suggestion, fileContent }: Inlin
               <span className="select-none w-12 flex-shrink-0 text-right pr-4 text-xs text-fg-muted/40" style={{ lineHeight: '1.5em' }}>
                 {startLine + i}
               </span>
-              <span
-                className="flex-1 px-4 whitespace-pre-wrap break-all"
-                dangerouslySetInnerHTML={{ __html: typeof lineHtml === 'string' ? lineHtml : '' }}
-              />
+              <CodeLine tokens={tokens} />
             </div>
           ))}
           {/* New lines (additions) */}
-          {(highlightedNew.length > 0 ? highlightedNew : newLines).map((lineHtml, i) => (
+          {highlightedNew.map((tokens, i) => (
             <div key={`new-${i}`} className="flex" style={{ background: 'rgba(46, 160, 67, 0.12)' }}>
               <span className="select-none w-8 flex-shrink-0 text-center text-xs text-green-400/60" style={{ lineHeight: '1.5em' }}>
                 +
@@ -140,10 +103,7 @@ export function InlineSuggestion({ file, lines, suggestion, fileContent }: Inlin
               <span className="select-none w-12 flex-shrink-0 text-right pr-4 text-xs text-fg-muted/40" style={{ lineHeight: '1.5em' }}>
                 {startLine + i}
               </span>
-              <span
-                className="flex-1 px-4 whitespace-pre-wrap break-all"
-                dangerouslySetInnerHTML={{ __html: typeof lineHtml === 'string' ? lineHtml : '' }}
-              />
+              <CodeLine tokens={tokens} />
             </div>
           ))}
         </pre>

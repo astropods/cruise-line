@@ -20,11 +20,14 @@ import {
   getTelemetryStatus,
   runTelemetryTest,
 } from './telemetry.js';
+import type { HookCallback } from '@astropods/adapter-claude-agent-sdk';
 import Anthropic from '@anthropic-ai/sdk';
 import { existsSync } from 'fs';
-import { readFile } from 'fs/promises';
 import { symlink, readlink, lstat, mkdir, rm } from 'fs/promises';
-import { join, resolve } from 'path';
+import { join, relative, resolve } from 'path';
+import {
+  gitAuthEnv, readRepoFile, redactCredentials, repoDirFor, repoFilePath, splitCloneUrl, toolStaysInRepo,
+} from './paths.js';
 
 const app = new Hono();
 
@@ -32,27 +35,19 @@ const DATA_ROOT = resolve(process.env.DATA_ROOT ?? '/data');
 const REPOS_ROOT = join(DATA_ROOT, 'repos');
 const SESSIONS_ROOT = join(DATA_ROOT, 'sessions');
 const PORT = Number(process.env.PORT ?? 3000);
+// Set in dev so only this machine can reach the sandbox
+const HOSTNAME = process.env.HOST ?? '0.0.0.0';
+// When set, every request but /health must carry it. The agent sends it from
+// its own SANDBOX_TOKEN.
+const SANDBOX_TOKEN = process.env.SANDBOX_TOKEN;
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Validate that a repo path is within our repos directory */
-function validateRepoPath(repoPath: string): boolean {
-  const normalized = resolve(repoPath);
-  return normalized.startsWith(REPOS_ROOT);
-}
-
-/** Resolve a relative-or-absolute repo path to an absolute path under REPOS_ROOT */
-function resolveRepoPath(repoPath: string): string {
-  if (repoPath.startsWith('/')) return repoPath;
-  return join(REPOS_ROOT, repoPath);
-}
-
 /** Derive session dir from repo path: /data/repos/a/b/1 → /data/sessions/a/b/1 */
-function sessionDirFromRepoPath(repoPath: string): string {
-  const relative = repoPath.slice(REPOS_ROOT.length); // /a/b/1
-  return join(SESSIONS_ROOT, relative);
+function sessionDirFromRepoPath(repoDir: string): string {
+  return join(SESSIONS_ROOT, relative(REPOS_ROOT, repoDir));
 }
 
 /** Ensure .claude/ symlink in repo points to session dir */
@@ -81,8 +76,12 @@ async function resetRepo(repoDir: string): Promise<void> {
 }
 
 /** Run a shell command and return stdout/stderr/ok */
-async function exec(cmd: string[], cwd?: string): Promise<{ ok: boolean; stdout: string; stderr: string }> {
-  const proc = Bun.spawn(cmd, { cwd, stdout: 'pipe', stderr: 'pipe' });
+async function exec(
+  cmd: string[],
+  cwd?: string,
+  env?: Record<string, string>,
+): Promise<{ ok: boolean; stdout: string; stderr: string }> {
+  const proc = Bun.spawn(cmd, { cwd, env: env && { ...process.env, ...env }, stdout: 'pipe', stderr: 'pipe' });
   const exitCode = await proc.exited;
   const stdout = await new Response(proc.stdout).text();
   const stderr = await new Response(proc.stderr).text();
@@ -107,12 +106,13 @@ async function getCurrentSha(dir: string): Promise<string | null> {
 async function fetchPrAndCheckout(
   repoDir: string,
   headSha: string,
-  prNumber?: number,
+  prNumber: number | undefined,
+  auth: Record<string, string>,
 ): Promise<{ ok: boolean; error?: string }> {
   const fetchArgs = prNumber
     ? ['git', 'fetch', 'origin', '--depth=50', `+refs/pull/${prNumber}/head:refs/remotes/origin/pr-head`]
     : ['git', 'fetch', 'origin', '--depth=50'];
-  const fetchResult = await exec(fetchArgs, repoDir);
+  const fetchResult = await exec(fetchArgs, repoDir, auth);
   if (!fetchResult.ok) {
     return { ok: false, error: `fetch failed: ${fetchResult.stderr}` };
   }
@@ -123,23 +123,55 @@ async function fetchPrAndCheckout(
   return { ok: true };
 }
 
-// Per-PR mutex to prevent concurrent clone operations
+// Per-PR queue so clone operations on one checkout run one at a time
 const cloneLocks = new Map<string, Promise<void>>();
 
 async function withCloneLock<T>(repoDir: string, fn: () => Promise<T>): Promise<T> {
-  const existing = cloneLocks.get(repoDir);
-  if (existing) await existing;
-
-  let resolveLock: () => void;
-  const lock = new Promise<void>((r) => { resolveLock = r; });
-  cloneLocks.set(repoDir, lock);
-
+  // Each caller waits on the one before it, so three callers can't wake together
+  const run = (cloneLocks.get(repoDir) ?? Promise.resolve()).then(fn);
+  const tail = run.then(() => {}, () => {});
+  cloneLocks.set(repoDir, tail);
   try {
-    return await fn();
+    return await run;
   } finally {
-    cloneLocks.delete(repoDir);
-    resolveLock!();
+    if (cloneLocks.get(repoDir) === tail) cloneLocks.delete(repoDir);
   }
+}
+
+/** Clone into an empty repoDir and check out the PR head */
+async function freshClone(
+  repoDir: string,
+  url: string,
+  headSha: string,
+  prNumber: number | undefined,
+  auth: Record<string, string>,
+): Promise<void> {
+  await rm(repoDir, { recursive: true, force: true });
+  await mkdir(repoDir, { recursive: true });
+  // Clone the base repo, then fetch the PR head ref (works for fork PRs
+  // where headRef branch only exists on the fork, not the base repo).
+  const cloneResult = await exec(['git', 'clone', '--depth=50', '--', url, '.'], repoDir, auth);
+  if (!cloneResult.ok) throw new Error(`git clone failed: ${cloneResult.stderr}`);
+  const checkout = await fetchPrAndCheckout(repoDir, headSha, prNumber, auth);
+  if (!checkout.ok) throw new Error(`Post-clone setup failed: ${checkout.error}`);
+}
+
+const READ_ONLY_TOOLS = ['Read', 'Glob', 'Grep'];
+
+/** PreToolUse hook that denies file tools pointed outside the checkout */
+function confineToRepo(repoDir: string): HookCallback {
+  return async (input) => {
+    if (input.hook_event_name !== 'PreToolUse') return {};
+    const allowed = await toolStaysInRepo(repoDir, input.tool_name, (input.tool_input ?? {}) as Record<string, unknown>);
+    if (allowed) return {};
+    return {
+      hookSpecificOutput: {
+        hookEventName: 'PreToolUse',
+        permissionDecision: 'deny',
+        permissionDecisionReason: 'Only files inside this repository can be read.',
+      },
+    };
+  };
 }
 
 /** Extract human-readable detail from tool input */
@@ -180,6 +212,15 @@ function detectLanguage(filePath: string): string {
 // ---------------------------------------------------------------------------
 
 app.get('/health', (c) => c.json({ ok: true }));
+
+if (SANDBOX_TOKEN) {
+  app.use('*', async (c, next) => {
+    if (c.req.header('x-sandbox-token') !== SANDBOX_TOKEN) return c.json({ error: 'Unauthorized' }, 401);
+    await next();
+  });
+} else {
+  console.warn('SANDBOX_TOKEN is not set; the sandbox accepts requests from anyone who can reach it');
+}
 
 // ---------------------------------------------------------------------------
 // GET /models — Models this API key can use, for the admin model picker.
@@ -236,65 +277,48 @@ app.post('/telemetry-test', async (c) => {
 // ---------------------------------------------------------------------------
 
 app.post('/ensure-clone', async (c) => {
-  const { cloneUrl, repoPath, headSha, headRef, prNumber, baseRef } = await c.req.json<{
+  const { cloneUrl, repoPath, headSha, headRef, prNumber, baseRef, token } = await c.req.json<{
+    /** https URL of the base repo; credentials go in `token`, not the URL */
     cloneUrl: string;
     repoPath: string;
     headSha: string;
     headRef: string;
     prNumber?: number;
     baseRef?: string;
+    token?: string;
   }>();
 
   if (!cloneUrl || !repoPath || !headSha || !headRef) {
     return c.json({ error: 'cloneUrl, repoPath, headSha, and headRef are required' }, 400);
   }
 
-  const repoDir = resolveRepoPath(repoPath);
-  if (!validateRepoPath(repoDir)) {
-    return c.json({ error: 'Invalid repoPath' }, 403);
-  }
+  const remote = splitCloneUrl(cloneUrl);
+  if (!remote) return c.json({ error: 'cloneUrl must be an https URL' }, 400);
+  const repoDir = repoDirFor(REPOS_ROOT, repoPath);
+  if (!repoDir) return c.json({ error: 'Invalid repoPath' }, 403);
+
+  // Older agents put the token in the URL; accept it there but never store it
+  const secret = token ?? remote.token;
+  const auth = gitAuthEnv(secret);
 
   try {
     await withCloneLock(repoDir, async () => {
-      // Check if clone exists at correct SHA
-      if (await isGitRepo(repoDir)) {
-        const currentSha = await getCurrentSha(repoDir);
-        if (currentSha === headSha) {
-          // Already at correct SHA — just ensure symlink
-          await ensureSymlink(repoDir, sessionDirFromRepoPath(repoDir));
-          return;
+      try {
+        if (await isGitRepo(repoDir)) {
+          // Clones made before tokens moved out of URLs still have one in .git/config
+          await exec(['git', 'remote', 'set-url', 'origin', remote.url], repoDir);
+          if ((await getCurrentSha(repoDir)) === headSha) return;
+          // Try to update — fetch PR ref (works for forks) with branch fallback
+          if ((await fetchPrAndCheckout(repoDir, headSha, prNumber, auth)).ok) return;
+          // Update failed — fall through to fresh clone
         }
-
-        // Try to update — fetch PR ref (works for forks) with branch fallback
-        const updateResult = await fetchPrAndCheckout(repoDir, headSha, prNumber);
-        if (updateResult.ok) {
-          await ensureSymlink(repoDir, sessionDirFromRepoPath(repoDir));
-          return;
-        }
-        // Update failed — fall through to fresh clone
+        await freshClone(repoDir, remote.url, headSha, prNumber, auth);
+      } catch {
+        // Self-heal: one more fresh clone, inside the lock so no one else is using the checkout
+        await freshClone(repoDir, remote.url, headSha, prNumber, auth);
+      } finally {
+        if (await isGitRepo(repoDir)) await ensureSymlink(repoDir, sessionDirFromRepoPath(repoDir));
       }
-
-      // Fresh clone
-      await mkdir(repoDir, { recursive: true });
-      await rm(repoDir, { recursive: true, force: true });
-      await mkdir(repoDir, { recursive: true });
-
-      // Clone the base repo, then fetch the PR head ref (works for fork PRs
-      // where headRef branch only exists on the fork, not the base repo).
-      const cloneResult = await exec(
-        ['git', 'clone', '--depth=50', cloneUrl, '.'],
-        repoDir,
-      );
-      if (!cloneResult.ok) {
-        throw new Error(`git clone failed: ${cloneResult.stderr}`);
-      }
-
-      // Fetch the PR head and checkout the target SHA
-      const freshResult = await fetchPrAndCheckout(repoDir, headSha, prNumber);
-      if (!freshResult.ok) {
-        throw new Error(`Post-clone setup failed: ${freshResult.error}`);
-      }
-      await ensureSymlink(repoDir, sessionDirFromRepoPath(repoDir));
     });
 
     // Fetch base branch and compute diff (outside the clone lock)
@@ -303,6 +327,7 @@ app.post('/ensure-clone', async (c) => {
       await exec(
         ['git', 'fetch', 'origin', `+refs/heads/${baseRef}:refs/remotes/origin/${baseRef}`],
         repoDir,
+        auth,
       );
 
       for (const diffCmd of [
@@ -320,24 +345,8 @@ app.post('/ensure-clone', async (c) => {
 
     return c.json({ ok: true, repoDir, diff });
   } catch (err) {
-    // Self-heal: retry with a fresh clone
-    try {
-      await rm(repoDir, { recursive: true, force: true }).catch(() => {});
-      await mkdir(repoDir, { recursive: true });
-      const cloneResult = await exec(
-        ['git', 'clone', '--depth=50', cloneUrl, '.'],
-        repoDir,
-      );
-      if (!cloneResult.ok) throw new Error(cloneResult.stderr);
-      const retryResult = await fetchPrAndCheckout(repoDir, headSha, prNumber);
-      if (!retryResult.ok) throw new Error(retryResult.error ?? 'checkout failed');
-      await ensureSymlink(repoDir, sessionDirFromRepoPath(repoDir));
-      return c.json({ ok: true, repoDir, diff: '' });
-    } catch (retryErr) {
-      return c.json({
-        error: retryErr instanceof Error ? retryErr.message : 'Clone failed',
-      }, 500);
-    }
+    const message = err instanceof Error ? err.message : 'Clone failed';
+    return c.json({ error: redactCredentials(message, secret) }, 500);
   }
 });
 
@@ -365,10 +374,8 @@ app.post('/query', async (c) => {
     return c.json({ error: 'prompt and repoPath are required' }, 400);
   }
 
-  const repoDir = resolveRepoPath(repoPath);
-  if (!validateRepoPath(repoDir)) {
-    return c.json({ error: 'Invalid repoPath' }, 403);
-  }
+  const repoDir = repoDirFor(REPOS_ROOT, repoPath);
+  if (!repoDir) return c.json({ error: 'Invalid repoPath' }, 403);
 
   if (!existsSync(repoDir)) {
     return c.json({ error: 'Repo not found at path' }, 404);
@@ -401,9 +408,13 @@ app.post('/query', async (c) => {
         cwd: repoDir,
         systemPrompt,
         model: model ?? 'claude-opus-5-5',
-        tools: allowedTools ?? ['Read', 'Glob', 'Grep', 'Bash'],
+        // Read-only unless the caller asks for more (chat still asks for Bash)
+        tools: allowedTools ?? READ_ONLY_TOOLS,
         permissionMode: 'bypassPermissions',
         allowDangerouslySkipPermissions: true,
+        // Don't load CLAUDE.md, settings, or hooks from the repo under review
+        settingSources: [],
+        hooks: { PreToolUse: [{ matcher: 'Read|Glob|Grep', hooks: [confineToRepo(repoDir)] }] },
         maxTurns: maxTurns ?? 15,
       };
 
@@ -494,23 +505,13 @@ app.post('/file-content', async (c) => {
     return c.json({ error: 'repoPath and filePath are required' }, 400);
   }
 
-  // Prevent directory traversal
-  const normalizedPath = filePath.replace(/^\.\//, '').replace(/^\//, '').replace(/\/+/g, '/');
-  if (normalizedPath.includes('..')) {
-    return c.json({ error: 'Invalid file path' }, 400);
-  }
+  const normalizedPath = repoFilePath(filePath);
+  if (!normalizedPath) return c.json({ error: 'Invalid file path' }, 400);
+  const repoDir = repoDirFor(REPOS_ROOT, repoPath);
+  if (!repoDir) return c.json({ error: 'Invalid repoPath' }, 403);
 
-  const repoDir = resolveRepoPath(repoPath);
-  if (!validateRepoPath(repoDir)) {
-    return c.json({ error: 'Invalid repoPath' }, 403);
-  }
-
-  let after: string | undefined;
-  try {
-    after = await readFile(join(repoDir, normalizedPath), 'utf-8');
-  } catch {
-    // File doesn't exist at HEAD — might be deleted
-  }
+  // Undefined when the file was deleted at HEAD
+  const after = await readRepoFile(repoDir, normalizedPath);
 
   // Compute diff patch
   let patch: string | undefined;
@@ -551,20 +552,18 @@ app.post('/collect-files', async (c) => {
     return c.json({ error: 'repoPath, baseRef, and filePaths are required' }, 400);
   }
 
-  const repoDir = resolveRepoPath(repoPath);
-  if (!validateRepoPath(repoDir)) {
-    return c.json({ error: 'Invalid repoPath' }, 403);
-  }
+  const repoDir = repoDirFor(REPOS_ROOT, repoPath);
+  if (!repoDir) return c.json({ error: 'Invalid repoPath' }, 403);
 
   const files: Record<string, { after?: string; language: string; patch?: string }> = {};
 
   await Promise.all(
     filePaths.map(async (fp) => {
-      const normalizedPath = fp.replace(/^\.\//, '').replace(/^\//, '').replace(/\/+/g, '/');
-      if (normalizedPath.includes('..')) return;
+      const normalizedPath = repoFilePath(fp);
+      if (!normalizedPath) return;
 
       const [afterResult, patchResult] = await Promise.all([
-        readFile(join(repoDir, normalizedPath), 'utf-8').catch(() => undefined),
+        readRepoFile(repoDir, normalizedPath),
         (async () => {
           for (const ref of [baseRef, `origin/${baseRef}`, 'FETCH_HEAD']) {
             const result = await exec(
@@ -599,10 +598,8 @@ app.post('/cleanup', async (c) => {
     return c.json({ error: 'repoPath is required' }, 400);
   }
 
-  const repoDir = resolveRepoPath(repoPath);
-  if (!validateRepoPath(repoDir)) {
-    return c.json({ error: 'Invalid repoPath' }, 403);
-  }
+  const repoDir = repoDirFor(REPOS_ROOT, repoPath);
+  if (!repoDir) return c.json({ error: 'Invalid repoPath' }, 403);
 
   const sessionDir = sessionDirFromRepoPath(repoDir);
   await rm(repoDir, { recursive: true, force: true }).catch(() => {});
@@ -621,12 +618,8 @@ app.post('/session-messages', async (c) => {
     repoPath: string;
   }>();
 
-  const repoDir = resolveRepoPath(repoPath);
-  if (!validateRepoPath(repoDir)) {
-    return c.json({ messages: [] });
-  }
-
-  if (!existsSync(repoDir)) {
+  const repoDir = repoDirFor(REPOS_ROOT, repoPath);
+  if (!repoDir || !sessionId || !existsSync(repoDir)) {
     return c.json({ messages: [] });
   }
 
@@ -688,6 +681,7 @@ function formatSessionMessage(msg: any): any {
 
 Bun.serve({
   port: PORT,
+  hostname: HOSTNAME,
   fetch: app.fetch,
   idleTimeout: 30, // Heartbeats keep SSE alive
 });

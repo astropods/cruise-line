@@ -7,7 +7,7 @@
  * Usage:
  *   Terminal 1: ast dev           (starts Postgres)
  *   Terminal 2: bun run dev       (starts backend on port 3002 with auto-reload)
- *   Terminal 3: bun run dev:sandbox  (starts sandbox on port 3000)
+ *   Terminal 3: bun run dev:sandbox  (starts sandbox on port 3001)
  *   Terminal 4: cd frontend && bun run dev  (starts Vite on port 5173 with HMR)
  *
  * Open http://localhost:5173 in browser.
