@@ -1,6 +1,9 @@
 import { Webhooks } from '@octokit/webhooks';
 import { config } from '../config.js';
-import { postAnalysisComment, listPrChangedFiles, type CommentState } from './client.js';
+import { postAnalysisComment, listPrChangedFiles } from './client.js';
+import { commentStateFor } from './pr-comment.js';
+import { jobManager } from '../analysis/jobs.js';
+import { chatRuns } from '../chat/runs.js';
 import { getLatestWalkthrough } from '../db/walkthroughs.js';
 import { anyFileMatchesScope, getRepoSettings } from '../db/repo-settings.js';
 import {
@@ -32,18 +35,16 @@ function registerHandlers(wh: Webhooks) {
       console.log(`PR event: ${owner}/${repo}#${prNumber} (${payload.action})`);
 
       try {
-        // Check if an analysis already exists — post the right state
         const existing = await getLatestWalkthrough(owner, repo, prNumber);
 
-        // Scope gate. Decision is sticky per PR (cleared on close): the
-        // first event for a scoped repo makes one listFiles call and caches
-        // the result. Later events reuse the cached answer, so out-of-scope
-        // PRs cost zero GitHub calls after the first event.
+        // Scope gate. The decision is cached per PR (cleared on close and
+        // when the repo's scope paths change). A PR that was out of scope is
+        // checked again on each push, since new commits can bring it in.
         const settings = await getRepoSettings(owner, repo);
         const scopePaths = settings?.scopePaths ?? [];
         if (scopePaths.length > 0 && !existing) {
           let inScope = await getPrScopeDecision(owner, repo, prNumber);
-          if (inScope === null) {
+          if (inScope === null || (inScope === false && payload.action === 'synchronize')) {
             const changed = await listPrChangedFiles(installation.id, owner, repo, prNumber);
             inScope = anyFileMatchesScope(changed, scopePaths);
             await setPrScopeDecision(owner, repo, prNumber, inScope);
@@ -56,58 +57,42 @@ function registerHandlers(wh: Webhooks) {
           }
         }
 
-        const currentHeadSha = pr.head.sha;
+        // The payload is a snapshot; a redelivered or late event can describe
+        // a PR that has since closed.
+        const state = pr.state === 'open' ? 'open' : pr.merged ? 'merged' : 'closed';
 
         // Track the PR so it shows in the list before anyone opens the link.
         // Best-effort: a tracking failure shouldn't stop the comment.
+        let isLatest = true;
         try {
-          await upsertTrackedPr({
+          isLatest = await upsertTrackedPr({
             owner,
             repo,
             number: prNumber,
             title: pr.title,
             author: pr.user?.login ?? 'unknown',
-            headSha: currentHeadSha,
+            headSha: pr.head.sha,
             authorAvatarUrl: pr.user?.avatar_url ?? null,
             headRef: pr.head.ref,
             baseRef: pr.base.ref,
             additions: pr.additions,
             deletions: pr.deletions,
             changedFiles: pr.changed_files,
+            state,
+            mergedAt: pr.merged_at,
+            closedAt: pr.closed_at,
+            updatedAt: pr.updated_at,
           });
         } catch (err) {
           console.error(`Failed to track ${owner}/${repo}#${prNumber}:`, err);
         }
 
-        let state: CommentState = { status: 'ready' };
-
-        if (existing) {
-          if (existing.status === 'complete' && existing.data) {
-            const findings = existing.data.findings ?? [];
-            const summary = {
-              verdict: existing.data.verdict,
-              verdictRationale: existing.data.verdictRationale,
-              findingCounts: {
-                critical: findings.filter((f: any) => f.severity === 'critical').length,
-                high: findings.filter((f: any) => f.severity === 'high').length,
-                medium: findings.filter((f: any) => f.severity === 'medium').length,
-                low: findings.filter((f: any) => f.severity === 'low').length,
-                info: findings.filter((f: any) => f.severity === 'info').length,
-              },
-            };
-            // Mark as stale if the analysis was run against a different SHA
-            const isStale = existing.head_sha !== currentHeadSha;
-            state = isStale
-              ? { status: 'stale', summary }
-              : { status: 'complete', summary };
-          } else if (existing.status === 'running' || existing.status === 'pending') {
-            state = { status: 'running' };
-          } else if (existing.status === 'failed') {
-            state = { status: 'failed' };
-          }
+        if (!isLatest || state !== 'open') {
+          console.log(`Ignoring out-of-date ${payload.action} for ${owner}/${repo}#${prNumber}`);
+          return;
         }
 
-        await postAnalysisComment(installation.id, owner, repo, prNumber, state);
+        await postAnalysisComment(installation.id, owner, repo, prNumber, commentStateFor(existing, pr.head.sha));
       } catch (err) {
         console.error(`Failed to post comment on ${owner}/${repo}#${prNumber}:`, err);
       }
@@ -133,22 +118,27 @@ function registerHandlers(wh: Webhooks) {
 
     console.log(`PR closed: ${owner}/${repo}#${prNumber}, cleaning up...`);
 
-    try {
-      await setTrackedPrState(owner, repo, prNumber, pr.merged ? 'merged' : 'closed', {
+    // Each step on its own, so one failure doesn't skip the rest
+    const step = (name: string, fn: () => Promise<unknown>) =>
+      fn().catch((err) => console.error(`${name} failed for ${owner}/${repo}#${prNumber}:`, err));
+
+    await step('Tracking update', () =>
+      setTrackedPrState(owner, repo, prNumber, pr.merged ? 'merged' : 'closed', {
         mergedAt: pr.merged_at,
         closedAt: pr.closed_at,
-      });
-    } catch (err) {
-      console.error(`Failed to update tracked state for ${owner}/${repo}#${prNumber}:`, err);
-    }
+        updatedAt: pr.updated_at,
+      }),
+    );
+    await step('Scope cleanup', () => deletePrScopeDecision(owner, repo, prNumber));
 
-    try {
-      await sandboxCleanup(sandboxRepoPath(owner, repo, prNumber));
-      await deleteChatSessionsForPr(owner, repo, prNumber);
-      await deletePrScopeDecision(owner, repo, prNumber);
-    } catch (err) {
-      console.error(`Cleanup failed for ${owner}/${repo}#${prNumber}:`, err);
+    // A review or chat still using the checkout would fail mid-run; leave
+    // the clone and sessions for the next close (or reopen) to clear.
+    if (jobManager.getActiveJob(owner, repo, prNumber) || chatRuns.hasActiveForPr(owner, repo, prNumber)) {
+      console.log(`Keeping the checkout for ${owner}/${repo}#${prNumber}: a review or chat is still running`);
+      return;
     }
+    await step('Sandbox cleanup', () => sandboxCleanup(sandboxRepoPath(owner, repo, prNumber)));
+    await step('Chat cleanup', () => deleteChatSessionsForPr(owner, repo, prNumber));
   });
 }
 
@@ -156,13 +146,13 @@ function registerHandlers(wh: Webhooks) {
  * Get the current Webhooks instance. Creates/recreates it with the
  * current config secret.
  */
-export function getWebhooks(): Webhooks {
+export function getWebhooks(): Webhooks | null {
   const secret = config.github.webhookSecret;
   if (!webhooksInstance && secret) {
     webhooksInstance = new Webhooks({ secret });
     registerHandlers(webhooksInstance);
   }
-  return webhooksInstance!;
+  return webhooksInstance;
 }
 
 /**

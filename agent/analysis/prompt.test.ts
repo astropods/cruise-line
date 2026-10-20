@@ -22,7 +22,7 @@ const PR: PrMetadata = {
   changedFiles: 1,
   state: 'open',
   mergedAt: null,
-  closedAt: null,
+  closedAt: null, updatedAt: '2026-01-01T00:00:00Z',
 };
 
 describe('buildUserPrompt rules block', () => {

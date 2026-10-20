@@ -4,7 +4,8 @@ import { walkthroughJsonSchema, type Walkthrough, type ClaudeWalkthroughOutput }
 import { updateWalkthroughStatus } from '../db/walkthroughs.js';
 import { listRules } from '../db/rules.js';
 import { resolveModel } from '../db/model-settings.js';
-import { postAnalysisComment } from '../github/client.js';
+import { getPrHeadSha, postAnalysisComment } from '../github/client.js';
+import { commentStateFor } from '../github/pr-comment.js';
 import { ensurePrCheckout } from '../pr-checkout.js';
 import { jobManager } from './jobs.js';
 import {
@@ -169,21 +170,18 @@ export async function analyzePr(
       `Analysis complete for ${prMetadata.owner}/${prMetadata.repo}#${prMetadata.number}`,
     );
 
-    // Update the PR comment with analysis results
+    // Update the PR comment with analysis results. Commits pushed while
+    // the review ran make it stale already.
     try {
-      const findingCounts = {
-        critical: claudeOutput.findings.filter((f) => f.severity === 'critical').length,
-        high: claudeOutput.findings.filter((f) => f.severity === 'high').length,
-        medium: claudeOutput.findings.filter((f) => f.severity === 'medium').length,
-        low: claudeOutput.findings.filter((f) => f.severity === 'low').length,
-        info: claudeOutput.findings.filter((f) => f.severity === 'info').length,
-      };
+      const currentHeadSha = await getPrHeadSha(
+        prMetadata.installationId, prMetadata.owner, prMetadata.repo, prMetadata.number,
+      ).catch(() => prMetadata.headSha);
       await postAnalysisComment(
         prMetadata.installationId,
         prMetadata.owner,
         prMetadata.repo,
         prMetadata.number,
-        { status: 'complete', summary: { verdict: claudeOutput.verdict, verdictRationale: claudeOutput.verdictRationale, findingCounts } },
+        commentStateFor({ status: 'complete', head_sha: prMetadata.headSha, data: walkthrough }, currentHeadSha),
       );
     } catch (err) {
       console.error('Failed to update PR comment with analysis results:', err);

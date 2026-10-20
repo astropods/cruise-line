@@ -28,14 +28,21 @@ export async function getOrCreateChatSession(
 
   if (existing) return existing;
 
-  // Create new session with a random UUID
+  // Create new session with a random UUID. Two first messages can race here;
+  // the unique index keeps one, and the loser reads it back.
   const sessionId = crypto.randomUUID();
   const [row] = await sql<ChatSessionRow[]>`
     INSERT INTO chat_sessions (session_id, owner, repo, pr_number, user_id, user_login)
     VALUES (${sessionId}, ${owner}, ${repo}, ${prNumber}, ${userId}, ${userLogin})
+    ON CONFLICT (owner, repo, pr_number, user_id) DO NOTHING
     RETURNING *
   `;
-  return row;
+  if (row) return row;
+  const [winner] = await sql<ChatSessionRow[]>`
+    SELECT * FROM chat_sessions
+    WHERE owner = ${owner} AND repo = ${repo} AND pr_number = ${prNumber} AND user_id = ${userId}
+  `;
+  return winner;
 }
 
 export async function getChatSession(

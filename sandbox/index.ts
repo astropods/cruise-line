@@ -157,6 +157,8 @@ async function freshClone(
 }
 
 const READ_ONLY_TOOLS = ['Read', 'Glob', 'Grep'];
+// Reviews ask for 60; this only stops a caller asking for unbounded runs
+const MAX_TURNS = 100;
 
 /** PreToolUse hook that denies file tools pointed outside the checkout */
 function confineToRepo(repoDir: string): HookCallback {
@@ -396,6 +398,11 @@ app.post('/query', async (c) => {
   }
 
   return streamSSE(c, async (stream) => {
+    // The agent hangs up when it gives up on a run (timeout, failed review);
+    // stop the run with it instead of spending turns nobody will read
+    const abortController = new AbortController();
+    stream.onAbort(() => abortController.abort());
+
     // Heartbeat to keep connection alive
     const heartbeat = setInterval(async () => {
       try {
@@ -415,7 +422,8 @@ app.post('/query', async (c) => {
         // Don't load CLAUDE.md, settings, or hooks from the repo under review
         settingSources: [],
         hooks: { PreToolUse: [{ matcher: 'Read|Glob|Grep', hooks: [confineToRepo(repoDir)] }] },
-        maxTurns: maxTurns ?? 15,
+        maxTurns: Math.min(maxTurns ?? 15, MAX_TURNS),
+        abortController,
       };
 
       // Unknown levels are dropped rather than failing the query
@@ -478,15 +486,18 @@ app.post('/query', async (c) => {
         }
       }
     } catch (err) {
-      await stream.writeSSE({
-        data: JSON.stringify({
-          type: 'error',
-          message: err instanceof Error ? err.message : 'Sandbox query failed',
-        }),
-      });
+      // An aborted run has no one left to tell
+      if (!abortController.signal.aborted) {
+        await stream.writeSSE({
+          data: JSON.stringify({
+            type: 'error',
+            message: err instanceof Error ? err.message : 'Sandbox query failed',
+          }),
+        });
+      }
+    } finally {
+      clearInterval(heartbeat);
     }
-
-    clearInterval(heartbeat);
   });
 });
 

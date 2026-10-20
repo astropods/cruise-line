@@ -37,6 +37,8 @@ chatRoutes.use('/:owner/:repo/:pr/*', requireAuth, requireCookieSession, require
  * Starts a chat run and returns its id right away. The run (clone, sandbox
  * query) continues in the background; the browser reads it from /runs/:id/events.
  */
+const MAX_MESSAGE_LENGTH = 20_000;
+
 chatRoutes.post('/:owner/:repo/:pr/message', chatLimiter, async (c) => {
   const session = c.get('session');
   const owner = c.req.param('owner');
@@ -46,21 +48,23 @@ chatRoutes.post('/:owner/:repo/:pr/message', chatLimiter, async (c) => {
   if (!owner || !repo) throw new AppError(400, 'Missing route parameters');
   if (isNaN(prNumber)) throw new AppError(400, 'Invalid PR number');
 
-  const { message } = await c.req.json<{ message: string }>();
-  if (!message?.trim()) throw new AppError(400, 'Message is required');
+  const { message } = await c.req.json<{ message?: unknown }>().catch(() => ({ message: undefined }));
+  if (typeof message !== 'string' || !message.trim()) throw new AppError(400, 'Message is required');
+  if (message.length > MAX_MESSAGE_LENGTH) throw new AppError(413, 'Message is too long');
 
+  // Check and start with no await between them, so a double submit can't
+  // start two runs
   if (chatRuns.getActive(owner, repo, prNumber, session.userId)) {
     throw new AppError(409, 'A reply is already in progress');
   }
-
-  const chatSession = await getOrCreateChatSession(
-    owner, repo, prNumber, session.userId, session.login,
-  );
   const prompt = message.trim();
 
   const run = chatRuns.start(
     { owner, repo, prNumber, userId: session.userId, prompt },
     async (emit) => {
+      const chatSession = await getOrCreateChatSession(
+        owner, repo, prNumber, session.userId, session.login,
+      );
       const installationId = await getInstallationForRepo(owner, repo);
       const pr = await getPrMetadata(installationId, owner, repo, prNumber);
 

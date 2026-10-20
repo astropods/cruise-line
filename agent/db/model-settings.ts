@@ -1,6 +1,6 @@
 import { sql } from './client.js';
 import { config } from '../config.js';
-import { sandboxListModels } from '../sandbox-client.js';
+import { sandboxListModels, type SandboxModel } from '../sandbox-client.js';
 
 export type ModelUse = 'review' | 'chat';
 
@@ -109,6 +109,20 @@ export function checkModelSetting(
     : `${info.displayName} doesn't support ${effort} effort`;
 }
 
+const MODELS_TTL_MS = 5 * 60_000;
+let modelsCache: { at: number; models: Promise<SandboxModel[]> } | null = null;
+
+/** The model list, fetched at most every few minutes so each chat turn doesn't wait on it */
+function cachedModels(): Promise<SandboxModel[]> {
+  if (!modelsCache || Date.now() - modelsCache.at > MODELS_TTL_MS) {
+    const models = sandboxListModels();
+    modelsCache = { at: Date.now(), models };
+    // Don't keep a failure around; the next query tries again
+    models.catch(() => { if (modelsCache?.models === models) modelsCache = null; });
+  }
+  return modelsCache.models;
+}
+
 /**
  * The model and effort to send to the sandbox for a query. Drops an effort
  * level the model doesn't take (say, a deploy default of Haiku 4.5 with the
@@ -118,7 +132,7 @@ export async function resolveModel(use: ModelUse): Promise<{ model: string; effo
   const choice = applyDefaults((await getModelSettings())[use]);
   if (!choice.effort) return choice;
   try {
-    const info = (await sandboxListModels()).find((m) => m.id === choice.model);
+    const info = (await cachedModels()).find((m) => m.id === choice.model);
     if (info?.effortLevels && !info.effortLevels.includes(choice.effort)) {
       return { model: choice.model };
     }
