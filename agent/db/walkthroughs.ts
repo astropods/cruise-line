@@ -94,6 +94,15 @@ export interface PrSummaryRow {
   author: string | null;
   verdict: Walkthrough['verdict'] | null;
   finding_count: number | null;
+  /** Severity → count for the latest review; null when there's no review */
+  severity_counts: Record<string, number> | null;
+  author_avatar_url: string | null;
+  head_ref: string | null;
+  base_ref: string | null;
+  additions: number | null;
+  deletions: number | null;
+  changed_files: number | null;
+  merged_at: Date | null;
 }
 
 /**
@@ -123,7 +132,19 @@ export async function listPrSummaries(): Promise<PrSummaryRow[]> {
       COALESCE(t.author, reviewed.data->'pr'->>'author') AS author,
       reviewed.data->>'verdict' AS verdict,
       CASE WHEN jsonb_typeof(reviewed.data->'findings') = 'array'
-        THEN jsonb_array_length(reviewed.data->'findings') END AS finding_count
+        THEN jsonb_array_length(reviewed.data->'findings') END AS finding_count,
+      CASE WHEN reviewed.data IS NOT NULL THEN COALESCE((
+        SELECT jsonb_object_agg(sev, n) FROM (
+          SELECT f->>'severity' AS sev, COUNT(*) AS n
+          FROM jsonb_array_elements(
+            CASE WHEN jsonb_typeof(reviewed.data->'findings') = 'array'
+              THEN reviewed.data->'findings' ELSE '[]'::jsonb END
+          ) f
+          GROUP BY 1
+        ) s
+      ), '{}'::jsonb) END AS severity_counts,
+      t.author_avatar_url, t.head_ref, t.base_ref,
+      t.additions, t.deletions, t.changed_files, t.merged_at
     FROM prs
     LEFT JOIN latest USING (owner, repo, pr_number)
     LEFT JOIN tracked_prs t USING (owner, repo, pr_number)

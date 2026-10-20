@@ -14,6 +14,7 @@ import { AppError } from './middleware/error.js';
 const mockGetPermissionLevel = mock();
 const mockGetRepoInstallation = mock();
 const mockPullsGet = mock();
+const mockCompareCommits = mock(() => Promise.resolve({ data: { ahead_by: 0 } }));
 const mockVerifySessionToken = mock();
 const mockRefreshGitHubToken = mock();
 const mockCreateSessionToken = mock(() => Promise.resolve('fake-session-token'));
@@ -51,7 +52,10 @@ mock.module(path.resolve(import.meta.dir, './github/app.ts'), () => ({
   generateAppJwt: mock(() => Promise.resolve('fake-jwt')),
   getInstallationToken: mock(() => Promise.resolve('fake-installation-token')),
   createInstallationOctokit: mock(() => ({
-    repos: { getCollaboratorPermissionLevel: mockGetPermissionLevel },
+    repos: {
+      getCollaboratorPermissionLevel: mockGetPermissionLevel,
+      compareCommitsWithBasehead: mockCompareCommits,
+    },
     // pulls.get powers getPrMetadata, which the /generate route calls
     // after verifyRepoAccess passes. Both getters share this single
     // octokit instance so verifyRepoAccess tests aren't affected.
@@ -928,6 +932,9 @@ describe('GET /api/walkthroughs — PR list', () => {
     owner: 'listco', repo, pr_number: number, status, pr_state: 'open', head_sha: 'abc',
     updated_at: new Date('2026-01-01T00:00:00Z'), title: `PR ${number}`, author: 'someone',
     verdict: 'approve', finding_count: 3,
+    severity_counts: status === null ? null : { high: '1', info: '2' },
+    author_avatar_url: 'https://avatars.example/someone', head_ref: 'feat/x', base_ref: 'main',
+    additions: 12, deletions: 3, changed_files: 2, merged_at: null,
   });
 
   it('drops PRs in repos the caller cannot push to', async () => {
@@ -944,6 +951,10 @@ describe('GET /api/walkthroughs — PR list', () => {
     expect(body.prs.map((p) => `${p.repo}#${p.number}`)).toEqual(['visible#1', 'visible#3']);
     expect(body.prs[0].findingCount).toBe(3);
     expect(body.prs[0].prState).toBe('open');
+    // Every severity is present, as numbers, and missing ones are zero
+    expect((body.prs[0] as any).severityCounts).toEqual({ critical: 0, high: 1, medium: 0, low: 0, info: 2 });
+    expect(body.prs[0]).toMatchObject({ headRef: 'feat/x', additions: 12, changedFiles: 2 });
+    expect((body.prs[1] as any).severityCounts).toBeNull();
     // A tracked PR that was never reviewed comes back as status 'none'
     expect(body.prs[1].status).toBe('none');
   });
@@ -976,8 +987,16 @@ describe('GET /api/walkthroughs/:owner/:repo/:pr — rerun in flight', () => {
         base: { ref: 'main', sha: 'aaa' },
         head: { ref: 'feat/x', sha: 'bbb' },
         body: '',
+        additions: 40,
+        deletions: 4,
+        changed_files: 3,
+        state: 'open',
+        merged_at: null,
+        closed_at: null,
       },
     });
+    mockUpsertTrackedPr.mockClear();
+    mockCompareCommits.mockClear();
   });
 
   it('serves the previous review as latestReview but not as walkthrough.data', async () => {
@@ -997,6 +1016,50 @@ describe('GET /api/walkthroughs/:owner/:repo/:pr — rerun in flight', () => {
     expect(body.walkthrough.status).toBe('running');
     expect(body.walkthrough.data).toBeNull();
     expect(body.latestReview.data).toEqual(previous);
-    expect(body.pr).toEqual({ title: 'Live title', author: 'author' });
+    expect(body.pr).toEqual({
+      title: 'Live title', author: 'author', authorAvatarUrl: null,
+      headRef: 'feat/x', baseRef: 'main', additions: 40, deletions: 4, changedFiles: 3,
+      state: 'open', mergedAt: null,
+    });
+    // Not stale, so no compare call
+    expect(body.commitsSinceReview).toBeNull();
+    expect(mockCompareCommits).not.toHaveBeenCalled();
+    // The live lookup refreshes the stored PR for the list
+    expect(mockUpsertTrackedPr).toHaveBeenCalledWith(expect.objectContaining({ number: 1, additions: 40 }));
+  });
+
+  it('counts commits since the reviewed head when the review is stale', async () => {
+    const row = {
+      id: 7, head_sha: 'old', status: 'complete', error: null, data: { findings: [] },
+      created_at: new Date(), updated_at: new Date(),
+    };
+    mockGetLatestWalkthrough.mockResolvedValue(row);
+    mockGetLatestReviewedWalkthrough.mockResolvedValue(row);
+    mockCompareCommits.mockResolvedValueOnce({ data: { ahead_by: 2 } });
+
+    const res = await generateApp.request('/api/walkthroughs/acme/app/1', {
+      headers: { authorization: 'Bearer cl_live_test' },
+    });
+    const body = (await res.json()) as any;
+    expect(body.commitsSinceReview).toBe(2);
+    expect(mockCompareCommits).toHaveBeenCalledWith(expect.objectContaining({ basehead: 'old...bbb' }));
+  });
+
+  it('reports an unknown commit count when GitHub cannot compare', async () => {
+    const row = {
+      id: 7, head_sha: 'force-pushed-away', status: 'complete', error: null, data: { findings: [] },
+      created_at: new Date(), updated_at: new Date(),
+    };
+    mockGetLatestWalkthrough.mockResolvedValue(row);
+    mockGetLatestReviewedWalkthrough.mockResolvedValue(row);
+    mockCompareCommits.mockRejectedValueOnce(new Error('Not Found'));
+
+    const res = await generateApp.request('/api/walkthroughs/acme/app/1', {
+      headers: { authorization: 'Bearer cl_live_test' },
+    });
+    const body = (await res.json()) as any;
+    expect(res.status).toBe(200);
+    expect(body.commitsSinceReview).toBeNull();
+    expect(body.currentHeadSha).toBe('bbb');
   });
 });

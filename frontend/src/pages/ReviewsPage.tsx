@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import {
   CheckCircle, XCircle, ChatCircle, CircleNotch, WarningCircle, MagnifyingGlass, Play, ArrowsClockwise,
   GitMerge, GitPullRequest,
   type Icon,
 } from '@phosphor-icons/react';
-import { fetchPrSummaries, generateWalkthrough, type PrSummary, type Verdict } from '../api';
+import type { PrSummary, Verdict } from '../api';
+import { usePrList } from '../features/inbox/usePrList';
+import { useStartReview } from '../features/review/useStartReview';
 import { PageLoading, ErrorState } from '../components/LoadingStates';
 
 const verdictChip: Record<Verdict, { label: string; icon: Icon; className: string }> = {
@@ -58,9 +60,11 @@ function timeAgo(iso: string): string {
 
 /** Every PR Cruise Line has seen or reviewed in repos the viewer can access. */
 export function ReviewsPage() {
-  const [prs, setPrs] = useState<PrSummary[] | null>(null);
-  const [githubUrl, setGithubUrl] = useState('https://github.com');
-  const [error, setError] = useState<string | null>(null);
+  const list = usePrList();
+  const prs = list.data?.prs ?? null;
+  const githubUrl = list.data?.githubUrl ?? 'https://github.com';
+  const error = list.error?.message ?? null;
+  const start = useStartReview();
   const [startErrors, setStartErrors] = useState<Record<string, string>>({});
   const [query, setQuery] = useState('');
 
@@ -79,38 +83,13 @@ export function ReviewsPage() {
     }, { replace: true });
   }
 
-  async function load() {
-    setError(null);
-    try {
-      const res = await fetchPrSummaries();
-      setPrs(res.prs);
-      setGithubUrl(res.githubUrl);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load reviews');
-    }
-  }
-
-  useEffect(() => { load(); }, []);
-
-  // Refresh while anything is running so finished reviews flip over on their own.
-  const anyRunning = prs?.some((p) => p.status === 'pending' || p.status === 'running') ?? false;
-  useEffect(() => {
-    if (!anyRunning) return;
-    const interval = setInterval(load, 5_000);
-    return () => clearInterval(interval);
-  }, [anyRunning]);
-
-  async function startReview(pr: PrSummary) {
+  function startReview(pr: PrSummary) {
     const key = prKey(pr);
     setStartErrors(({ [key]: _, ...rest }) => rest);
-    // Optimistic: show it as reviewing right away; the next load confirms.
-    setPrs((list) => list?.map((p) => (prKey(p) === key ? { ...p, status: 'pending' } : p)) ?? list);
-    try {
-      await generateWalkthrough(pr.owner, pr.repo, pr.number);
-    } catch (err) {
-      setStartErrors((e) => ({ ...e, [key]: err instanceof Error ? err.message : 'Failed to start' }));
-    }
-    await load();
+    start.mutate(
+      { owner: pr.owner, repo: pr.repo, number: pr.number },
+      { onError: (err) => setStartErrors((e) => ({ ...e, [key]: err.message })) },
+    );
   }
 
   const repos = useMemo(
@@ -139,7 +118,7 @@ export function ReviewsPage() {
     ? baseFiltered
     : baseFiltered.filter((p) => statusGroup(p) === statusFilter);
 
-  if (error && !prs) return <ErrorState message={error} onRetry={load} />;
+  if (error && !prs) return <ErrorState message={error} onRetry={() => list.refetch()} />;
   if (!prs) return <PageLoading />;
 
   return (

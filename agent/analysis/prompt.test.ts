@@ -16,6 +16,13 @@ const PR: PrMetadata = {
   baseSha: 'aaaaaaa',
   headSha: 'bbbbbbb',
   installationId: 1,
+  authorAvatarUrl: null,
+  additions: 10,
+  deletions: 2,
+  changedFiles: 1,
+  state: 'open',
+  mergedAt: null,
+  closedAt: null,
 };
 
 describe('buildUserPrompt rules block', () => {

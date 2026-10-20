@@ -11,7 +11,8 @@
  */
 import type { Plugin } from 'vite';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import type { Walkthrough, ProgressEntry } from '../src/api';
+import type { Walkthrough, ProgressEntry, Finding, Severity } from '../src/api';
+import { PR_FIXTURES, type PrFixture } from './fixtures/prs';
 
 const JOB_MS = Number(process.env.MOCK_JOB_SECONDS ?? 15) * 1000;
 const PENDING_MS = 2000;
@@ -37,6 +38,8 @@ interface MockPr {
   /** Every run on this PR fails — for the failure states */
   alwaysFail: boolean;
   runs: number;
+  fixture: PrFixture;
+  mergedAt: string | null;
 }
 
 const PROGRESS_SCRIPT: Omit<ProgressEntry, 'timestamp'>[] = [
@@ -120,13 +123,15 @@ function makeWalkthrough(pr: MockPr, headSha: string): Walkthrough {
       `**Mock review #${pr.runs + 1}**, generated at ${generatedAt}. ` +
       `This PR replaces the single-shot webhook POST with a bounded retry loop ` +
       `using exponential backoff, and stops retrying on 4xx responses.`,
-    verdict: pr.runs % 2 === 0 ? 'request_changes' : 'approve',
+    verdict: pr.fixture.review?.findings === 'clean' ? 'approve' : pr.runs % 2 === 0 ? 'request_changes' : 'approve',
     verdictRationale:
       'The retry loop is sound, but a network error from `fetch` escapes the loop on the first attempt, so the retries never cover the most common transient failure.',
     files: {
       [file]: { language: 'typescript', patch: PATCH, after: AFTER },
     },
-    findings: [
+    findings: (pr.fixture.review?.findings === 'clean'
+      ? (f: Finding[]) => f.filter((x) => x.severity !== 'high')
+      : (f: Finding[]) => f)([
       {
         title: 'Network errors bypass the retry loop',
         severity: 'high',
@@ -152,54 +157,48 @@ function makeWalkthrough(pr: MockPr, headSha: string): Walkthrough {
         body: 'Five attempts capped at 30s keeps the worst case under a minute, which fits inside the job timeout.',
         files: [file],
       },
-    ],
+    ]),
   };
 }
 
 function seed() {
   nextId = 1;
   const now = Date.now();
-  const base = (
-    owner: string, repo: string, number: number, title: string, author: string,
-    prState: MockPr['prState'] = 'open', trackedAgoMinutes = 90,
-  ): MockPr => ({
-    owner, repo, number, title, author, prState,
-    trackedAt: prState ? new Date(now - trackedAgoMinutes * 60_000).toISOString() : null,
-    currentHeadSha: sha(`${repo}${number}`),
-    latest: null, reviewed: null, job: null, alwaysFail: false, runs: 0,
-  });
-  const withReview = (pr: MockPr, ageMinutes: number, headSha = pr.currentHeadSha) => {
-    const at = new Date(now - ageMinutes * 60_000).toISOString();
-    const id = nextId++;
-    pr.reviewed = { id, headSha, data: makeWalkthrough(pr, headSha), updatedAt: at };
-    pr.latest = { id, status: 'complete', headSha, error: null, createdAt: at, updatedAt: at };
-    pr.runs = 1;
+  const ago = (minutes: number) => new Date(now - minutes * 60_000).toISOString();
+
+  prs = PR_FIXTURES.map((f) => {
+    const pr: MockPr = {
+      owner: f.owner, repo: f.repo, number: f.number, title: f.title, author: f.author,
+      prState: f.state,
+      trackedAt: f.state ? ago(f.trackedAgoMinutes) : null,
+      currentHeadSha: sha(`${f.repo}${f.number}`),
+      latest: null, reviewed: null, job: null, alwaysFail: !!f.alwaysFail, runs: 0,
+      fixture: f,
+      mergedAt: f.mergedAgoMinutes != null ? ago(f.mergedAgoMinutes) : null,
+    };
+    if (f.review) {
+      const at = ago(f.review.ageMinutes);
+      const headSha = f.review.stale ? sha(`old-${f.number}`) : pr.currentHeadSha;
+      const id = nextId++;
+      pr.reviewed = { id, headSha, data: makeWalkthrough(pr, headSha), updatedAt: at };
+      pr.latest = { id, status: 'complete', headSha, error: null, createdAt: at, updatedAt: at };
+      pr.runs = 1;
+    }
+    if (f.runningForSeconds) startJob(pr, Math.max(JOB_MS, f.runningForSeconds * 1000));
     return pr;
-  };
+  });
+}
 
-  const ready = withReview(base('demo', 'app', 101, 'Add retry backoff to webhook delivery', 'octocat'), 42);
+function severityCounts(findings: Finding[]): Record<Severity, number> {
+  const counts: Record<Severity, number> = { critical: 0, high: 0, medium: 0, low: 0, info: 0 };
+  for (const f of findings) counts[f.severity]++;
+  return counts;
+}
 
-  const first = base('demo', 'app', 102, 'Migrate settings page to the new form library', 'hubot', 'open', 20);
-
-  const rerunFails = withReview(base('demo', 'app', 103, 'Cache installation tokens across requests', 'monalisa'), 180);
-  rerunFails.alwaysFail = true;
-
-  const firstFails = base('demo', 'app', 104, 'Experimental: stream diffs to the viewer', 'octocat', 'open', 300);
-  firstFails.alwaysFail = true;
-
-  // Reviewed before tracking existed, so its open/closed state is unknown
-  const stale = withReview(base('demo', 'web', 205, 'Dark mode color tokens', 'hubot', null), 60 * 26, sha('old-commit'));
-
-  const inFlight = withReview(base('demo', 'web', 206, 'Rate-limit the generate endpoint', 'monalisa'), 60 * 5);
-  startJob(inFlight, Math.max(JOB_MS, 60_000));
-
-  // Opened, never reviewed: the "Start review" state
-  const untouched = base('demo', 'app', 107, 'Bump dependencies for October', 'dependabot', 'open', 5);
-
-  const merged = withReview(base('demo', 'web', 208, 'Fix flaky webhook test', 'octocat', 'merged', 60 * 30), 60 * 50);
-  const closedUnreviewed = base('demo', 'app', 109, 'WIP: try a different diff renderer', 'hubot', 'closed', 60 * 72);
-
-  prs = [ready, first, rerunFails, firstFails, stale, inFlight, untouched, merged, closedUnreviewed];
+/** Commits since the reviewed head: the fixture's count while stale, else null */
+function commitsSinceReview(pr: MockPr): number | null {
+  if (!pr.reviewed || pr.reviewed.headSha === pr.currentHeadSha) return null;
+  return pr.fixture.review?.stale?.commits ?? null;
 }
 
 function startJob(pr: MockPr, durationMs = JOB_MS) {
@@ -405,6 +404,15 @@ function handle(req: IncomingMessage, res: ServerResponse): boolean {
         author: p.prState ? p.author : p.reviewed?.data.pr.author ?? null,
         verdict: p.reviewed?.data.verdict ?? null,
         findingCount: p.reviewed?.data.findings.length ?? null,
+        severityCounts: p.reviewed ? severityCounts(p.reviewed.data.findings) : null,
+        // Like the real list: details exist once the PR is tracked
+        authorAvatarUrl: p.prState ? `${GITHUB_URL}/${p.author}.png?size=64` : null,
+        headRef: p.prState ? p.fixture.headRef : null,
+        baseRef: p.prState ? 'main' : null,
+        additions: p.prState ? p.fixture.additions : null,
+        deletions: p.prState ? p.fixture.deletions : null,
+        changedFiles: p.prState ? p.fixture.changedFiles : null,
+        mergedAt: p.mergedAt,
       }));
     send(res, 200, { prs: list, githubUrl: GITHUB_URL });
     return true;
@@ -439,8 +447,20 @@ function handle(req: IncomingMessage, res: ServerResponse): boolean {
         data: pr.latest.status === 'complete' ? pr.reviewed?.data ?? null : null,
       },
       latestReview: pr.reviewed,
-      pr: { title: pr.title, author: pr.author },
+      pr: {
+        title: pr.title,
+        author: pr.author,
+        authorAvatarUrl: `${GITHUB_URL}/${pr.author}.png?size=64`,
+        headRef: pr.fixture.headRef,
+        baseRef: 'main',
+        additions: pr.fixture.additions,
+        deletions: pr.fixture.deletions,
+        changedFiles: pr.fixture.changedFiles,
+        state: pr.prState ?? 'open',
+        mergedAt: pr.mergedAt,
+      },
       currentHeadSha: pr.currentHeadSha,
+      commitsSinceReview: commitsSinceReview(pr),
       githubUrl: GITHUB_URL,
     });
     return true;
