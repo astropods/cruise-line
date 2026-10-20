@@ -329,6 +329,38 @@ function readJson(req: IncomingMessage): Promise<any> {
 }
 
 const USER = { userId: 1, login: 'you', avatarUrl: 'https://github.com/ghost.png', role: 'owner', isOwner: true };
+
+// --- Settings: one installation, per-repo scope, a few users ---
+
+const INSTALLATION = {
+  id: 1,
+  account: { login: 'demo', type: 'Organization', avatarUrl: `https://github.com/github.png?size=40`, htmlUrl: 'https://github.com/demo' },
+  repositories: [
+    { id: 11, name: 'app', fullName: 'demo/app', private: false, htmlUrl: 'https://github.com/demo/app' },
+    { id: 12, name: 'web', fullName: 'demo/web', private: true, htmlUrl: 'https://github.com/demo/web' },
+  ],
+};
+let repoScopes: Record<string, string[]> = {};
+let users: { userId: number; login: string; avatarUrl: string; role: 'owner' | 'user'; loginCount: number; lastSeenAgoMinutes: number }[] = [];
+
+function seedSettings() {
+  repoScopes = { 'demo/app': [], 'demo/web': ['charts', 'terraform/modules'] };
+  users = [
+    { userId: 1, login: 'you', avatarUrl: 'https://github.com/ghost.png', role: 'owner', loginCount: 214, lastSeenAgoMinutes: 0 },
+    { userId: 2, login: 'monalisa', avatarUrl: 'https://github.com/monalisa.png', role: 'owner', loginCount: 88, lastSeenAgoMinutes: 120 },
+    { userId: 3, login: 'hubot', avatarUrl: 'https://github.com/hubot.png', role: 'user', loginCount: 41, lastSeenAgoMinutes: 60 * 26 },
+    { userId: 4, login: 'octocat', avatarUrl: 'https://github.com/octocat.png', role: 'user', loginCount: 2, lastSeenAgoMinutes: 60 * 24 * 20 },
+  ];
+}
+seedSettings();
+
+function userJson(u: (typeof users)[number]) {
+  return {
+    userId: u.userId, login: u.login, avatarUrl: u.avatarUrl, role: u.role, loginCount: u.loginCount,
+    firstSeenAt: new Date(Date.now() - 90 * 86_400_000).toISOString(),
+    lastSeenAt: new Date(Date.now() - u.lastSeenAgoMinutes * 60_000).toISOString(),
+  };
+}
 const GITHUB_URL = 'https://github.com';
 
 function handle(req: IncomingMessage, res: ServerResponse): boolean {
@@ -339,6 +371,7 @@ function handle(req: IncomingMessage, res: ServerResponse): boolean {
 
   if (path === '/__mock/reset' && method === 'POST') {
     seed();
+    seedSettings();
     modelSettings.review = { model: null, effort: null };
     modelSettings.chat = { model: null, effort: null };
     send(res, 200, { ok: true });
@@ -347,16 +380,41 @@ function handle(req: IncomingMessage, res: ServerResponse): boolean {
   if (!path.startsWith('/api/')) return false;
 
   if (path === '/api/setup/status') {
-    send(res, 200, { configured: true, appSlug: 'cruise-line-mock', appUrl: 'http://localhost:5174', githubUrl: GITHUB_URL, installUrl: null, hasOwner: true });
+    send(res, 200, { configured: true, appSlug: 'cruise-line-mock', appUrl: 'http://localhost:5174', githubUrl: GITHUB_URL, installUrl: `${GITHUB_URL}/apps/cruise-line-mock/installations/new`, hasOwner: true });
     return true;
   }
   if (path === '/api/auth/me') { send(res, 200, USER); return true; }
   if (path === '/api/auth/logout') { send(res, 200, { ok: true }); return true; }
   if (path === '/api/cli/tokens') { send(res, 200, { tokens: [] }); return true; }
 
-  if (path === '/api/settings/repos') { send(res, 200, { installations: [] }); return true; }
+  if (path === '/api/settings/repos') { send(res, 200, { installations: [INSTALLATION] }); return true; }
+  if ((m = path.match(/^\/api\/settings\/repos\/([^/]+)\/([^/]+)(\/scope)?$/))) {
+    const key = `${m[1]}/${m[2]}`;
+    const reply = () => send(res, 200, { settings: { owner: m![1], repo: m![2], scopePaths: repoScopes[key] ?? [], updatedAt: null } });
+    if (m[3] && method === 'PATCH') {
+      readJson(req).then((body) => {
+        repoScopes[key] = [...new Set((body.scopePaths as string[] ?? []).map((p) => p.trim().replace(/^\.?\/+|\/+$/g, '')).filter(Boolean))];
+        reply();
+      });
+    } else {
+      reply();
+    }
+    return true;
+  }
   if (path === '/api/settings/users') {
-    send(res, 200, { users: [{ ...USER, lastSeenAt: new Date().toISOString(), loginCount: 1 }] });
+    send(res, 200, { users: users.map(userJson) });
+    return true;
+  }
+  if ((m = path.match(/^\/api\/settings\/users\/(\d+)\/role$/)) && method === 'PATCH') {
+    const target = users.find((u) => u.userId === Number(m![1]));
+    readJson(req).then((body) => {
+      if (!target) return send(res, 400, { error: 'Target user has not signed in to Cruise Line yet' });
+      if (target.role === 'owner' && body.role === 'user' && users.filter((u) => u.role === 'owner').length <= 1) {
+        return send(res, 400, { error: 'Cannot demote the last owner — promote another user to owner first' });
+      }
+      target.role = body.role;
+      send(res, 200, { ok: true, user: userJson(target) });
+    });
     return true;
   }
   if (path === '/api/settings/models' && method === 'GET') {

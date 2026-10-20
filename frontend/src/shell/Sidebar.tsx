@@ -27,6 +27,7 @@ export function Sidebar({ className }: { className?: string }) {
   const { data: user } = useCurrentUser();
 
   const match = useMatch('/:owner/:repo/pull/:pr/*');
+  const inSettings = !!useMatch('/settings/*');
   const selectedKey = match
     ? prKey({ owner: match.params.owner!, repo: match.params.repo!, number: Number(match.params.pr) })
     : null;
@@ -109,8 +110,12 @@ export function Sidebar({ className }: { className?: string }) {
       <div className="flex flex-shrink-0 flex-col gap-0.5 border-t border-line p-2">
         {user?.isOwner && (
           <Link
-            to="/settings"
-            className="flex h-9 items-center gap-2.5 rounded-md px-2 text-sm text-fg transition-colors hover:bg-surface focus-visible:outline-2 focus-visible:outline-accent"
+            to="/settings/basic"
+            aria-current={inSettings ? 'page' : undefined}
+            className={cx(
+              'flex h-9 items-center gap-2.5 rounded-md px-2 text-sm transition-colors hover:bg-surface focus-visible:outline-2 focus-visible:outline-accent',
+              inSettings ? 'bg-surface font-medium text-fg-strong' : 'text-fg',
+            )}
           >
             <GearSix size={16} className="text-fg-muted" aria-hidden="true" />
             Settings
