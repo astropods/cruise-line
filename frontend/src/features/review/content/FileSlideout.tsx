@@ -1,25 +1,15 @@
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
-import { useParams } from 'react-router';
 import { motion, AnimatePresence } from 'framer-motion';
-import { parseDiff, Diff, Hunk, tokenize, markEdits, computeNewLineNumber, getChangeKey } from 'react-diff-view';
-import refractor from 'refractor';
+import { Diff, Hunk, computeNewLineNumber, getChangeKey } from 'react-diff-view';
 import { useSlideout } from './SlideoutContext';
 import { useCommentsContext } from '../../comments/CommentsContext';
 import { InlineComment } from '../../comments/InlineComment';
 import { CommentInput } from '../../comments/CommentInput';
 import { resolveFilePath } from './resolvePath';
-import { fetchFileContent, type FileContent } from '../../../api';
-import 'react-diff-view/style/index.css';
+import type { FileContent } from '../../../api';
+import { useFileContent } from './useFileContent';
+import { useParsedDiff } from './useParsedDiff';
 
-const REFRACTOR_LANG_MAP: Record<string, string> = {
-  typescript: 'typescript', tsx: 'tsx', javascript: 'javascript', jsx: 'jsx',
-  python: 'python', ruby: 'ruby', go: 'go', rust: 'rust',
-  java: 'java', kotlin: 'kotlin', swift: 'swift', csharp: 'csharp',
-  cpp: 'cpp', c: 'c', sql: 'sql', bash: 'bash',
-  yaml: 'yaml', json: 'json', toml: 'toml', markdown: 'markdown',
-  css: 'css', scss: 'scss', html: 'markup', xml: 'markup',
-  graphql: 'graphql', dockerfile: 'docker',
-};
 
 interface FileSlideoutProps {
   files: Record<string, FileContent>;
@@ -73,38 +63,13 @@ export function FileSlideout({ files }: FileSlideoutProps) {
     window.addEventListener('mouseup', onUp);
   }, [panelWidth]);
 
-  // Resolve the file path against known files and lazy-load if missing
-  const { owner, repo, pr } = useParams<{ owner: string; repo: string; pr: string }>();
+  // Resolve the file path against known files, and fetch it if the review didn't collect it
   const knownPaths = useMemo(() => Object.keys(files), [files]);
   const resolvedFile = activeSlideout ? resolveFilePath(activeSlideout.file, knownPaths) : '';
   const staticContent = activeSlideout ? files[resolvedFile] : undefined;
-
-  const [lazyContent, setLazyContent] = useState<FileContent | null>(null);
-  const [lazyLoading, setLazyLoading] = useState(false);
-  const lazyFileRef = useRef('');
-
-  useEffect(() => {
-    if (!activeSlideout || staticContent) {
-      setLazyContent(null);
-      return;
-    }
-    // File not in pre-collected map — fetch on demand
-    const filePath = resolvedFile || activeSlideout.file;
-    if (lazyFileRef.current === filePath && lazyContent) return;
-    lazyFileRef.current = filePath;
-    setLazyLoading(true);
-    setLazyContent(null);
-
-    if (!owner || !repo || !pr) { setLazyLoading(false); return; }
-
-    let cancelled = false;
-    fetchFileContent(owner, repo, Number(pr), filePath)
-      .then((fc) => { if (!cancelled) setLazyContent(fc); })
-      .catch(() => {})
-      .finally(() => { if (!cancelled) setLazyLoading(false); });
-
-    return () => { cancelled = true; };
-  }, [activeSlideout?.file, resolvedFile, staticContent, owner, repo, pr]);
+  const lazy = useFileContent(activeSlideout && !staticContent ? resolvedFile || activeSlideout.file : null);
+  const lazyLoading = lazy.isFetching;
+  const lazyContent = lazy.data;
 
   const fileContent = staticContent ?? lazyContent ?? undefined;
 
@@ -261,33 +226,7 @@ function FilePickerDropdown({ currentFile, allFiles, onSelect }: {
 
 function SlideoutDiffView({ filePath, fileContent, focusLines }: { filePath: string; fileContent: FileContent; focusLines?: [number, number] }) {
   const { getCommentsForLine, addComment, activeCommentLine, setActiveCommentLine, userAvatarUrl, fetchError } = useCommentsContext();
-  const parsed = useMemo(() => {
-    try {
-      return parseDiff(fileContent.patch!, { nearbySequences: 'zip' })[0] ?? null;
-    } catch {
-      return null;
-    }
-  }, [fileContent.patch]);
-
-  const tokens = useMemo(() => {
-    if (!parsed?.hunks?.length) return undefined;
-    const lang = REFRACTOR_LANG_MAP[fileContent.language] ?? fileContent.language;
-    const hasLang = lang ? refractor.registered(lang) : false;
-    try {
-      return hasLang
-        ? tokenize(parsed.hunks, {
-            highlight: true as const,
-            refractor,
-            language: lang!,
-            enhancers: [markEdits(parsed.hunks, { type: 'block' })],
-          })
-        : tokenize(parsed.hunks, {
-            enhancers: [markEdits(parsed.hunks, { type: 'block' })],
-          });
-    } catch {
-      return undefined;
-    }
-  }, [parsed, fileContent.language]);
+  const { parsed, tokens } = useParsedDiff(fileContent.patch, fileContent.language);
 
   // Scroll to and highlight focus lines after render
   useEffect(() => {
@@ -306,38 +245,13 @@ function SlideoutDiffView({ filePath, fileContent, focusLines }: { filePath: str
           if (newLine >= focusLines[0] && newLine <= focusLines[1]) focusKeys.add(getChangeKey(change));
         }
       }
+      // Rows from the last focus range stay highlighted otherwise
+      container.querySelectorAll('.slideout-focus-row').forEach((row) => row.classList.remove('slideout-focus-row'));
       container.querySelectorAll<HTMLElement>('td[data-change-key]').forEach((cell) => {
         if (focusKeys.has(cell.dataset.changeKey ?? '')) cell.closest('tr')?.classList.add('slideout-focus-row');
       });
 
-      const focusRows = container.querySelectorAll('.slideout-focus-row');
-      if (focusRows.length > 0) {
-        const firstRow = focusRows[0] as HTMLElement;
-        const lastRow = focusRows[focusRows.length - 1] as HTMLElement;
-
-        const containerRect = container.getBoundingClientRect();
-        const firstRect = firstRow.getBoundingClientRect();
-        const lastRect = lastRow.getBoundingClientRect();
-
-        const focusTop = firstRect.top - containerRect.top + container.scrollTop;
-        const focusHeight = lastRect.bottom - firstRect.top;
-        const viewHeight = container.clientHeight;
-        const padding = 24;
-
-        let targetScroll: number;
-        if (focusHeight < viewHeight - padding * 2) {
-          // Focus fits — center it
-          targetScroll = focusTop - (viewHeight - focusHeight) / 2;
-        } else {
-          // Focus taller than viewport — align top with padding
-          targetScroll = focusTop - padding;
-        }
-
-        container.scrollTo({
-          top: Math.max(0, targetScroll),
-          behavior: 'smooth',
-        });
-      }
+      scrollRowsIntoView(container, container.querySelectorAll<HTMLElement>('.slideout-focus-row'));
     }, 200);
     return () => clearTimeout(timer);
   }, [focusLines, parsed]);
@@ -452,6 +366,24 @@ function SlideoutDiffView({ filePath, fileContent, focusLines }: { filePath: str
   );
 }
 
+/** Center the rows in the scroll container, or align their top when they don't fit */
+function scrollRowsIntoView(container: HTMLElement, rows: NodeListOf<HTMLElement>) {
+  if (rows.length === 0) return;
+  const containerRect = container.getBoundingClientRect();
+  const firstRect = rows[0].getBoundingClientRect();
+  const lastRect = rows[rows.length - 1].getBoundingClientRect();
+
+  const focusTop = firstRect.top - containerRect.top + container.scrollTop;
+  const focusHeight = lastRect.bottom - firstRect.top;
+  const viewHeight = container.clientHeight;
+  const padding = 24;
+  const top = focusHeight < viewHeight - padding * 2
+    ? focusTop - (viewHeight - focusHeight) / 2
+    : focusTop - padding;
+
+  container.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+}
+
 function SlideoutCodeView({ filePath, fileContent, focusLines }: { filePath: string; fileContent: FileContent; focusLines?: [number, number] }) {
   const lines = (fileContent.after ?? '').split('\n');
   const focusRef = useRef<HTMLDivElement>(null);
@@ -461,31 +393,7 @@ function SlideoutCodeView({ filePath, fileContent, focusLines }: { filePath: str
     const container = document.getElementById('slideout-scroll-container');
     if (!container) return;
 
-    // Find all focus rows to measure total height
-    const focusRows = container.querySelectorAll('[data-slideout-focus]');
-    if (focusRows.length === 0) return;
-
-    const lastRow = focusRows[focusRows.length - 1] as HTMLElement;
-    const containerRect = container.getBoundingClientRect();
-    const firstRect = focusRef.current.getBoundingClientRect();
-    const lastRect = lastRow.getBoundingClientRect();
-
-    const focusTop = firstRect.top - containerRect.top + container.scrollTop;
-    const focusHeight = lastRect.bottom - firstRect.top;
-    const viewHeight = container.clientHeight;
-    const padding = 24;
-
-    let targetScroll: number;
-    if (focusHeight < viewHeight - padding * 2) {
-      targetScroll = focusTop - (viewHeight - focusHeight) / 2;
-    } else {
-      targetScroll = focusTop - padding;
-    }
-
-    container.scrollTo({
-      top: Math.max(0, targetScroll),
-      behavior: 'smooth',
-    });
+    scrollRowsIntoView(container, container.querySelectorAll<HTMLElement>('[data-slideout-focus]'));
   }, [focusLines]);
 
   return (
@@ -499,12 +407,8 @@ function SlideoutCodeView({ filePath, fileContent, focusLines }: { filePath: str
           <div
             key={i}
             ref={isFirst ? focusRef : undefined}
-            className="flex"
+            className={inFocus ? 'flex bg-accent/5 shadow-[inset_3px_0_0_var(--color-accent)]' : 'flex'}
             data-slideout-focus={inFocus ? true : undefined}
-            style={{
-              background: inFocus ? 'rgba(88,166,255,0.06)' : 'transparent',
-              boxShadow: inFocus ? 'inset 3px 0 0 var(--color-accent)' : 'none',
-            }}
           >
             <span
               className="select-none w-12 flex-shrink-0 text-right pr-4 text-xs text-fg-muted/40"

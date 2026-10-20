@@ -1,13 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import {
-  FileText, MagnifyingGlass, FolderOpen, Terminal,
-  PencilSimpleLine, CircleNotch, WarningCircle, ArrowsClockwise,
-} from '@phosphor-icons/react';
+import { CircleNotch, WarningCircle, ArrowsClockwise } from '@phosphor-icons/react';
 import type { ProgressEntry } from '../../api';
-import type { Icon } from '@phosphor-icons/react';
 import { formatElapsed } from '../../lib/time';
 import { useElapsed } from '../../lib/useNow';
 import { Logo } from '../../shell/Logo';
+import { toolCallDetail, toolIcon } from '../../lib/toolCalls';
 
 interface AnalysisProgressProps {
   status: string;
@@ -16,30 +13,6 @@ interface AnalysisProgressProps {
   startedAt: string | null;
   error?: string | null;
   onRetry?: () => void;
-}
-
-const TOOL_ICON: Record<string, Icon> = {
-  Read: FileText,
-  Grep: MagnifyingGlass,
-  Glob: FolderOpen,
-  Bash: Terminal,
-  Edit: PencilSimpleLine,
-  Write: FileText,
-};
-
-function getToolIcon(text: string): Icon | null {
-  for (const [name, icon] of Object.entries(TOOL_ICON)) {
-    if (text.startsWith(`${name}:`) || text.startsWith(name)) return icon;
-  }
-  return null;
-}
-
-function cleanToolText(text: string): string {
-  // Strip tool name prefix and repo clone path
-  return text
-    .replace(/^(?:Read|Grep|Glob|Bash|Edit|Write):\s*/, '')
-    .replace(/^\/.*?\.cruise-data\/repos\/[^/]+\/[^/]+\/\d+\//, '')
-    .replace(/^\/.*?\/repos\/[^/]+\/[^/]+\//, '');
 }
 
 /** The headline for a run in progress: the latest status entry, or a placeholder. */
@@ -67,8 +40,9 @@ export function ActivityFeed({ progress, className = '' }: { progress: ProgressE
       className={`max-h-48 overflow-y-auto rounded-lg bg-surface border border-line p-3 ${className}`}
     >
       {progress.map((entry, i) => {
-        const ToolIcon = entry.type === 'tool' ? getToolIcon(entry.text) : null;
-        const text = entry.type === 'tool' ? cleanToolText(entry.text) : entry.text;
+        // Tool entries read "Read: path/to/file"
+        const ToolIcon = entry.type === 'tool' ? toolIcon(entry.text.split(':')[0]) : null;
+        const text = entry.type === 'tool' ? toolCallDetail(entry.text) : entry.text;
         const isLatest = i === progress.length - 1;
         const isStatus = entry.type === 'status';
 
@@ -115,7 +89,7 @@ export function AnalysisProgress({ status, progress, startedAt, error, onRetry }
         {/* Status + spinner / error */}
         {isFailed ? (
           <div className="flex flex-col items-center gap-3 mb-6">
-            <div className="flex items-center gap-2 text-red-400">
+            <div className="flex items-center gap-2 text-danger-fg">
               <WarningCircle size={18} weight="bold" />
               <span className="text-sm font-medium">Analysis failed</span>
             </div>

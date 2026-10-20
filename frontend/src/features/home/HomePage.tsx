@@ -176,7 +176,7 @@ function TopNav({
           {needsSetup && (
             <Link
               to="/settings"
-              className="text-xs px-3 py-1.5 rounded-md bg-accent text-white hover:bg-accent-strong transition-colors"
+              className="text-xs px-3 py-1.5 rounded-md bg-accent-emphasis text-white hover:bg-accent-emphasis/85 transition-colors"
             >
               Finish setup
             </Link>

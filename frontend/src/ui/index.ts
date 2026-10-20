@@ -13,3 +13,4 @@ export { SegmentedControl, type Segment } from './SegmentedControl';
 export { Spinner } from './Spinner';
 export { StatusIcon } from './StatusIcon';
 export { TONE_CLASSES, type Tone } from './tone';
+export { Md } from './Md';

@@ -80,7 +80,7 @@ export function CommentInput({ onSubmit, onCancel, userAvatarUrl, prefill }: Com
           className="w-full px-3 py-2 text-sm rounded-md bg-canvas border border-line text-fg placeholder:text-fg-muted resize-none focus:outline-none focus:border-accent font-[var(--font-sans)]"
         />
         {error && (
-          <div className="mt-1.5 px-3 py-1.5 text-xs rounded bg-red-500/10 text-red-400 border border-red-500/20">
+          <div className="mt-1.5 px-3 py-1.5 text-xs rounded bg-danger/10 text-danger-fg border border-danger/30">
             {error}
           </div>
         )}
@@ -94,7 +94,7 @@ export function CommentInput({ onSubmit, onCancel, userAvatarUrl, prefill }: Com
           <button
             onClick={handleSubmit}
             disabled={!body.trim() || submitting}
-            className="px-3 py-1 text-xs rounded bg-accent text-white hover:bg-accent-strong disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            className="px-3 py-1 text-xs rounded bg-accent-emphasis text-white hover:bg-accent-emphasis/85 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
             {submitting ? 'Posting...' : 'Comment'}
           </button>

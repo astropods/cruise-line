@@ -1,5 +1,5 @@
 import { Info, Warning, Siren, ShieldWarning, Lightning, type Icon } from '@phosphor-icons/react';
-import { Md } from './Md';
+import { Md } from '../../../ui';
 
 interface CalloutProps {
   type: 'info' | 'warning' | 'breaking' | 'security' | 'perf';
@@ -15,32 +15,32 @@ const styles: Record<string, { border: string; bg: string; icon: Icon; label: st
     iconColor: 'text-accent',
   },
   warning: {
-    border: 'border-l-yellow-500',
-    bg: 'bg-yellow-500/5',
+    border: 'border-l-warning',
+    bg: 'bg-warning/5',
     icon: Warning,
     label: 'Warning',
-    iconColor: 'text-yellow-500',
+    iconColor: 'text-warning',
   },
   breaking: {
-    border: 'border-l-red-500',
-    bg: 'bg-red-500/5',
+    border: 'border-l-danger',
+    bg: 'bg-danger/5',
     icon: Siren,
     label: 'Breaking Change',
-    iconColor: 'text-red-500',
+    iconColor: 'text-danger',
   },
   security: {
-    border: 'border-l-red-500',
-    bg: 'bg-red-500/5',
+    border: 'border-l-danger',
+    bg: 'bg-danger/5',
     icon: ShieldWarning,
     label: 'Security',
-    iconColor: 'text-red-500',
+    iconColor: 'text-danger',
   },
   perf: {
-    border: 'border-l-orange-500',
-    bg: 'bg-orange-500/5',
+    border: 'border-l-severe',
+    bg: 'bg-severe/5',
     icon: Lightning,
     label: 'Performance',
-    iconColor: 'text-orange-500',
+    iconColor: 'text-severe',
   },
 };
 

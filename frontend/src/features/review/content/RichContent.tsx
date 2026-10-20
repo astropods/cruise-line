@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Md } from './Md';
+import { Md } from '../../../ui';
 import { fileFromHref, parseDirectives, processInlineFileRefs, processRuleRefs, ruleFromHref } from './parseDirectives';
 import { resolveFilePath } from './resolvePath';
 import { InlineDiff } from './InlineDiff';

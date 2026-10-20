@@ -1,22 +1,21 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router';
 import { WarningCircle } from '@phosphor-icons/react';
-import { fetchRules } from '../../api';
 import { useCurrentUser } from '../../app/session';
 import { AnalysisProgress } from './AnalysisProgress';
 import { ArchitecturePanel } from '../architecture/ArchitecturePanel';
 import { ChatInputBar } from '../chat/ChatInputBar';
 import { ChatPanel, type ChatRequest } from '../chat/ChatPanel';
 import { FileSlideout } from './content/FileSlideout';
-import { Md } from './content/Md';
+import { Md, PageSpinner } from '../../ui';
 import type { RuleRef } from './content/RichContent';
 import { RulesPanel } from '../rules/RulesPanel';
+import { useRules } from '../rules/useRules';
 import { CommentsProvider } from '../comments/CommentsContext';
 import { SlideoutProvider } from './content/SlideoutContext';
 import { barState } from '../../domain/prStatus';
 import { countBySeverity, sortBySeverity } from '../../domain/severity';
 import { useReview } from './useReview';
-import { PageSpinner } from '../../ui';
 import { FindingCard } from './FindingCard';
 import { PrBar } from './PrBar';
 import { VerdictCard } from './VerdictCard';
@@ -42,7 +41,6 @@ export function ReviewPage() {
   const [chatRequest, setChatRequest] = useState<ChatRequest | undefined>();
   const [showRules, setShowRules] = useState(false);
   const [rulesPrefill, setRulesPrefill] = useState<string | undefined>();
-  const [repoRules, setRepoRules] = useState<RuleRef[]>([]);
   const [architectureSvgCache, setArchitectureSvgCache] = useState<Record<string, string>>({});
 
   const setView = useCallback(
@@ -59,14 +57,8 @@ export function ReviewPage() {
     }
   }, [status, generate]);
 
-  // Rules, for the hover tooltips on rule citations
-  const loadRules = useCallback(async () => {
-    try {
-      const res = await fetchRules(owner, repo);
-      setRepoRules(res.rules.map((r) => ({ ruleNumber: r.ruleNumber, rule: r.rule })));
-    } catch { /* tooltips just won't show */ }
-  }, [owner, repo]);
-  useEffect(() => { loadRules(); }, [loadRules]);
+  // Rules, for the hover tooltips on rule citations; a failure just means no tooltips
+  const repoRules: RuleRef[] = useRules(owner, repo).data ?? [];
 
   const cacheArchitectureSvg = useCallback((source: string, svg: string) => {
     setArchitectureSvgCache((cache) => (cache[source] === svg ? cache : { ...cache, [source]: svg }));
@@ -190,7 +182,7 @@ export function ReviewPage() {
             owner={owner}
             repo={repo}
             prefill={rulesPrefill}
-            onClose={() => { setShowRules(false); setRulesPrefill(undefined); loadRules(); }}
+            onClose={() => { setShowRules(false); setRulesPrefill(undefined); }}
           />
         )}
       </CommentsProvider>

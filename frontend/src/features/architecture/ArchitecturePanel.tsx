@@ -1,7 +1,6 @@
 import { ArrowClockwise, TreeStructure } from '@phosphor-icons/react';
 import type { ArchitectureAnalysis } from '../../api';
-import { Button, Card, CardBody, EmptyState } from '../../ui';
-import { Md } from '../review/content/Md';
+import { Button, Card, CardBody, EmptyState, Md } from '../../ui';
 import { DiagramCard } from './DiagramCard';
 
 interface ArchitecturePanelProps {

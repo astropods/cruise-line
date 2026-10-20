@@ -14,7 +14,6 @@ interface WalkthroughState {
   status: 'loading' | RunStatus;
   error: string | null;
   currentHeadSha: string | null;
-  walkthroughHeadSha: string | null;
   /** The displayed review predates the PR's current head */
   isStale: boolean;
   /** Commits since the reviewed head; null when not stale or unknown */
@@ -64,7 +63,6 @@ export function useReview(owner: string, repo: string, pr: number) {
     status,
     error,
     currentHeadSha: res?.currentHeadSha ?? null,
-    walkthroughHeadSha: review?.headSha ?? null,
     isStale: !!(review && res?.currentHeadSha && review.headSha !== res.currentHeadSha),
     commitsSinceReview: res?.commitsSinceReview ?? null,
     progress: inFlight ? progress.data?.progress ?? [] : [],
@@ -81,5 +79,5 @@ export function useReview(owner: string, repo: string, pr: number) {
     start.mutate({ owner, repo, number: pr, force });
   }, [owner, repo, pr, runStatus, start]);
 
-  return { ...state, generate, reload: prQuery.refetch };
+  return { ...state, generate };
 }

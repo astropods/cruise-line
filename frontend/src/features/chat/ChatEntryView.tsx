@@ -1,19 +1,7 @@
-import {
-  FileArrowUp, FileText, FolderOpen, MagnifyingGlass, PencilSimple, Terminal, type Icon,
-} from '@phosphor-icons/react';
 import type { FileContent } from '../../api';
 import { RichContent, type RuleRef } from '../review/content/RichContent';
-import { toolCallDetail } from './toolCallDetail';
+import { toolCallDetail, toolIcon } from '../../lib/toolCalls';
 import type { ChatEntry } from './useChat';
-
-const TOOL_ICONS: Record<string, Icon> = {
-  Read: FileText,
-  Grep: MagnifyingGlass,
-  Glob: FolderOpen,
-  Bash: Terminal,
-  Edit: PencilSimple,
-  Write: FileArrowUp,
-};
 
 interface ChatEntryViewProps {
   entry: ChatEntry;
@@ -45,7 +33,7 @@ export function ChatEntryView({ entry, files, onRuleClick, rules }: ChatEntryVie
 }
 
 function ToolCallLine({ toolName, content }: { toolName?: string; content?: string }) {
-  const ToolIcon = TOOL_ICONS[toolName ?? ''] ?? Terminal;
+  const ToolIcon = toolIcon(toolName);
   const detail = toolCallDetail(content);
   return (
     <div className="my-0.5 flex items-center gap-1.5 px-1 py-0.5 text-xs text-fg-muted/60">

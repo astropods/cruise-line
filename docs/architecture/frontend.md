@@ -11,8 +11,9 @@ frontend/src/
   main.tsx      Mounts the app with the query client
   app/          App (routes), gates (sign-in, setup), session queries, NotFoundPage
   ui/           Visual building blocks. No data fetching, no domain types.
-                Avatar, Button, Card, EmptyState, IconButton, Kbd, Menu, PageSpinner,
-                Pill, Popover, ProgressBar, SegmentedControl, Spinner, StatusIcon
+                Avatar, Button, Card, EmptyState, IconButton, Kbd, Md (markdown),
+                Menu, PageSpinner, Pill, Popover, ProgressBar, SegmentedControl,
+                Spinner, StatusIcon
   shell/        AppShell (sidebar + outlet), Sidebar, AccountMenu, Logo
   features/
     inbox/      Sidebar PR list: tabs, rows, model, list query
@@ -22,9 +23,9 @@ frontend/src/
     architecture/ ArchitecturePanel, DiagramCard, MermaidDiagram; mermaid.ts
                 loads Mermaid once and themes it from the color tokens
     chat/       ChatPanel, ChatComposer, ChatEntryView, ChatEmptyState,
-                ChatInputBar (the box on Analysis), useChat, toolCallDetail
+                ChatInputBar (the box on Analysis), useChat
     comments/   Inline PR comments and their context
-    rules/      RulesPanel
+    rules/      RulesPanel, useRules
     settings/   SettingsEntry (setup, claim), SettingsLayout, sections/, onboarding/
     auth/       Login, CLI consent, dev auth handoff
     home/       Public home page and CLI tokens
@@ -33,7 +34,7 @@ frontend/src/
                 severity.ts  severity order, tone, label, counts
   api/          client.ts (apiFetch, ApiError), one module per area, queryKeys;
                 types.ts re-exports the review types from agent/analysis/types.ts
-  lib/          Generic helpers (cx, time, useNow, useCopy, scopePath)
+  lib/          Generic helpers (cx, time, useNow, useCopy, scopePath, toolCalls)
   dev/          The /__ui component sheet (dev builds only)
 ```
 

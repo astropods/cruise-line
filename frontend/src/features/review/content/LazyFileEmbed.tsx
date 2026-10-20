@@ -1,6 +1,4 @@
-import { useState, useEffect } from 'react';
-import { useParams } from 'react-router';
-import { fetchFileContent, type FileContent } from '../../../api';
+import { useFileContent } from './useFileContent';
 import { normalizePath } from './resolvePath';
 import { InlineDiff } from './InlineDiff';
 import { InlineCode } from './InlineCode';
@@ -16,38 +14,13 @@ interface LazyFileEmbedProps {
 }
 
 /**
- * Lazily fetches file content from the API when it's not available
- * in the pre-collected files map. Used by RichContent as a fallback.
+ * An embed for a file the review didn't collect, fetched on demand. Used by
+ * RichContent as a fallback.
  */
 export function LazyFileEmbed({ type, file, lines, suggestion }: LazyFileEmbedProps) {
-  const { owner, repo, pr } = useParams<{ owner: string; repo: string; pr: string }>();
-  const [fileContent, setFileContent] = useState<FileContent | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [failed, setFailed] = useState(false);
+  const { data: fileContent, isPending, isError } = useFileContent(normalizePath(file));
 
-  useEffect(() => {
-    if (!owner || !repo || !pr) {
-      setLoading(false);
-      setFailed(true);
-      return;
-    }
-
-    let cancelled = false;
-    fetchFileContent(owner, repo, Number(pr), normalizePath(file))
-      .then((fc) => {
-        if (!cancelled) setFileContent(fc);
-      })
-      .catch(() => {
-        if (!cancelled) setFailed(true);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
-    return () => { cancelled = true; };
-  }, [owner, repo, pr, file]);
-
-  if (loading) {
+  if (isPending) {
     return (
       <div className="my-4 rounded-lg border border-line overflow-hidden">
         <div className="flex items-center justify-between px-4 py-2 bg-raised border-b border-line">
@@ -60,7 +33,7 @@ export function LazyFileEmbed({ type, file, lines, suggestion }: LazyFileEmbedPr
     );
   }
 
-  if (failed || !fileContent) {
+  if (isError || !fileContent) {
     return <div className="my-2"><FilePill file={file} /></div>;
   }
 

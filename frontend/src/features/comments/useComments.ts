@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
-import { fetchComments, postComment, replyToComment, type PRComment } from '../../api';
+import { useCallback, useMemo } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { fetchComments, postComment, queryKeys, replyToComment, type PRComment } from '../../api';
 
 interface UseCommentsOptions {
   owner: string;
@@ -8,79 +9,57 @@ interface UseCommentsOptions {
   commitId: string;
 }
 
+/** The PR's inline review comments, grouped by line, plus posting and replying */
 export function useComments({ owner, repo, pr, commitId }: UseCommentsOptions) {
-  const [comments, setComments] = useState<PRComment[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [fetchError, setFetchError] = useState<string | null>(null);
-
-  // Fetch existing comments on mount
-  useEffect(() => {
-    setFetchError(null);
-    fetchComments(owner, repo, pr)
-      .then((res) => setComments(res.comments))
-      .catch((err) => {
-        setFetchError(err instanceof Error ? err.message : 'Failed to load comments');
-      })
-      .finally(() => setLoading(false));
-  }, [owner, repo, pr]);
+  const queryClient = useQueryClient();
+  const query = useQuery({
+    queryKey: queryKeys.prComments(owner, repo, pr),
+    queryFn: () => fetchComments(owner, repo, pr).then((r) => r.comments),
+  });
 
   // Group by path, side, and line: deleted line 10 and new line 10 are different lines
   const commentsByLine = useMemo(() => {
     const map = new Map<string, PRComment[]>();
-    for (const c of comments) {
-      const key = `${c.path}:${c.side}:${c.line}`;
-      const existing = map.get(key) ?? [];
-      existing.push(c);
-      map.set(key, existing);
+    for (const c of query.data ?? []) {
+      const lineKey = `${c.path}:${c.side}:${c.line}`;
+      map.set(lineKey, [...(map.get(lineKey) ?? []), c]);
     }
     return map;
-  }, [comments]);
+  }, [query.data]);
 
   const getCommentsForLine = useCallback(
-    (path: string, line: number, side: 'LEFT' | 'RIGHT'): PRComment[] => {
-      return commentsByLine.get(`${path}:${side}:${line}`) ?? [];
-    },
+    (path: string, line: number, side: 'LEFT' | 'RIGHT'): PRComment[] => commentsByLine.get(`${path}:${side}:${line}`) ?? [],
     [commentsByLine],
   );
 
-  const commentCountForFile = useCallback(
-    (path: string): number => {
-      return comments.filter((c) => c.path === path).length;
-    },
-    [comments],
+  // GitHub returns the new comment; show it without refetching the thread
+  const append = useCallback(
+    (comment: PRComment) =>
+      queryClient.setQueryData<PRComment[]>(queryKeys.prComments(owner, repo, pr), (prev) => [...(prev ?? []), comment]),
+    [queryClient, owner, repo, pr],
   );
 
   const addComment = useCallback(
     async (path: string, line: number, side: 'LEFT' | 'RIGHT', body: string) => {
-      const res = await postComment(owner, repo, pr, {
-        body,
-        path,
-        line,
-        side,
-        commitId,
-      });
-      // Optimistically add to local state
-      setComments((prev) => [...prev, res.comment]);
+      const res = await postComment(owner, repo, pr, { body, path, line, side, commitId });
+      append(res.comment);
       return res.comment;
     },
-    [owner, repo, pr, commitId],
+    [owner, repo, pr, commitId, append],
   );
 
   const replyTo = useCallback(
     async (commentId: number, body: string) => {
       const res = await replyToComment(owner, repo, pr, commentId, body);
-      setComments((prev) => [...prev, res.comment]);
+      append(res.comment);
       return res.comment;
     },
-    [owner, repo, pr],
+    [owner, repo, pr, append],
   );
 
   return {
-    comments,
-    loading,
-    fetchError,
+    fetchError: query.isError ? query.error.message : null,
     getCommentsForLine,
-    commentCountForFile,
     addComment,
     replyTo,
   };

@@ -8,7 +8,7 @@ export function LoginPage() {
       <p className="text-fg-muted">Sign in with GitHub to view reviews.</p>
       <a
         href="/api/auth/github"
-        className="px-6 py-3 text-base font-medium rounded-lg bg-accent text-white hover:bg-accent-strong transition-colors"
+        className="px-6 py-3 text-base font-medium rounded-lg bg-accent-emphasis text-white hover:bg-accent-emphasis/85 transition-colors"
       >
         Sign in with GitHub
       </a>

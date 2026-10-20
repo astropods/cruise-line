@@ -1,21 +1,11 @@
-import { useMemo, useCallback } from 'react';
-import { parseDiff, Diff, Hunk, tokenize, markEdits } from 'react-diff-view';
-import refractor from 'refractor';
+import { useCallback } from 'react';
+import { Diff, Hunk } from 'react-diff-view';
 import { ChatText } from '@phosphor-icons/react';
 import type { FileContent } from '../../../api';
 import { useSlideout } from './SlideoutContext';
 import { useCommentsContext } from '../../comments/CommentsContext';
-import 'react-diff-view/style/index.css';
+import { useParsedDiff } from './useParsedDiff';
 
-const REFRACTOR_LANG_MAP: Record<string, string> = {
-  typescript: 'typescript', tsx: 'tsx', javascript: 'javascript', jsx: 'jsx',
-  python: 'python', ruby: 'ruby', go: 'go', rust: 'rust',
-  java: 'java', kotlin: 'kotlin', swift: 'swift', csharp: 'csharp',
-  cpp: 'cpp', c: 'c', sql: 'sql', bash: 'bash',
-  yaml: 'yaml', json: 'json', toml: 'toml', markdown: 'markdown',
-  css: 'css', scss: 'scss', html: 'markup', xml: 'markup',
-  graphql: 'graphql', dockerfile: 'docker',
-};
 
 interface InlineDiffProps {
   file: string;
@@ -36,35 +26,7 @@ export function InlineDiff({ file, lines, fileContent }: InlineDiffProps) {
     }, 300);
   }, [file, lines, openFile, setActiveCommentLine]);
 
-  const parsed = useMemo(() => {
-    if (!fileContent?.patch) return null;
-    try {
-      const files = parseDiff(fileContent.patch, { nearbySequences: 'zip' });
-      return files[0] ?? null;
-    } catch {
-      return null;
-    }
-  }, [fileContent?.patch]);
-
-  const tokens = useMemo(() => {
-    if (!parsed?.hunks?.length) return undefined;
-    const lang = REFRACTOR_LANG_MAP[fileContent?.language ?? ''] ?? fileContent?.language;
-    const hasLang = lang ? refractor.registered(lang) : false;
-    try {
-      return hasLang
-        ? tokenize(parsed.hunks, {
-            highlight: true as const,
-            refractor,
-            language: lang!,
-            enhancers: [markEdits(parsed.hunks, { type: 'block' })],
-          })
-        : tokenize(parsed.hunks, {
-            enhancers: [markEdits(parsed.hunks, { type: 'block' })],
-          });
-    } catch {
-      return undefined;
-    }
-  }, [parsed, fileContent?.language]);
+  const { parsed, tokens } = useParsedDiff(fileContent?.patch, fileContent?.language);
 
   if (!parsed) return null;
 

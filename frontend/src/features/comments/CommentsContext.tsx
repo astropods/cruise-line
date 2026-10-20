@@ -12,7 +12,6 @@ export interface ActiveCommentLine {
 
 interface CommentsContextValue {
   getCommentsForLine: (path: string, line: number, side: 'LEFT' | 'RIGHT') => PRComment[];
-  commentCountForFile: (path: string) => number;
   addComment: (path: string, line: number, side: 'LEFT' | 'RIGHT', body: string) => Promise<PRComment>;
   replyTo: (commentId: number, body: string) => Promise<PRComment>;
   activeCommentLine: ActiveCommentLine | null;
@@ -20,21 +19,18 @@ interface CommentsContextValue {
   replyingTo: number | null;
   setActiveCommentLine: (line: ActiveCommentLine | null) => void;
   setReplyingTo: (commentId: number | null) => void;
-  loading: boolean;
   fetchError: string | null;
   userAvatarUrl: string;
 }
 
 const CommentsContext = createContext<CommentsContextValue>({
   getCommentsForLine: () => [],
-  commentCountForFile: () => 0,
   addComment: async () => ({} as PRComment),
   replyTo: async () => ({} as PRComment),
   activeCommentLine: null,
   replyingTo: null,
   setActiveCommentLine: () => {},
   setReplyingTo: () => {},
-  loading: true,
   fetchError: null,
   userAvatarUrl: '',
 });
@@ -49,7 +45,7 @@ interface CommentsProviderProps {
 }
 
 export function CommentsProvider({ children, owner, repo, pr, commitId, userAvatarUrl }: CommentsProviderProps) {
-  const { getCommentsForLine, commentCountForFile, addComment, replyTo, loading, fetchError } = useComments({
+  const { getCommentsForLine, addComment, replyTo, fetchError } = useComments({
     owner, repo, pr, commitId,
   });
   const [activeCommentLine, setActiveCommentLine] = useState<ActiveCommentLine | null>(null);
@@ -58,14 +54,12 @@ export function CommentsProvider({ children, owner, repo, pr, commitId, userAvat
   return (
     <CommentsContext.Provider value={{
       getCommentsForLine,
-      commentCountForFile,
       addComment,
       replyTo,
       activeCommentLine,
       replyingTo,
       setActiveCommentLine,
       setReplyingTo,
-      loading,
       fetchError,
       userAvatarUrl,
     }}>
