@@ -1,6 +1,5 @@
 import { Hono } from 'hono';
-import { Octokit } from '@octokit/rest';
-import { config } from '../config.js';
+import { createUserOctokit } from '../github/app.js';
 import { requireAuth, requireRepoAccess, requireCookieSession } from '../middleware/session.js';
 import { AppError } from '../middleware/error.js';
 import type { AppEnv } from '../env.js';
@@ -41,10 +40,7 @@ commentRoutes.get('/:owner/:repo/:pr', async (c) => {
 
   if (isNaN(prNumber)) throw new AppError(400, 'Invalid PR number');
 
-  const octokit = new Octokit({
-    baseUrl: config.github.baseUrl,
-    auth: session.githubToken,
-  });
+  const octokit = createUserOctokit(session.githubToken);
 
   const data = await octokit.paginate(octokit.pulls.listReviewComments, {
     owner,
@@ -81,10 +77,7 @@ commentRoutes.post('/:owner/:repo/:pr', async (c) => {
   if (!line) throw new AppError(400, 'Line number is required');
   if (!commitId) throw new AppError(400, 'Commit ID is required');
 
-  const octokit = new Octokit({
-    baseUrl: config.github.baseUrl,
-    auth: session.githubToken,
-  });
+  const octokit = createUserOctokit(session.githubToken);
 
   const { data } = await octokit.pulls.createReviewComment({
     owner,
@@ -117,10 +110,7 @@ commentRoutes.post('/:owner/:repo/:pr/:commentId/reply', async (c) => {
   const { body } = await c.req.json<{ body: string }>();
   if (!body?.trim()) throw new AppError(400, 'Reply body is required');
 
-  const octokit = new Octokit({
-    baseUrl: config.github.baseUrl,
-    auth: session.githubToken,
-  });
+  const octokit = createUserOctokit(session.githubToken);
 
   const { data } = await octokit.pulls.createReplyForReviewComment({
     owner,

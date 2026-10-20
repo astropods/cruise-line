@@ -176,6 +176,12 @@ export async function getInstallationForRepo(
   owner: string,
   repo: string,
 ): Promise<number> {
+  // Every PR page, chat message, and access check asks; each miss signs an
+  // App JWT and calls GitHub. A failed lookup isn't cached.
+  const key = `${owner}/${repo}`.toLowerCase();
+  const cached = installationCache.get(key);
+  if (cached && cached.until > Date.now()) return cached.id;
+
   const { generateAppJwt } = await import('./app.js');
   const jwt = await generateAppJwt();
   const octokit = new Octokit({
@@ -184,8 +190,12 @@ export async function getInstallationForRepo(
   });
 
   const { data } = await octokit.apps.getRepoInstallation({ owner, repo });
+  installationCache.set(key, { id: data.id, until: Date.now() + INSTALLATION_CACHE_TTL });
   return data.id;
 }
+
+const INSTALLATION_CACHE_TTL = 5 * 60_000;
+const installationCache = new Map<string, { id: number; until: number }>();
 
 export interface ConnectedRepo {
   id: number;

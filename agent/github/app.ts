@@ -41,6 +41,11 @@ export async function getInstallationToken(installationId: number): Promise<stri
   return token;
 }
 
+/** A client acting as the signed-in user, with their OAuth token (comments are posted as them) */
+export function createUserOctokit(githubToken: string): Octokit {
+  return new Octokit({ baseUrl: config.github.baseUrl, auth: githubToken });
+}
+
 export function createInstallationOctokit(token: string): Octokit {
   return new Octokit({
     baseUrl: config.github.baseUrl,
