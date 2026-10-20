@@ -22,7 +22,10 @@ export function Popover({ trigger, children, align = 'end', className, panelClas
       if (!ref.current?.contains(e.target as Node)) setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
+      if (e.key !== 'Escape') return;
+      // Claim the Escape so a slideout or dialog underneath stays open
+      e.preventDefault();
+      setOpen(false);
     };
     document.addEventListener('mousedown', onPointer);
     document.addEventListener('keydown', onKey);

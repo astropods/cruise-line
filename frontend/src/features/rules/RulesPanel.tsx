@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { Plus, Trash, X, ListNumbers, PencilSimple, Check } from '@phosphor-icons/react';
+import { useState, useEffect, useCallback, useId, useRef } from 'react';
+import { Plus, Trash, X, ListNumbers, PencilSimple } from '@phosphor-icons/react';
 import { fetchRules, addRuleApi, deleteRuleApi, updateRuleApi, type ReviewRule } from '../../api';
+import { IconButton } from '../../ui';
 
 interface RulesPanelProps {
   owner: string;
@@ -17,7 +18,26 @@ export function RulesPanel({ owner, repo, onClose, prefill }: RulesPanelProps) {
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editText, setEditText] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
   const newRuleRef = useRef<HTMLTextAreaElement>(null);
+  const titleId = useId();
+
+  // Escape closes, unless something inside (an edit box) claimed it. Focus
+  // goes back to whatever opened the panel.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  useEffect(() => {
+    const opener = document.activeElement as HTMLElement | null;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !e.defaultPrevented) onCloseRef.current();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      opener?.focus?.();
+    };
+  }, []);
 
   // Auto-focus and select when opened with a prefill
   useEffect(() => {
@@ -31,37 +51,44 @@ export function RulesPanel({ owner, repo, onClose, prefill }: RulesPanelProps) {
     try {
       const res = await fetchRules(owner, repo);
       setRules(res.rules);
-    } catch {
-      // ignore
+      setLoadFailed(false);
+    } catch (err) {
+      setLoadFailed(true);
+      setError(err instanceof Error ? err.message : 'Failed to load rules');
     } finally {
       setLoading(false);
     }
   }, [owner, repo]);
+
+  /** Run a change, then reload; a failure shows above the list instead of vanishing */
+  async function change(action: () => Promise<unknown>): Promise<boolean> {
+    setError(null);
+    try {
+      await action();
+      await load();
+      return true;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong');
+      return false;
+    }
+  }
 
   useEffect(() => { load(); }, [load]);
 
   async function handleAdd() {
     if (!newRule.trim() || adding) return;
     setAdding(true);
-    try {
-      await addRuleApi(owner, repo, newRule.trim());
-      setNewRule('');
-      await load();
-    } finally {
-      setAdding(false);
-    }
+    if (await change(() => addRuleApi(owner, repo, newRule.trim()))) setNewRule('');
+    setAdding(false);
   }
 
   async function handleDelete(ruleId: number) {
-    await deleteRuleApi(owner, repo, ruleId);
-    await load();
+    await change(() => deleteRuleApi(owner, repo, ruleId));
   }
 
   async function handleSaveEdit(ruleId: number) {
     if (!editText.trim()) return;
-    await updateRuleApi(owner, repo, ruleId, editText.trim());
-    setEditingId(null);
-    await load();
+    if (await change(() => updateRuleApi(owner, repo, ruleId, editText.trim()))) setEditingId(null);
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
@@ -77,26 +104,32 @@ export function RulesPanel({ owner, repo, onClose, prefill }: RulesPanelProps) {
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
 
       {/* Panel */}
-      <div className="relative w-full max-w-lg max-h-[80vh] rounded-xl bg-canvas border border-line shadow-2xl flex flex-col overflow-hidden">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="relative w-full max-w-lg max-h-[80vh] rounded-xl bg-canvas border border-line shadow-2xl flex flex-col overflow-hidden"
+      >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-line">
           <div className="flex items-center gap-2">
             <ListNumbers size={18} className="text-accent" />
-            <h2 className="text-base font-semibold text-fg-strong">Review Rules</h2>
+            <h2 id={titleId} className="text-base font-semibold text-fg-strong">Review Rules</h2>
           </div>
           <div className="flex items-center gap-2">
             <span className="text-xs text-fg-muted">{owner}/{repo}</span>
-            <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded hover:bg-raised text-fg-muted transition-colors">
-              <X size={16} />
-            </button>
+            <IconButton label="Close" variant="ghost" size="sm" icon={<X size={16} />} onClick={onClose} />
           </div>
         </div>
 
         {/* Rules list */}
         <div className="flex-1 overflow-auto px-6 py-4">
+          {error && (
+            <p role="alert" className="mb-3 rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-xs text-danger-fg">{error}</p>
+          )}
           {loading ? (
             <div className="text-center text-sm text-fg-muted py-8">Loading rules...</div>
-          ) : rules.length === 0 ? (
+          ) : loadFailed ? null : rules.length === 0 ? (
             <div className="text-center py-8">
               <p className="text-sm text-fg-muted mb-1">No review rules configured</p>
               <p className="text-xs text-fg-muted/60">Rules guide the AI analysis — add rules for patterns, conventions, or areas to watch.</p>
@@ -118,7 +151,7 @@ export function RulesPanel({ owner, repo, onClose, prefill }: RulesPanelProps) {
                         autoFocus
                         onKeyDown={(e) => {
                           if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSaveEdit(rule.id); }
-                          if (e.key === 'Escape') setEditingId(null);
+                          if (e.key === 'Escape') { e.preventDefault(); setEditingId(null); }
                         }}
                       />
                       <div className="flex gap-1 mt-1">
@@ -129,21 +162,22 @@ export function RulesPanel({ owner, repo, onClose, prefill }: RulesPanelProps) {
                   ) : (
                     <>
                       <span className="flex-1 text-sm text-fg leading-relaxed">{rule.rule}</span>
-                      <div className="flex-shrink-0 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button
+                      <div className="flex-shrink-0 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
+                        <IconButton
+                          label={`Edit rule ${rule.ruleNumber}`}
+                          variant="ghost"
+                          size="sm"
+                          icon={<PencilSimple size={13} />}
                           onClick={() => { setEditingId(rule.id); setEditText(rule.rule); }}
-                          className="w-6 h-6 flex items-center justify-center rounded hover:bg-raised text-fg-muted hover:text-accent transition-colors"
-                          title="Edit rule"
-                        >
-                          <PencilSimple size={13} />
-                        </button>
-                        <button
+                        />
+                        <IconButton
+                          label={`Delete rule ${rule.ruleNumber}`}
+                          variant="ghost"
+                          size="sm"
+                          className="hover:text-danger-fg"
+                          icon={<Trash size={13} />}
                           onClick={() => handleDelete(rule.id)}
-                          className="w-6 h-6 flex items-center justify-center rounded hover:bg-raised text-fg-muted hover:text-red-400 transition-colors"
-                          title="Delete rule"
-                        >
-                          <Trash size={13} />
-                        </button>
+                        />
                       </div>
                     </>
                   )}
@@ -162,16 +196,18 @@ export function RulesPanel({ owner, repo, onClose, prefill }: RulesPanelProps) {
               onChange={(e) => setNewRule(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Add a review rule..."
+              aria-label="New review rule"
               rows={2}
               className="flex-1 px-3 py-2 text-sm rounded-lg bg-surface border border-line text-fg placeholder:text-fg-muted resize-none focus:outline-none focus:border-accent"
             />
-            <button
+            <IconButton
+              label="Add rule"
+              variant="accent"
+              size="lg"
+              icon={<Plus size={16} weight="bold" />}
               onClick={handleAdd}
               disabled={!newRule.trim() || adding}
-              className="w-9 h-9 flex items-center justify-center rounded-lg bg-accent text-white hover:bg-accent-strong disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex-shrink-0"
-            >
-              <Plus size={16} weight="bold" />
-            </button>
+            />
           </div>
           <p className="text-xs text-fg-muted/50 mt-2">
             Rules are applied to all analyses and chats for this repo. The agent will reference rules by number.

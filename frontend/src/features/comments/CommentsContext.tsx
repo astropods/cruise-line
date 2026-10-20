@@ -11,7 +11,7 @@ export interface ActiveCommentLine {
 }
 
 interface CommentsContextValue {
-  getCommentsForLine: (path: string, line: number) => PRComment[];
+  getCommentsForLine: (path: string, line: number, side: 'LEFT' | 'RIGHT') => PRComment[];
   commentCountForFile: (path: string) => number;
   addComment: (path: string, line: number, side: 'LEFT' | 'RIGHT', body: string) => Promise<PRComment>;
   replyTo: (commentId: number, body: string) => Promise<PRComment>;

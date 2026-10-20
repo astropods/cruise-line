@@ -11,4 +11,6 @@ jobs:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
       - run: bun install
+      # Frontend tests render through react-markdown, which lives in frontend/
+      - run: bun install --cwd frontend
       - run: bun test

@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { Md } from './Md';
-import { parseDirectives, processInlineFileRefs, processRuleRefs } from './parseDirectives';
+import { fileFromHref, parseDirectives, processInlineFileRefs, processRuleRefs, ruleFromHref } from './parseDirectives';
 import { resolveFilePath } from './resolvePath';
 import { InlineDiff } from './InlineDiff';
 import { InlineCode } from './InlineCode';
@@ -53,13 +53,12 @@ export function RichContent({ content, files = {}, className = 'cruise-markdown'
                 <Md
                   components={{
                     a: ({ href, children }) => {
-                      if (href?.startsWith('::file::')) {
-                        const file = href.replace('::file::', '');
-                        const { resolvedPath } = resolveFile(file);
-                        return <FilePill file={resolvedPath} />;
+                      const file = fileFromHref(href);
+                      if (file !== null) {
+                        return <FilePill file={resolveFile(file).resolvedPath} />;
                       }
-                      if (href?.startsWith('::rule::')) {
-                        const ruleNum = parseInt(href.replace('::rule::', ''), 10);
+                      const ruleNum = ruleFromHref(href);
+                      if (ruleNum !== null) {
                         const ruleText = rules.find((r) => r.ruleNumber === ruleNum)?.rule;
                         return (
                           <span className="relative inline-block group">

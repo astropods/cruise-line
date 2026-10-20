@@ -15,6 +15,7 @@ export function BasicSetupSection() {
   const status = setup.data;
   const repos = useConnectedRepos();
   const [disconnecting, setDisconnecting] = useState(false);
+  const [disconnectError, setDisconnectError] = useState<string | null>(null);
 
   // GitHub sends people back here after creating or installing the App
   const created = params.get('success') === 'true';
@@ -25,10 +26,12 @@ export function BasicSetupSection() {
   async function disconnect() {
     if (!confirm('Disconnect the GitHub App? Cruise Line stops reviewing until a new one is connected.')) return;
     setDisconnecting(true);
+    setDisconnectError(null);
     try {
       await disconnectGitHubApp();
       window.location.href = '/settings';
-    } catch {
+    } catch (err) {
+      setDisconnectError(err instanceof Error ? err.message : 'Failed to disconnect');
       setDisconnecting(false);
     }
   }
@@ -89,10 +92,11 @@ export function BasicSetupSection() {
       </SettingRow>
 
       <SettingRow label="Disconnect" hint="Remove the GitHub App to connect a different GitHub account or Enterprise server." last>
-        <div>
+        <div className="flex flex-col items-start gap-2">
           <Button variant="danger" onClick={disconnect} disabled={disconnecting}>
             {disconnecting ? 'Disconnecting…' : 'Disconnect GitHub App'}
           </Button>
+          {disconnectError && <p role="alert" className="text-xs text-danger-fg">{disconnectError}</p>}
         </div>
       </SettingRow>
     </>

@@ -120,9 +120,13 @@ export function useChat({ owner, repo, pr }: UseChatOptions) {
   // Load conversation history from the server on mount, and rejoin a reply
   // that is still running (e.g. after a refresh).
   useEffect(() => {
+    // Switching PRs unmounts this; a late response must not open a stream
+    // for the PR we left
+    let cancelled = false;
     async function loadHistory() {
       try {
         const data = await fetchChatSession(owner, repo, pr);
+        if (cancelled) return;
 
         let restored = historyToEntries((data.messages ?? []) as any[]);
         const activeRun = data.activeRun;
@@ -139,11 +143,16 @@ export function useChat({ owner, repo, pr }: UseChatOptions) {
           setEntries(restored);
         }
         if (activeRun) followRun(activeRun.id);
-      } catch { /* ignore */ }
+      } catch (err) {
+        if (cancelled) return;
+        // Say so, rather than showing an empty conversation as if there were none
+        addError(`Couldn't load earlier messages: ${err instanceof Error ? err.message : 'unknown error'}`);
+      }
       setHistoryLoaded(true);
     }
     loadHistory();
-  }, [owner, repo, pr, followRun]);
+    return () => { cancelled = true; };
+  }, [owner, repo, pr, followRun, addError]);
 
   const sendMessage = useCallback(async (text: string) => {
     if (!text.trim() || isStreaming) return;

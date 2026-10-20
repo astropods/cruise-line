@@ -6,33 +6,40 @@ import { ChatEmptyState } from './ChatEmptyState';
 import { ChatEntryView, ThinkingDots } from './ChatEntryView';
 import { useChat } from './useChat';
 
+/** Each request is a new object; ChatPanel sends each one exactly once */
+export interface ChatRequest {
+  text: string;
+}
+
 interface ChatPanelProps {
   owner: string;
   repo: string;
   prNumber: number;
   files: Record<string, FileContent>;
-  /** Sent once the history has loaded, e.g. a question typed on the Analysis view */
-  initialMessage?: string;
+  /** A question asked elsewhere (the Analysis view); sent once the panel is free */
+  request?: ChatRequest;
   onRuleClick?: (ruleNumber: number) => void;
   rules?: RuleRef[];
 }
 
 /** The Chat view: the conversation, then the composer pinned underneath */
-export function ChatPanel({ owner, repo, prNumber, files, initialMessage, onRuleClick, rules }: ChatPanelProps) {
+export function ChatPanel({ owner, repo, prNumber, files, request, onRuleClick, rules }: ChatPanelProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const sentInitial = useRef(false);
+  const sentRequest = useRef<ChatRequest | undefined>(undefined);
   const { entries, isStreaming, historyLoaded, sendMessage, resetSession } = useChat({ owner, repo, pr: prNumber });
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [entries]);
 
+  // Waits for the history and for any reply in progress, which sendMessage
+  // would otherwise drop
   useEffect(() => {
-    if (initialMessage && historyLoaded && !sentInitial.current) {
-      sentInitial.current = true;
-      sendMessage(initialMessage);
+    if (request && request !== sentRequest.current && historyLoaded && !isStreaming) {
+      sentRequest.current = request;
+      sendMessage(request.text);
     }
-  }, [initialMessage, historyLoaded, sendMessage]);
+  }, [request, historyLoaded, isStreaming, sendMessage]);
 
   function send(message: string) {
     if (!isStreaming) sendMessage(message);

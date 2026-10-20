@@ -31,6 +31,9 @@ export function useStartReview() {
         queryClient.cancelQueries({ queryKey: queryKeys.prList }),
         queryClient.cancelQueries({ queryKey: prKey, exact: true }),
       ]);
+      // The last run's progress (and its "complete") isn't this run's
+      queryClient.removeQueries({ queryKey: queryKeys.prProgress(owner, repo, number), exact: true });
+
       const previousList = queryClient.getQueryData<{ prs: PrSummary[] }>(queryKeys.prList);
       const previousPr = queryClient.getQueryData<WalkthroughResponse>(prKey);
       const now = new Date().toISOString();
