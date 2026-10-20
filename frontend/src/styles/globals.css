@@ -39,24 +39,11 @@
   100% { transform: translateX(300%); }
 }
 
-/* Legacy names, kept until every component uses the tokens above */
-:root {
-  --bg-primary: var(--color-canvas);
-  --bg-secondary: var(--color-surface);
-  --bg-tertiary: var(--color-raised);
-  --border: var(--color-line);
-  --text-primary: var(--color-fg);
-  --text-secondary: var(--color-fg-muted);
-  --text-bright: var(--color-fg-strong);
-  --accent: var(--color-accent);
-  --accent-hover: var(--color-accent-strong);
-}
-
 body {
   margin: 0;
   font-family: var(--font-sans);
-  background-color: var(--bg-primary);
-  color: var(--text-primary);
+  background-color: var(--color-canvas);
+  color: var(--color-fg);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
@@ -77,10 +64,10 @@ body {
   height: 8px;
 }
 ::-webkit-scrollbar-track {
-  background: var(--bg-secondary);
+  background: var(--color-surface);
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--border);
+  background: var(--color-line);
   border-radius: 4px;
 }
 
@@ -88,7 +75,7 @@ body {
    Markdown rendering in explanation panel
    ============================================ */
 .cruise-markdown {
-  color: var(--text-primary);
+  color: var(--color-fg);
   font-size: 1rem;
   line-height: 1.8;
   letter-spacing: -0.006em;
@@ -100,16 +87,16 @@ body {
   margin-bottom: 0;
 }
 .cruise-markdown code {
-  background: var(--bg-tertiary);
+  background: var(--color-raised);
   border-radius: 4px;
   padding: 0.15em 0.45em;
   font-size: 0.875em;
   font-family: var(--font-mono);
-  color: var(--accent);
+  color: var(--color-accent);
   font-weight: 400;
 }
 .cruise-markdown pre {
-  background: var(--bg-tertiary);
+  background: var(--color-raised);
   border-radius: 8px;
   padding: 1em 1.25em;
   overflow-x: auto;
@@ -120,15 +107,15 @@ body {
 .cruise-markdown pre code {
   background: none;
   padding: 0;
-  color: var(--text-primary);
+  color: var(--color-fg);
   font-size: inherit;
 }
 .cruise-markdown strong {
-  color: var(--text-bright);
+  color: var(--color-fg-strong);
   font-weight: 600;
 }
 .cruise-markdown em {
-  color: var(--text-secondary);
+  color: var(--color-fg-muted);
   font-style: italic;
 }
 .cruise-markdown ul {
@@ -146,53 +133,53 @@ body {
   line-height: 1.7;
 }
 .cruise-markdown li::marker {
-  color: var(--text-secondary);
+  color: var(--color-fg-muted);
 }
 .cruise-markdown h1 {
-  color: var(--text-bright);
+  color: var(--color-fg-strong);
   font-size: 1.5rem;
   font-weight: 700;
   margin: 2em 0 0.75em;
   letter-spacing: -0.02em;
 }
 .cruise-markdown h2 {
-  color: var(--text-bright);
+  color: var(--color-fg-strong);
   font-size: 1.25rem;
   font-weight: 600;
   margin: 1.75em 0 0.6em;
   letter-spacing: -0.015em;
 }
 .cruise-markdown h3 {
-  color: var(--text-bright);
+  color: var(--color-fg-strong);
   font-size: 1.1rem;
   font-weight: 600;
   margin: 1.5em 0 0.5em;
 }
 .cruise-markdown h4, .cruise-markdown h5, .cruise-markdown h6 {
-  color: var(--text-bright);
+  color: var(--color-fg-strong);
   font-size: 1rem;
   font-weight: 600;
   margin: 1.25em 0 0.5em;
 }
 .cruise-markdown a {
-  color: var(--accent);
+  color: var(--color-accent);
   text-decoration: none;
   border-bottom: 1px solid transparent;
   transition: border-color 0.15s;
 }
 .cruise-markdown a:hover {
-  border-bottom-color: var(--accent);
+  border-bottom-color: var(--color-accent);
 }
 .cruise-markdown blockquote {
-  border-left: 3px solid var(--border);
+  border-left: 3px solid var(--color-line);
   padding-left: 1.25em;
   margin: 1.25em 0;
-  color: var(--text-secondary);
+  color: var(--color-fg-muted);
   font-style: italic;
 }
 .cruise-markdown hr {
   border: none;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--color-line);
   margin: 2em 0;
 }
 .cruise-markdown table {
@@ -204,7 +191,7 @@ body {
   display: block;
 }
 .cruise-markdown th, .cruise-markdown td {
-  border: 1px solid var(--border);
+  border: 1px solid var(--color-line);
   padding: 0.5em 1em;
   text-align: left;
   white-space: nowrap;
@@ -213,19 +200,19 @@ body {
   white-space: normal;
 }
 .cruise-markdown th {
-  background: var(--bg-tertiary);
+  background: var(--color-raised);
   font-weight: 600;
-  color: var(--text-bright);
+  color: var(--color-fg-strong);
 }
 .cruise-markdown tr:nth-child(even) td {
-  background: var(--bg-secondary);
+  background: var(--color-surface);
 }
 
 /* ============================================
    Chat markdown — tighter variant
    ============================================ */
 .cruise-chat-markdown {
-  color: var(--text-primary);
+  color: var(--color-fg);
   font-size: 0.875rem;
   line-height: 1.7;
   letter-spacing: -0.006em;
@@ -237,15 +224,15 @@ body {
   margin-bottom: 0;
 }
 .cruise-chat-markdown code {
-  background: var(--bg-tertiary);
+  background: var(--color-raised);
   border-radius: 3px;
   padding: 0.15em 0.4em;
   font-size: 0.85em;
   font-family: var(--font-mono);
-  color: var(--accent);
+  color: var(--color-accent);
 }
 .cruise-chat-markdown pre {
-  background: var(--bg-tertiary);
+  background: var(--color-raised);
   border-radius: 6px;
   padding: 0.75em 1em;
   overflow-x: auto;
@@ -256,15 +243,15 @@ body {
 .cruise-chat-markdown pre code {
   background: none;
   padding: 0;
-  color: var(--text-primary);
+  color: var(--color-fg);
   font-size: inherit;
 }
 .cruise-chat-markdown strong {
-  color: var(--text-bright);
+  color: var(--color-fg-strong);
   font-weight: 600;
 }
 .cruise-chat-markdown em {
-  color: var(--text-secondary);
+  color: var(--color-fg-muted);
   font-style: italic;
 }
 .cruise-chat-markdown ul {
@@ -282,40 +269,40 @@ body {
   line-height: 1.6;
 }
 .cruise-chat-markdown li::marker {
-  color: var(--text-secondary);
+  color: var(--color-fg-muted);
 }
 .cruise-chat-markdown h1 {
-  color: var(--text-bright);
+  color: var(--color-fg-strong);
   font-weight: 600;
   margin: 1.2em 0 0.5em;
   font-size: 1.05rem;
 }
 .cruise-chat-markdown h2 {
-  color: var(--text-bright);
+  color: var(--color-fg-strong);
   font-weight: 600;
   margin: 1em 0 0.4em;
   font-size: 0.975rem;
 }
 .cruise-chat-markdown h3 {
-  color: var(--text-bright);
+  color: var(--color-fg-strong);
   font-weight: 600;
   margin: 0.85em 0 0.35em;
   font-size: 0.925rem;
 }
 .cruise-chat-markdown hr {
   border: none;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--color-line);
   margin: 1.25em 0;
 }
 .cruise-chat-markdown blockquote {
-  border-left: 3px solid var(--border);
+  border-left: 3px solid var(--color-line);
   padding-left: 1em;
   margin: 0.85em 0;
-  color: var(--text-secondary);
+  color: var(--color-fg-muted);
   font-style: italic;
 }
 .cruise-chat-markdown a {
-  color: var(--accent);
+  color: var(--color-accent);
   text-decoration: none;
 }
 .cruise-chat-markdown a:hover {
@@ -330,14 +317,14 @@ body {
   overflow-x: auto;
 }
 .cruise-chat-markdown th, .cruise-chat-markdown td {
-  border: 1px solid var(--border);
+  border: 1px solid var(--color-line);
   padding: 0.4em 0.75em;
   text-align: left;
 }
 .cruise-chat-markdown th {
-  background: var(--bg-tertiary);
+  background: var(--color-raised);
   font-weight: 600;
-  color: var(--text-bright);
+  color: var(--color-fg-strong);
 }
 .cruise-chat-markdown img {
   max-width: 100%;
@@ -356,8 +343,8 @@ body {
 
 /* react-diff-view dark theme — override CSS custom properties */
 .cruise-diff-wrapper {
-  --diff-background-color: var(--bg-secondary);
-  --diff-text-color: var(--text-primary);
+  --diff-background-color: var(--color-surface);
+  --diff-text-color: var(--color-fg);
   --diff-font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
 
   /* Gutter colors */
@@ -368,19 +355,19 @@ body {
 
   /* Code line colors */
   --diff-code-insert-background-color: rgba(46, 160, 67, 0.15);
-  --diff-code-insert-text-color: var(--text-primary);
+  --diff-code-insert-text-color: var(--color-fg);
   --diff-code-delete-background-color: rgba(248, 81, 73, 0.12);
-  --diff-code-delete-text-color: var(--text-primary);
+  --diff-code-delete-text-color: var(--color-fg);
 
   /* Word-level edit highlights */
   --diff-code-insert-edit-background-color: rgba(46, 160, 67, 0.45);
-  --diff-code-insert-edit-text-color: var(--text-primary);
+  --diff-code-insert-edit-text-color: var(--color-fg);
   --diff-code-delete-edit-background-color: rgba(248, 81, 73, 0.27);
-  --diff-code-delete-edit-text-color: var(--text-primary);
+  --diff-code-delete-edit-text-color: var(--color-fg);
 
   /* Selection */
   --diff-selection-background-color: rgba(88, 166, 255, 0.3);
-  --diff-selection-text-color: var(--text-primary);
+  --diff-selection-text-color: var(--color-fg);
 
   font-size: 13px;
 }
@@ -393,7 +380,7 @@ body {
 /* Hunk headers */
 .cruise-diff-wrapper .diff-hunk-header td {
   background: rgba(88, 166, 255, 0.08);
-  color: var(--text-secondary);
+  color: var(--color-fg-muted);
   font-size: 12px;
   padding: 4px 16px;
 }
@@ -410,7 +397,7 @@ body {
 
 /* Slideout focus row — left accent border to mark the referenced section */
 .cruise-diff-wrapper .slideout-focus-row td:first-child {
-  box-shadow: inset 3px 0 0 var(--accent);
+  box-shadow: inset 3px 0 0 var(--color-accent);
 }
 .cruise-diff-wrapper .slideout-focus-row {
   background: rgba(88, 166, 255, 0.06) !important;
@@ -426,7 +413,7 @@ body {
   cursor: pointer;
 }
 .cruise-commentable-diff .diff-gutter:nth-child(2):hover {
-  color: var(--accent) !important;
+  color: var(--color-accent) !important;
   opacity: 1 !important;
 }
 .cruise-commentable-diff .diff-gutter:nth-child(2):hover::after {
@@ -438,8 +425,8 @@ body {
   justify-content: center;
   font-weight: bold;
   font-size: 14px;
-  color: var(--accent);
-  background: var(--bg-tertiary);
+  color: var(--color-accent);
+  background: var(--color-raised);
 }
 
 /* Comment widgets in diff */

@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { safeReturnTo } from './return-to.js';
 import { getCookie } from 'hono/cookie';
 import { config } from '../config.js';
 import {
@@ -41,7 +42,7 @@ async function decodeState(state: string): Promise<{ returnTo: string } | null> 
 }
 
 authRoutes.get('/github', authLimiter, async (c) => {
-  const returnTo = c.req.query('return_to') ?? '/';
+  const returnTo = safeReturnTo(c.req.query('return_to'));
   const state = await encodeState(returnTo);
   const redirectUri = `${config.appUrl}/api/auth/callback`;
   const authorizeUrl = getAuthorizeUrl(state, redirectUri);
@@ -97,7 +98,8 @@ authRoutes.get('/callback', authLimiter, async (c) => {
 
   // In dev, the frontend is on a different origin (Vite).
   // Pass the token via query param so the frontend can set its own cookie.
-  const returnTo = decoded.returnTo;
+  // Checked again here in case a state was signed before this check existed
+  const returnTo = safeReturnTo(decoded.returnTo);
   const isDev = config.port !== 80;
   if (isDev) {
     const frontendUrl = `http://localhost:5173/auth/complete?token=${encodeURIComponent(sessionToken)}&return_to=${encodeURIComponent(returnTo)}`;

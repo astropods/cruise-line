@@ -1,14 +1,7 @@
 import type { ReactNode } from 'react';
 import { Navigate, Outlet, useLocation } from 'react-router';
+import { PageSpinner } from '../ui';
 import { useCurrentUser, useSetupStatus } from './session';
-
-function FullPageSpinner() {
-  return (
-    <div className="flex h-screen items-center justify-center bg-canvas">
-      <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent border-t-transparent" />
-    </div>
-  );
-}
 
 /**
  * Sends unconfigured installs to Settings. If the check itself fails, lets
@@ -16,7 +9,7 @@ function FullPageSpinner() {
  */
 export function SetupGate() {
   const setup = useSetupStatus();
-  if (setup.isPending) return <FullPageSpinner />;
+  if (setup.isPending) return <PageSpinner />;
   if (setup.data && !setup.data.configured) return <Navigate to="/settings" replace />;
   return <Outlet />;
 }
@@ -29,7 +22,7 @@ export function SetupGate() {
 export function AuthGate({ signedOut }: { signedOut: ReactNode }) {
   const { pathname } = useLocation();
   const user = useCurrentUser();
-  if (user.isPending) return <FullPageSpinner />;
+  if (user.isPending) return <PageSpinner />;
   if (!user.data && pathname === '/') return <>{signedOut}</>;
   return <Outlet />;
 }

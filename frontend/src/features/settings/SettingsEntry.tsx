@@ -2,16 +2,9 @@ import { useEffect } from 'react';
 import { Navigate, useLocation } from 'react-router';
 import { fetchUser } from '../../api';
 import { useCurrentUser, useSetupStatus } from '../../app/session';
+import { PageSpinner } from '../../ui';
 import { ClaimOwnership } from './onboarding/ClaimOwnership';
 import { SetupFlow } from './onboarding/SetupFlow';
-
-function FullPageSpinner() {
-  return (
-    <div className="flex h-screen items-center justify-center bg-canvas">
-      <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent border-t-transparent" />
-    </div>
-  );
-}
 
 /**
  * /settings, where GitHub's App callbacks land. Runs first-time setup and the
@@ -30,9 +23,9 @@ export function SettingsEntry() {
     if (signedOut) void fetchUser();
   }, [signedOut]);
 
-  if (setup.isPending) return <FullPageSpinner />;
+  if (setup.isPending) return <PageSpinner />;
   if (!configured) return <SetupFlow defaultGithubUrl={setup.data?.githubUrl ?? 'https://github.com'} />;
-  if (user.isPending || signedOut || !user.data) return <FullPageSpinner />;
+  if (user.isPending || signedOut || !user.data) return <PageSpinner />;
   if (user.data.isOwner) return <Navigate to={`/settings/basic${search}`} replace />;
   if (!setup.data!.hasOwner) return <ClaimOwnership user={user.data} />;
   // Non-owners have nothing to manage here; their CLI tokens are at /cli

@@ -5,6 +5,7 @@ export { EmptyState } from './EmptyState';
 export { IconButton } from './IconButton';
 export { Kbd } from './Kbd';
 export { Menu, type MenuItem } from './Menu';
+export { PageSpinner } from './PageSpinner';
 export { Pill } from './Pill';
 export { Popover } from './Popover';
 export { ProgressBar } from './ProgressBar';

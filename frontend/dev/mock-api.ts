@@ -64,7 +64,12 @@ function sha(seed: string) {
   return h.toString(16).padStart(8, '0').repeat(5);
 }
 
-const PATCH = `@@ -10,12 +10,20 @@ export async function deliverWebhook(event: WebhookEvent) {
+// Real patches come from `git diff -- <path>`, headers included; the
+// slideout's diff parser needs them.
+const PATCH = `diff --git a/agent/github/webhooks.ts b/agent/github/webhooks.ts
+--- a/agent/github/webhooks.ts
++++ b/agent/github/webhooks.ts
+@@ -10,12 +10,20 @@ export async function deliverWebhook(event: WebhookEvent) {
    const url = event.target;
 -  const res = await fetch(url, { method: 'POST', body: JSON.stringify(event.payload) });
 -  if (!res.ok) throw new Error(\`Delivery failed: \${res.status}\`);

@@ -1,8 +1,8 @@
 import { useCallback, useState } from 'react';
 import type { FileContent, Finding } from '../../api';
-import { useCommentsContext } from '../../contexts/CommentsContext';
-import { useSlideout } from '../../contexts/SlideoutContext';
-import { extractCommentTargetFromBody, stripDirectives } from '../../lib/findingUtils';
+import { useCommentsContext } from '../comments/CommentsContext';
+import { useSlideout } from './content/SlideoutContext';
+import { extractCommentTargetFromBody, stripDirectives } from './content/findingUtils';
 
 /** Where a finding points, its actions, and whether each is available */
 export function useFindingActions(finding: Finding, files: Record<string, FileContent>) {

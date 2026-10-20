@@ -1,5 +1,5 @@
 import type { Verdict } from '../../api';
-import { Md } from '../../components/Md';
+import { Md } from './content/Md';
 import { verdictView } from '../../domain/prStatus';
 import { summarizeCounts, type SeverityCounts } from '../../domain/severity';
 import { cx } from '../../lib/cx';

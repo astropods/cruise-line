@@ -1,10 +1,11 @@
 import type { ReactNode } from 'react';
 import { ArrowsClockwise, GitMerge, GitPullRequest, XCircle } from '@phosphor-icons/react';
 import type { ProgressEntry } from '../../api';
-import { ActivityFeed, useElapsed } from '../../components/AnalysisProgress';
+import { ActivityFeed } from './AnalysisProgress';
 import type { BarState } from '../../domain/prStatus';
 import { cx } from '../../lib/cx';
 import { formatAgoPhrase, formatElapsed } from '../../lib/time';
+import { useElapsed } from '../../lib/useNow';
 import { Button, Popover, Spinner, TONE_CLASSES, type Tone } from '../../ui';
 
 interface BarStatePillProps {

@@ -1,0 +1,103 @@
+import { useState, useRef, useEffect } from 'react';
+
+interface CommentInputProps {
+  onSubmit: (body: string) => Promise<void>;
+  onCancel: () => void;
+  userAvatarUrl?: string;
+  /** Pre-fill the textarea with this text */
+  prefill?: string;
+}
+
+export function CommentInput({ onSubmit, onCancel, userAvatarUrl, prefill }: CommentInputProps) {
+  const [body, setBody] = useState(prefill ?? '');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (el) {
+      el.focus();
+      // Move cursor to end when pre-filled
+      if (prefill) {
+        el.selectionStart = el.selectionEnd = el.value.length;
+      }
+    }
+  }, []);
+
+  // Auto-resize textarea
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (el) {
+      el.style.height = 'auto';
+      el.style.height = `${el.scrollHeight}px`;
+    }
+  }, [body]);
+
+  async function handleSubmit() {
+    if (!body.trim() || submitting) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await onSubmit(body.trim());
+      setBody('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to post comment');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      handleSubmit();
+    }
+    if (e.key === 'Escape') {
+      onCancel();
+    }
+  }
+
+  return (
+    <div className="flex gap-2.5 px-4 py-3 bg-raised border-y border-line">
+      {userAvatarUrl && (
+        <img
+          src={userAvatarUrl}
+          alt="You"
+          className="w-6 h-6 rounded-full flex-shrink-0 mt-1"
+        />
+      )}
+      <div className="flex-1 min-w-0">
+        <textarea
+          ref={textareaRef}
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="Leave a comment... (Ctrl+Enter to submit)"
+          rows={2}
+          className="w-full px-3 py-2 text-sm rounded-md bg-canvas border border-line text-fg placeholder:text-fg-muted resize-none focus:outline-none focus:border-accent font-[var(--font-sans)]"
+        />
+        {error && (
+          <div className="mt-1.5 px-3 py-1.5 text-xs rounded bg-red-500/10 text-red-400 border border-red-500/20">
+            {error}
+          </div>
+        )}
+        <div className="flex items-center justify-end gap-2 mt-2">
+          <button
+            onClick={onCancel}
+            className="px-3 py-1 text-xs rounded text-fg-muted hover:text-fg transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={!body.trim() || submitting}
+            className="px-3 py-1 text-xs rounded bg-accent text-white hover:bg-accent-strong disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            {submitting ? 'Posting...' : 'Comment'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

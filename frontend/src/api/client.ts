@@ -30,7 +30,8 @@ export async function apiFetch<T>(path: string, options?: RequestInit): Promise<
   if (res.status === 401) {
     // Redirect to OAuth via the public app URL (needed for GitHub callback to work)
     const appUrl = await getAppUrl();
-    const returnTo = encodeURIComponent(window.location.pathname);
+    // Keep the query too: the CLI consent page carries its OAuth params there
+    const returnTo = encodeURIComponent(window.location.pathname + window.location.search);
     window.location.href = `${appUrl}/api/auth/github?return_to=${returnTo}`;
     throw new ApiError('Not authenticated', 401);
   }
