@@ -36,6 +36,8 @@ export interface QueryParams {
   repoPath: string;
   sessionId?: string;
   model?: string;
+  /** Agent SDK effort level: low | medium | high | xhigh | max */
+  effort?: string;
   maxTurns?: number;
   outputFormat?: { type: string; schema: object };
   allowedTools?: string[];
@@ -228,6 +230,30 @@ export async function sandboxSessionMessages(
 
   const data = await res.json() as { messages: any[] };
   return data.messages ?? [];
+}
+
+// ---------------------------------------------------------------------------
+// GET /models
+// ---------------------------------------------------------------------------
+
+export interface SandboxModel {
+  id: string;
+  displayName: string;
+  createdAt: string;
+  /** Effort levels the model accepts; [] if none, null if the API didn't say */
+  effortLevels: string[] | null;
+}
+
+export async function sandboxListModels(): Promise<SandboxModel[]> {
+  const res = await fetch(sandboxUrl('/models'), {
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({})) as { error?: string };
+    throw new Error(body.error ?? `Sandbox models failed (${res.status})`);
+  }
+  const data = await res.json() as { models: SandboxModel[] };
+  return data.models;
 }
 
 // ---------------------------------------------------------------------------

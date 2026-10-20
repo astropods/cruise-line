@@ -1,20 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   Anchor, FileText, MagnifyingGlass, FolderOpen, Terminal,
-  PencilSimpleLine, CircleNotch, WarningCircle, ArrowsClockwise, SignOut,
+  PencilSimpleLine, CircleNotch, WarningCircle, ArrowsClockwise,
 } from '@phosphor-icons/react';
-import { logout } from '../api';
 import type { ProgressEntry } from '../api';
 import type { Icon } from '@phosphor-icons/react';
 
 interface AnalysisProgressProps {
-  owner: string;
-  repo: string;
-  pr: string;
   status: string;
   progress: ProgressEntry[];
-  githubUrl: string;
-  /** ISO timestamp from when the analysis was created on the server */
+  /** ISO timestamp from when the analysis started on the server */
   startedAt: string | null;
   error?: string | null;
   onRetry?: () => void;
@@ -44,26 +39,36 @@ function cleanToolText(text: string): string {
     .replace(/^\/.*?\/repos\/[^/]+\/[^/]+\//, '');
 }
 
-function formatElapsed(seconds: number): string {
+export function formatElapsed(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
   return m > 0 ? `${m}m ${s}s` : `${s}s`;
 }
 
-export function AnalysisProgress({ owner, repo, pr, status, progress, githubUrl, startedAt, error, onRetry }: AnalysisProgressProps) {
-  const isFailed = status === 'failed';
-  const feedRef = useRef<HTMLDivElement>(null);
+/** Seconds since `startedAt` (or since mount when unknown), ticking every second. */
+export function useElapsed(startedAt: string | null): number {
   const [elapsed, setElapsed] = useState(0);
 
-  // Elapsed timer based on server start time
   useEffect(() => {
     const baseTime = startedAt ? new Date(startedAt).getTime() : Date.now();
-    setElapsed(Math.max(0, Math.floor((Date.now() - baseTime) / 1000)));
-    const interval = setInterval(() => {
-      setElapsed(Math.max(0, Math.floor((Date.now() - baseTime) / 1000)));
-    }, 1000);
+    const tick = () => setElapsed(Math.max(0, Math.floor((Date.now() - baseTime) / 1000)));
+    tick();
+    const interval = setInterval(tick, 1000);
     return () => clearInterval(interval);
   }, [startedAt]);
+
+  return elapsed;
+}
+
+/** The headline for a run in progress: the latest status entry, or a placeholder. */
+export function progressStatusText(status: string, progress: ProgressEntry[]): string {
+  if (status === 'none' || status === 'pending') return 'Starting analysis...';
+  const latestStatus = [...progress].reverse().find((e) => e.type === 'status');
+  return latestStatus?.text ?? 'Analyzing pull request...';
+}
+
+export function ActivityFeed({ progress, className = '' }: { progress: ProgressEntry[]; className?: string }) {
+  const feedRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll feed
   useEffect(() => {
@@ -72,36 +77,59 @@ export function AnalysisProgress({ owner, repo, pr, status, progress, githubUrl,
     }
   }, [progress.length]);
 
-  const prUrl = `${githubUrl}/${owner}/${repo}/pull/${pr}`;
-
-  // Get the latest status message
-  const latestStatus = [...progress].reverse().find((e) => e.type === 'status');
-  const statusText = status === 'none' || status === 'pending'
-    ? 'Starting analysis...'
-    : latestStatus?.text ?? 'Analyzing pull request...';
-
-  // All progress entries for the activity feed
-  const activity = progress;
+  if (progress.length === 0) return null;
 
   return (
-    <div className="flex items-center justify-center h-screen p-8">
+    <div
+      ref={feedRef}
+      className={`max-h-48 overflow-y-auto rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] p-3 ${className}`}
+    >
+      {progress.map((entry, i) => {
+        const ToolIcon = entry.type === 'tool' ? getToolIcon(entry.text) : null;
+        const text = entry.type === 'tool' ? cleanToolText(entry.text) : entry.text;
+        const isLatest = i === progress.length - 1;
+        const isStatus = entry.type === 'status';
+
+        return (
+          <div
+            key={i}
+            className={`flex items-center gap-2 py-1 text-xs transition-opacity ${
+              isLatest ? 'opacity-100' : 'opacity-40'
+            } ${isStatus ? 'text-[var(--accent)]' : 'text-[var(--text-secondary)] font-mono'}`}
+          >
+            {ToolIcon ? (
+              <ToolIcon size={12} className="flex-shrink-0" />
+            ) : (
+              <span className="w-3 flex-shrink-0 text-center">·</span>
+            )}
+            <span className="truncate">{text}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Centered progress display for a PR's first review, shown inside the page chrome. */
+export function AnalysisProgress({ status, progress, startedAt, error, onRetry }: AnalysisProgressProps) {
+  const isFailed = status === 'failed';
+  const elapsed = useElapsed(startedAt);
+
+  return (
+    <div className="flex items-center justify-center h-full p-8">
       <div className="w-full max-w-md">
-        {/* PR info */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-[var(--accent)]/10 mb-4">
             <Anchor size={24} weight="duotone" className="text-[var(--accent)]" />
           </div>
           <h1 className="text-lg font-semibold text-[var(--text-bright)] mb-1">
-            Analyzing PR
+            {isFailed ? 'Review failed' : 'Reviewing this PR'}
           </h1>
-          <a
-            href={prUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-sm text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors"
-          >
-            {owner}/{repo}#{pr}
-          </a>
+          {!isFailed && (
+            <p className="text-sm text-[var(--text-secondary)]">
+              This is the first review for this PR. It usually takes a few minutes.
+            </p>
+          )}
         </div>
 
         {/* Status + spinner / error */}
@@ -127,40 +155,11 @@ export function AnalysisProgress({ owner, repo, pr, status, progress, githubUrl,
         ) : (
           <div className="flex items-center justify-center gap-2.5 mb-6">
             <CircleNotch size={16} weight="bold" className="text-[var(--accent)] animate-spin" />
-            <span className="text-sm text-[var(--text-secondary)]">{statusText}</span>
+            <span className="text-sm text-[var(--text-secondary)]">{progressStatusText(status, progress)}</span>
           </div>
         )}
 
-        {/* Activity feed */}
-        {activity.length > 0 && (
-          <div
-            ref={feedRef}
-            className="max-h-48 overflow-y-auto rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] p-3 mb-6"
-          >
-            {activity.map((entry, i) => {
-              const ToolIcon = entry.type === 'tool' ? getToolIcon(entry.text) : null;
-              const text = entry.type === 'tool' ? cleanToolText(entry.text) : entry.text;
-              const isLatest = i === activity.length - 1;
-              const isStatus = entry.type === 'status';
-
-              return (
-                <div
-                  key={i}
-                  className={`flex items-center gap-2 py-1 text-xs transition-opacity ${
-                    isLatest ? 'opacity-100' : 'opacity-40'
-                  } ${isStatus ? 'text-[var(--accent)]' : 'text-[var(--text-secondary)] font-mono'}`}
-                >
-                  {ToolIcon ? (
-                    <ToolIcon size={12} className="flex-shrink-0" />
-                  ) : (
-                    <span className="w-3 flex-shrink-0 text-center">·</span>
-                  )}
-                  <span className="truncate">{text}</span>
-                </div>
-              );
-            })}
-          </div>
-        )}
+        <ActivityFeed progress={progress} className="mb-6" />
 
         {/* Elapsed time */}
         {!isFailed && (
@@ -168,17 +167,6 @@ export function AnalysisProgress({ owner, repo, pr, status, progress, githubUrl,
             {formatElapsed(elapsed)}
           </div>
         )}
-
-        {/* Logout */}
-        <div className="text-center mt-6">
-          <button
-            onClick={logout}
-            className="inline-flex items-center gap-1.5 text-xs text-[var(--text-secondary)]/50 hover:text-[var(--text-secondary)] transition-colors"
-          >
-            <SignOut size={12} />
-            Log out
-          </button>
-        </div>
       </div>
     </div>
   );

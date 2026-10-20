@@ -20,6 +20,7 @@ import {
   getTelemetryStatus,
   runTelemetryTest,
 } from './telemetry.js';
+import Anthropic from '@anthropic-ai/sdk';
 import { existsSync } from 'fs';
 import { readFile } from 'fs/promises';
 import { symlink, readlink, lstat, mkdir, rm } from 'fs/promises';
@@ -181,6 +182,45 @@ function detectLanguage(filePath: string): string {
 app.get('/health', (c) => c.json({ ok: true }));
 
 // ---------------------------------------------------------------------------
+// GET /models — Models this API key can use, for the admin model picker.
+// Lives here because the sandbox holds the Anthropic credentials.
+// ---------------------------------------------------------------------------
+
+const EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
+const MODELS_TTL_MS = 10 * 60_000;
+let modelsCache: { at: number; models: unknown[] } | null = null;
+let anthropic: Anthropic | null = null;
+
+app.get('/models', async (c) => {
+  if (modelsCache && Date.now() - modelsCache.at < MODELS_TTL_MS) {
+    return c.json({ models: modelsCache.models });
+  }
+  try {
+    anthropic ??= new Anthropic();
+    const models = [];
+    for await (const m of anthropic.models.list({ limit: 1000 })) {
+      const effort = m.capabilities?.effort;
+      models.push({
+        id: m.id,
+        displayName: m.display_name,
+        createdAt: m.created_at,
+        // null when the API doesn't report capabilities for this model
+        effortLevels: effort
+          ? effort.supported
+            ? EFFORT_LEVELS.filter((l) => effort[l]?.supported)
+            : []
+          : null,
+      });
+    }
+    modelsCache = { at: Date.now(), models };
+    return c.json({ models });
+  } catch (err) {
+    console.error('Failed to list models:', err);
+    return c.json({ error: err instanceof Error ? err.message : 'Failed to list models' }, 502);
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Telemetry diagnostics — proxied through the agent at /api/debug/telemetry.
 // ---------------------------------------------------------------------------
 
@@ -307,7 +347,7 @@ app.post('/ensure-clone', async (c) => {
 
 app.post('/query', async (c) => {
   const {
-    prompt, systemPrompt, sessionId, repoPath, model, maxTurns,
+    prompt, systemPrompt, sessionId, repoPath, model, effort, maxTurns,
     outputFormat, allowedTools,
   } = await c.req.json<{
     prompt: string;
@@ -315,6 +355,7 @@ app.post('/query', async (c) => {
     sessionId?: string;
     repoPath: string;
     model?: string;
+    effort?: string;
     maxTurns?: number;
     outputFormat?: { type: string; schema: object };
     allowedTools?: string[];
@@ -359,12 +400,17 @@ app.post('/query', async (c) => {
       const options: any = {
         cwd: repoDir,
         systemPrompt,
-        model: model ?? 'claude-sonnet-4-5',
+        model: model ?? 'claude-opus-5-5',
         tools: allowedTools ?? ['Read', 'Glob', 'Grep', 'Bash'],
         permissionMode: 'bypassPermissions',
         allowDangerouslySkipPermissions: true,
         maxTurns: maxTurns ?? 15,
       };
+
+      // Unknown levels are dropped rather than failing the query
+      if (effort && (EFFORT_LEVELS as readonly string[]).includes(effort)) {
+        options.effort = effort;
+      }
 
       // Structured output for analysis mode
       if (outputFormat) {

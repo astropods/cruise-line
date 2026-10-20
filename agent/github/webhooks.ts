@@ -8,6 +8,7 @@ import {
   getPrScopeDecision,
   setPrScopeDecision,
 } from '../db/pr-scope-decisions.js';
+import { setTrackedPrState, updateTrackedPrTitle, upsertTrackedPr } from '../db/tracked-prs.js';
 import { sandboxCleanup, sandboxRepoPath } from '../sandbox-client.js';
 import { deleteChatSessionsForPr } from '../db/chat-sessions.js';
 
@@ -56,6 +57,22 @@ function registerHandlers(wh: Webhooks) {
         }
 
         const currentHeadSha = pr.head.sha;
+
+        // Track the PR so it shows in the list before anyone opens the link.
+        // Best-effort: a tracking failure shouldn't stop the comment.
+        try {
+          await upsertTrackedPr({
+            owner,
+            repo,
+            number: prNumber,
+            title: pr.title,
+            author: pr.user?.login ?? 'unknown',
+            headSha: currentHeadSha,
+          });
+        } catch (err) {
+          console.error(`Failed to track ${owner}/${repo}#${prNumber}:`, err);
+        }
+
         let state: CommentState = { status: 'ready' };
 
         if (existing) {
@@ -91,6 +108,16 @@ function registerHandlers(wh: Webhooks) {
     },
   );
 
+  // Keep tracked titles current
+  wh.on('pull_request.edited', async ({ payload }) => {
+    const { repository, pull_request: pr } = payload;
+    try {
+      await updateTrackedPrTitle(repository.owner.login, repository.name, pr.number, pr.title);
+    } catch (err) {
+      console.error(`Failed to update tracked title for ${repository.full_name}#${pr.number}:`, err);
+    }
+  });
+
   // When a PR is closed or merged, clean up the clone and chat sessions
   wh.on('pull_request.closed', async ({ payload }) => {
     const { repository, pull_request: pr } = payload;
@@ -99,6 +126,12 @@ function registerHandlers(wh: Webhooks) {
     const prNumber = pr.number;
 
     console.log(`PR closed: ${owner}/${repo}#${prNumber}, cleaning up...`);
+
+    try {
+      await setTrackedPrState(owner, repo, prNumber, pr.merged ? 'merged' : 'closed');
+    } catch (err) {
+      console.error(`Failed to update tracked state for ${owner}/${repo}#${prNumber}:`, err);
+    }
 
     try {
       await sandboxCleanup(sandboxRepoPath(owner, repo, prNumber));

@@ -7,17 +7,27 @@ import {
   type ProgressEntry,
 } from '../api';
 
+type RunStatus = 'none' | 'pending' | 'running' | 'complete' | 'failed';
+
 interface WalkthroughState {
+  /** The review to display — the latest one with content, even while a newer run is in flight */
   walkthrough: Walkthrough | null;
-  status: 'loading' | 'none' | 'pending' | 'running' | 'complete' | 'failed';
+  /**
+   * Status of the most recent run. 'loading' until the first fetch returns;
+   * 'failed' also covers a failed fetch, with the message in `error`.
+   */
+  status: 'loading' | RunStatus;
   error: string | null;
   currentHeadSha: string | null;
   walkthroughHeadSha: string | null;
+  /** The displayed review predates the PR's current head */
   isStale: boolean;
   progress: ProgressEntry[];
   githubUrl: string;
-  /** When the analysis was created (ISO string from server) */
+  /** When the current run started (ISO string) */
   startedAt: string | null;
+  /** Live PR metadata, so the header can render before the first review lands */
+  prInfo: { title: string; author: string } | null;
 }
 
 export function useWalkthrough(owner: string, repo: string, pr: number) {
@@ -31,6 +41,7 @@ export function useWalkthrough(owner: string, repo: string, pr: number) {
     progress: [],
     githubUrl: 'https://github.com',
     startedAt: null,
+    prInfo: null,
   });
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -46,37 +57,26 @@ export function useWalkthrough(owner: string, repo: string, pr: number) {
     try {
       const res = await fetchWalkthrough(owner, repo, pr);
       const wt = res.walkthrough;
-
-      if (!wt) {
-        setState({
-          walkthrough: null,
-          status: 'none',
-          error: null,
-          currentHeadSha: res.currentHeadSha,
-          walkthroughHeadSha: null,
-          isStale: false,
-          progress: [],
-          githubUrl: res.githubUrl,
-          startedAt: null,
-        });
-        return;
-      }
-
-      const isStale = !!(res.currentHeadSha && wt.headSha !== res.currentHeadSha);
+      const review = res.latestReview;
+      const status: RunStatus = wt?.status ?? 'none';
+      const inFlight = status === 'pending' || status === 'running';
 
       setState({
-        walkthrough: wt.data,
-        status: wt.status,
-        error: wt.error,
+        walkthrough: review?.data ?? null,
+        status,
+        error: wt?.error ?? null,
         currentHeadSha: res.currentHeadSha,
-        walkthroughHeadSha: wt.headSha,
-        isStale,
+        walkthroughHeadSha: review?.headSha ?? null,
+        isStale: !!(review && res.currentHeadSha && review.headSha !== res.currentHeadSha),
         progress: [],
         githubUrl: res.githubUrl,
-        startedAt: wt.createdAt,
+        // A forced rerun reuses its row, so created_at can be long past;
+        // updated_at is bumped when the run is queued and again when it starts.
+        startedAt: inFlight ? wt!.updatedAt : null,
+        prInfo: res.pr,
       });
 
-      if (wt.status === 'pending' || wt.status === 'running') {
+      if (inFlight) {
         startPolling();
       }
     } catch (err) {
@@ -111,7 +111,13 @@ export function useWalkthrough(owner: string, repo: string, pr: number) {
 
   const generate = useCallback(async () => {
     const needsForce = state.status === 'complete' || state.status === 'failed';
-    setState((s) => ({ ...s, status: 'pending', error: null, progress: [] }));
+    setState((s) => ({
+      ...s,
+      status: 'pending',
+      error: null,
+      progress: [],
+      startedAt: new Date().toISOString(),
+    }));
     try {
       await generateWalkthrough(owner, repo, pr, needsForce);
       startPolling();

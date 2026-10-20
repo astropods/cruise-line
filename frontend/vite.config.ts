@@ -1,16 +1,21 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
+import { mockApi } from './dev/mock-api';
+
+// `bun run dev:mock` serves fake API responses from dev/mock-api.ts instead
+// of proxying to the agent, so the UI runs with no backend at all.
+const mock = process.env.MOCK_API === '1';
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), ...(mock ? [mockApi()] : [])],
   build: {
     outDir: 'dist',
     emptyOutDir: true,
   },
   server: {
-    port: 5173,
-    proxy: {
+    port: mock ? 5174 : 5173,
+    proxy: mock ? undefined : {
       '/api/chat': {
         target: 'http://localhost:3002',
         timeout: 600000,

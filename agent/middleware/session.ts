@@ -198,20 +198,25 @@ export async function requireRepoAccess(c: Context<AppEnv>, next: Next) {
     throw new AppError(400, 'Missing owner or repo parameter');
   }
 
-  const cacheKey = `${session.userId}:${owner}/${repo}`;
-  const cached = accessCache.get(cacheKey);
-
-  if (cached && cached > Date.now()) {
-    await next();
-    return;
-  }
-
-  const hasAccess = await verifyRepoAccess(owner, repo, session.login);
-  if (!hasAccess) {
+  if (!(await hasRepoAccess(session, owner, repo))) {
     throw new AppError(403, 'You must be a collaborator on this repository to access Cruise Line');
   }
 
-  accessCache.set(cacheKey, Date.now() + ACCESS_CACHE_TTL);
   await next();
+}
+
+/** The check behind requireRepoAccess, for routes that filter across many repos. */
+export async function hasRepoAccess(
+  session: Pick<SessionPayload, 'userId' | 'login'>,
+  owner: string,
+  repo: string,
+): Promise<boolean> {
+  const cacheKey = `${session.userId}:${owner}/${repo}`;
+  const cached = accessCache.get(cacheKey);
+  if (cached && cached > Date.now()) return true;
+
+  const hasAccess = await verifyRepoAccess(owner, repo, session.login);
+  if (hasAccess) accessCache.set(cacheKey, Date.now() + ACCESS_CACHE_TTL);
+  return hasAccess;
 }
 

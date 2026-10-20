@@ -10,6 +10,7 @@ import { chatRuns, streamRunEvents } from '../chat/runs.js';
 import { getOrCreateChatSession, getChatSession, touchChatSession, deleteChatSession } from '../db/chat-sessions.js';
 import { getLatestWalkthrough } from '../db/walkthroughs.js';
 import { listRules } from '../db/rules.js';
+import { resolveModel } from '../db/model-settings.js';
 import { getInstallationForRepo, getPrMetadata } from '../github/client.js';
 import { buildChatSystemPrompt } from '../chat/prompt.js';
 import type { AppEnv } from '../env.js';
@@ -80,6 +81,7 @@ chatRoutes.post('/:owner/:repo/:pr/message', chatLimiter, async (c) => {
       const repoRules = await listRules(owner, repo);
       const rules = repoRules.map((r) => ({ ruleNumber: r.ruleNumber, rule: r.rule }));
       const systemPrompt = buildChatSystemPrompt(owner, repo, prNumber, pr.title, summary, rules.length > 0 ? rules : undefined);
+      const modelChoice = await resolveModel('chat');
 
       try {
         for await (const event of sandboxQuery({
@@ -87,7 +89,7 @@ chatRoutes.post('/:owner/:repo/:pr/message', chatLimiter, async (c) => {
           systemPrompt,
           sessionId: chatSession.session_id,
           repoPath: cloneResult.repoDir,
-          model: config.claude.model,
+          ...modelChoice,
           maxTurns: 30,
         })) {
           emit(event);

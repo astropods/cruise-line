@@ -22,10 +22,12 @@ export async function upsertWalkthrough(
   force = false,
 ): Promise<WalkthroughRow> {
   if (force) {
-    // Reset existing row to pending, clear old data
+    // Reset existing row to pending. Old data stays so the viewer can keep
+    // showing the previous review while the new one runs; a successful run
+    // overwrites it.
     const [existing] = await sql<WalkthroughRow[]>`
       UPDATE walkthroughs
-      SET status = 'pending', data = NULL, error = NULL, updated_at = NOW()
+      SET status = 'pending', error = NULL, updated_at = NOW()
       WHERE owner = ${owner} AND repo = ${repo} AND pr_number = ${prNumber} AND head_sha = ${headSha}
       RETURNING *
     `;
@@ -54,6 +56,85 @@ export async function getLatestWalkthrough(
     LIMIT 1
   `;
   return row ?? null;
+}
+
+/**
+ * The most recent walkthrough that has content, whatever its current status.
+ * A row being regenerated (or whose regeneration failed) keeps its previous
+ * data, so it still counts.
+ */
+export async function getLatestReviewedWalkthrough(
+  owner: string,
+  repo: string,
+  prNumber: number,
+): Promise<WalkthroughRow | null> {
+  const [row] = await sql<WalkthroughRow[]>`
+    SELECT * FROM walkthroughs
+    WHERE owner = ${owner} AND repo = ${repo} AND pr_number = ${prNumber}
+      AND data IS NOT NULL
+    ORDER BY created_at DESC
+    LIMIT 1
+  `;
+  return row ?? null;
+}
+
+export interface PrSummaryRow {
+  owner: string;
+  repo: string;
+  pr_number: number;
+  /** Status of the most recent walkthrough row; null if a review was never triggered */
+  status: WalkthroughRow['status'] | null;
+  head_sha: string;
+  updated_at: Date;
+  /** Null for PRs reviewed before tracking began, until their next webhook event */
+  pr_state: 'open' | 'closed' | 'merged' | null;
+  /** Live title from tracking, else from the latest review; null if neither exists */
+  title: string | null;
+  author: string | null;
+  verdict: Walkthrough['verdict'] | null;
+  finding_count: number | null;
+}
+
+/**
+ * One row per PR that is tracked (seen via webhook) or has ever had a
+ * walkthrough, most recently active first.
+ */
+export async function listPrSummaries(): Promise<PrSummaryRow[]> {
+  return sql<PrSummaryRow[]>`
+    WITH latest AS (
+      SELECT DISTINCT ON (owner, repo, pr_number)
+        owner, repo, pr_number, status, head_sha, updated_at
+      FROM walkthroughs
+      ORDER BY owner, repo, pr_number, created_at DESC
+    ),
+    prs AS (
+      SELECT owner, repo, pr_number FROM latest
+      UNION
+      SELECT owner, repo, pr_number FROM tracked_prs
+    )
+    SELECT
+      prs.owner, prs.repo, prs.pr_number,
+      latest.status,
+      COALESCE(latest.head_sha, t.head_sha) AS head_sha,
+      GREATEST(latest.updated_at, t.updated_at) AS updated_at,
+      t.state AS pr_state,
+      COALESCE(t.title, reviewed.data->'pr'->>'title') AS title,
+      COALESCE(t.author, reviewed.data->'pr'->>'author') AS author,
+      reviewed.data->>'verdict' AS verdict,
+      CASE WHEN jsonb_typeof(reviewed.data->'findings') = 'array'
+        THEN jsonb_array_length(reviewed.data->'findings') END AS finding_count
+    FROM prs
+    LEFT JOIN latest USING (owner, repo, pr_number)
+    LEFT JOIN tracked_prs t USING (owner, repo, pr_number)
+    LEFT JOIN LATERAL (
+      SELECT data FROM walkthroughs w
+      WHERE w.owner = prs.owner AND w.repo = prs.repo
+        AND w.pr_number = prs.pr_number AND w.data IS NOT NULL
+      ORDER BY w.created_at DESC
+      LIMIT 1
+    ) reviewed ON TRUE
+    ORDER BY updated_at DESC
+  `;
 }
 
 export async function getWalkthroughById(id: number): Promise<WalkthroughRow | null> {
@@ -88,6 +169,7 @@ export function replaceNul<T>(value: T): T {
   return value;
 }
 
+/** Leaves `data` untouched when none is passed, so a failed rerun keeps the previous review. */
 export async function updateWalkthroughStatus(
   id: number,
   status: WalkthroughRow['status'],
@@ -97,7 +179,7 @@ export async function updateWalkthroughStatus(
   await sql`
     UPDATE walkthroughs
     SET status = ${status},
-        data = ${data ? sql.json(replaceNul(data)) : null},
+        data = ${data ? sql.json(replaceNul(data)) : sql`data`},
         error = ${error ? replaceNul(error) : null},
         updated_at = NOW()
     WHERE id = ${id}

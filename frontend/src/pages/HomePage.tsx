@@ -219,6 +219,14 @@ function TopNav({
             </Link>
           )}
           {userChecked && user && (
+            <Link
+              to="/reviews"
+              className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+            >
+              Reviews
+            </Link>
+          )}
+          {userChecked && user && (
             <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
               <img
                 src={user.avatarUrl}

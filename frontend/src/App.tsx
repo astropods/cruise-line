@@ -1,5 +1,6 @@
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useParams } from 'react-router';
 import { WalkthroughPage } from './pages/WalkthroughPage';
+import { ReviewsPage } from './pages/ReviewsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { AuthCompletePage } from './pages/AuthCompletePage';
 import { LoginPage } from './pages/LoginPage';
@@ -7,6 +8,13 @@ import { NotFoundPage } from './pages/NotFoundPage';
 import { CliAuthorizePage } from './pages/CliAuthorizePage';
 import { HomePage } from './pages/HomePage';
 import { useSetupGuard } from './hooks/useSetupGuard';
+
+// Keyed by PR so moving between PRs remounts the page instead of carrying
+// tab, chat, and polling state from the previous one.
+function WalkthroughRoute() {
+  const { owner, repo, pr } = useParams();
+  return <WalkthroughPage key={`${owner}/${repo}/${pr}`} />;
+}
 
 function GuardedRoutes() {
   const { ready, checking } = useSetupGuard();
@@ -23,7 +31,8 @@ function GuardedRoutes() {
 
   return (
     <Routes>
-      <Route path="/:owner/:repo/pull/:pr" element={<WalkthroughPage />} />
+      <Route path="/reviews" element={<ReviewsPage />} />
+      <Route path="/:owner/:repo/pull/:pr" element={<WalkthroughRoute />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="*" element={<NotFoundPage />} />
     </Routes>

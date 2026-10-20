@@ -8,8 +8,34 @@ export interface WalkthroughResponse {
     createdAt: string;
     updatedAt: string;
   } | null;
+  /** Most recent review with content — may be older than `walkthrough` while a rerun is in flight */
+  latestReview: {
+    id: number;
+    headSha: string;
+    data: Walkthrough;
+    updatedAt: string;
+  } | null;
+  /** Live PR metadata from GitHub; null if it couldn't be fetched */
+  pr: { title: string; author: string } | null;
   currentHeadSha: string | null;
   githubUrl: string;
+}
+
+export interface PrSummary {
+  owner: string;
+  repo: string;
+  number: number;
+  /** Status of the latest review run; 'none' if one was never triggered */
+  status: 'none' | 'pending' | 'running' | 'complete' | 'failed';
+  /** Null for PRs reviewed before Cruise Line started tracking PRs */
+  prState: 'open' | 'closed' | 'merged' | null;
+  headSha: string;
+  updatedAt: string;
+  /** Null only for an untracked PR whose first review hasn't landed */
+  title: string | null;
+  author: string | null;
+  verdict: Verdict | null;
+  findingCount: number | null;
 }
 
 export interface FileContent {
@@ -159,6 +185,10 @@ export function fetchWalkthrough(owner: string, repo: string, pr: number) {
   return apiFetch<WalkthroughResponse>(`/api/walkthroughs/${owner}/${repo}/${pr}`);
 }
 
+export function fetchPrSummaries() {
+  return apiFetch<{ prs: PrSummary[]; githubUrl: string }>('/api/walkthroughs');
+}
+
 export function fetchFileContent(owner: string, repo: string, pr: number, path: string) {
   return apiFetch<FileContent>(`/api/files/${owner}/${repo}/${pr}/content?path=${encodeURIComponent(path)}`);
 }
@@ -261,6 +291,47 @@ export function setUserRole(userId: number, role: UserRole) {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ role }),
+    },
+  );
+}
+
+export type EffortLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+export type ModelUse = 'review' | 'chat';
+
+export interface ModelSetting {
+  /** null = the deploy default */
+  model: string | null;
+  /** null = the deploy default; 'auto' = send none and let the model decide */
+  effort: EffortLevel | 'auto' | null;
+}
+
+export interface AvailableModel {
+  id: string;
+  displayName: string;
+  createdAt: string;
+  /** [] when the model takes no effort setting, null when unknown */
+  effortLevels: EffortLevel[] | null;
+}
+
+export interface ModelSettingsResponse {
+  settings: Record<ModelUse, ModelSetting>;
+  defaults: { model: string; effort: EffortLevel };
+  /** null when the Anthropic API couldn't be reached */
+  models: AvailableModel[] | null;
+  modelsError: string | null;
+}
+
+export function fetchModelSettings() {
+  return apiFetch<ModelSettingsResponse>('/api/settings/models');
+}
+
+export function updateModelSetting(use: ModelUse, setting: ModelSetting) {
+  return apiFetch<{ settings: Record<ModelUse, ModelSetting> }>(
+    `/api/settings/models/${use}`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(setting),
     },
   );
 }
