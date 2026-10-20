@@ -1,4 +1,5 @@
-import { Anchor, GitPullRequest, Lightning, ShieldCheck, TreeStructure } from '@phosphor-icons/react';
+import { GitPullRequest, Lightning, ShieldCheck, TreeStructure } from '@phosphor-icons/react';
+import { Logo } from '../../shell/Logo';
 
 const SAMPLE_PROMPTS = [
   { icon: GitPullRequest, label: 'Summarize this PR in plain English' },
@@ -11,9 +12,7 @@ const SAMPLE_PROMPTS = [
 export function ChatEmptyState({ onPromptClick }: { onPromptClick: (prompt: string) => void }) {
   return (
     <div className="flex w-full flex-col items-center justify-center">
-      <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-accent/10">
-        <Anchor size={32} weight="duotone" className="text-accent" />
-      </div>
+      <Logo size={64} className="mb-6" />
       <h3 className="mb-2 text-lg font-semibold text-fg-strong">Ask about this PR</h3>
       <p className="mb-8 max-w-[360px] text-center text-sm text-fg-muted">
         Claude can read the codebase to answer questions about the changes, architecture, and implications.

@@ -3,6 +3,7 @@ import { Link } from 'react-router';
 import { logout, type SetupStatus, type UserInfo } from '../../api';
 import { useCurrentUser, useSetupStatus } from '../../app/session';
 import { useCopy } from '../../lib/useCopy';
+import { Logo } from '../../shell/Logo';
 import { CliTokensSection } from './CliTokensSection';
 
 /**
@@ -30,14 +31,7 @@ export function HomePage() {
       <main className="max-w-2xl mx-auto px-6 py-16">
         {/* Hero */}
         <div className="flex flex-col items-center text-center mb-14">
-          <img
-            src="/logo.png"
-            alt="Cruise Line"
-            width={180}
-            height={180}
-            className="mb-4 select-none"
-            draggable={false}
-          />
+          <Logo size={120} className="mb-6" />
           <h1 className="text-4xl font-semibold text-fg-strong tracking-tight">
             Cruise Line
           </h1>

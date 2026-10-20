@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router';
+import { Logo } from '../../shell/Logo';
 import {
   approveCliAuthorization,
   fetchCliAuthorizeInfo,
@@ -72,7 +73,8 @@ export function CliAuthorizePage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-canvas p-6">
-      <div className="w-full max-w-md rounded-2xl bg-surface p-8 shadow-lg border border-[var(--border-subtle)]">
+      <div className="w-full max-w-md rounded-2xl bg-surface p-8 shadow-lg border border-line">
+        <Logo size={40} className="mb-4" />
         <h1 className="text-xl font-semibold text-fg mb-1">
           Authorize the Cruise Line CLI
         </h1>
