@@ -10,7 +10,8 @@ import {
   deleteWalkthrough,
 } from '../db/walkthroughs.js';
 import { upsertTrackedPr } from '../db/tracked-prs.js';
-import { getPrMetadata, getInstallationForRepo } from '../github/client.js';
+import { countCommitsBetween, getPrMetadata, getInstallationForRepo } from '../github/client.js';
+import type { PrMetadata } from '../github/types.js';
 import { jobManager } from '../analysis/jobs.js';
 import { AppError } from '../middleware/error.js';
 import { rateLimit } from '../middleware/rate-limit.js';
@@ -36,6 +37,18 @@ walkthroughRoutes.use('/:owner/:repo/:pr/*', requireAuth, requireRepoAccess);
  * GET /api/walkthroughs
  * Every PR with a walkthrough, limited to repos the caller can push to.
  */
+type PrDetails = Pick<
+  PrMetadata,
+  'title' | 'author' | 'authorAvatarUrl' | 'headRef' | 'baseRef' | 'additions' | 'deletions' | 'changedFiles' | 'state' | 'mergedAt'
+>;
+
+const SEVERITIES = ['critical', 'high', 'medium', 'low', 'info'] as const;
+
+/** Every severity present, zero when the review had none */
+function severityCounts(raw: Record<string, number>): Record<(typeof SEVERITIES)[number], number> {
+  return Object.fromEntries(SEVERITIES.map((s) => [s, Number(raw[s] ?? 0)])) as Record<(typeof SEVERITIES)[number], number>;
+}
+
 walkthroughRoutes.get('/', requireAuth, async (c) => {
   const session = c.get('session');
   const rows = await listPrSummaries();
@@ -64,6 +77,14 @@ walkthroughRoutes.get('/', requireAuth, async (c) => {
       author: r.author,
       verdict: r.verdict,
       findingCount: r.finding_count,
+      severityCounts: r.severity_counts && severityCounts(r.severity_counts),
+      authorAvatarUrl: r.author_avatar_url,
+      headRef: r.head_ref,
+      baseRef: r.base_ref,
+      additions: r.additions,
+      deletions: r.deletions,
+      changedFiles: r.changed_files,
+      mergedAt: r.merged_at,
     }));
 
   return c.json({ prs, githubUrl: config.github.htmlUrl });
@@ -91,14 +112,33 @@ walkthroughRoutes.get('/:owner/:repo/:pr', async (c) => {
     getLatestReviewedWalkthrough(owner, repo, prNumber),
   ]);
 
-  // Also fetch current head SHA to detect staleness
+  // Live PR details from GitHub: the current head (for staleness), the bar's
+  // stats, and a refresh of tracked_prs so the list stays current too.
   let currentHeadSha: string | null = null;
-  let pr: { title: string; author: string } | null = null;
+  let pr: PrDetails | null = null;
+  let commitsSinceReview: number | null = null;
   try {
     const installationId = await getInstallationForRepo(owner, repo);
     const meta = await getPrMetadata(installationId, owner, repo, prNumber);
     currentHeadSha = meta.headSha;
-    pr = { title: meta.title, author: meta.author };
+    pr = {
+      title: meta.title,
+      author: meta.author,
+      authorAvatarUrl: meta.authorAvatarUrl,
+      headRef: meta.headRef,
+      baseRef: meta.baseRef,
+      additions: meta.additions,
+      deletions: meta.deletions,
+      changedFiles: meta.changedFiles,
+      state: meta.state,
+      mergedAt: meta.mergedAt,
+    };
+    upsertTrackedPr(meta).catch((err) =>
+      console.error(`Failed to refresh tracked ${owner}/${repo}#${prNumber}:`, err),
+    );
+    if (reviewed && reviewed.head_sha !== meta.headSha) {
+      commitsSinceReview = await countCommitsBetween(installationId, owner, repo, reviewed.head_sha, meta.headSha);
+    }
   } catch {
     // If we can't fetch the PR (e.g., it's closed), that's fine
   }
@@ -121,6 +161,8 @@ walkthroughRoutes.get('/:owner/:repo/:pr', async (c) => {
     },
     pr,
     currentHeadSha,
+    /** Commits on the PR since the reviewed head; null when unknown or not stale */
+    commitsSinceReview,
     githubUrl: config.github.htmlUrl,
   });
 });

@@ -87,12 +87,13 @@ cd frontend && bun run dev:mock
 ```
 
 Open `http://localhost:5174/reviews`. The Vite dev server answers `/api/*` from
-an in-memory mock (`frontend/dev/mock-api.ts`) seeded with one PR per UI state:
-a finished review, a first review, a rerun that fails, a first review that
-fails, a stale review, a rerun already in progress, an open PR nobody has
-reviewed, and merged and closed PRs. Simulated runs take 15s
-(`MOCK_JOB_SECONDS` to change it); `curl -X POST localhost:5174/__mock/reset`
-restores the seeds. Chat streams a canned reply; posting comments and editing rules are not mocked.
+an in-memory mock (`frontend/dev/mock-api.ts`) seeded from
+`frontend/dev/fixtures/prs.ts`, one PR per UI state: a finished review, an
+approved one with nothing blocking, a first review, a rerun that fails, a first
+review that fails, stale reviews with and without a known commit count, a rerun
+already in progress, an open PR nobody has reviewed, and merged and closed PRs.
+Simulated runs take 15s (`MOCK_JOB_SECONDS` to change it);
+`curl -X POST localhost:5174/__mock/reset` restores the seeds. Chat streams a canned reply; posting comments and editing rules are not mocked.
 
 ## Architecture
 

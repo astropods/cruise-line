@@ -68,6 +68,12 @@ function registerHandlers(wh: Webhooks) {
             title: pr.title,
             author: pr.user?.login ?? 'unknown',
             headSha: currentHeadSha,
+            authorAvatarUrl: pr.user?.avatar_url ?? null,
+            headRef: pr.head.ref,
+            baseRef: pr.base.ref,
+            additions: pr.additions,
+            deletions: pr.deletions,
+            changedFiles: pr.changed_files,
           });
         } catch (err) {
           console.error(`Failed to track ${owner}/${repo}#${prNumber}:`, err);
@@ -128,7 +134,10 @@ function registerHandlers(wh: Webhooks) {
     console.log(`PR closed: ${owner}/${repo}#${prNumber}, cleaning up...`);
 
     try {
-      await setTrackedPrState(owner, repo, prNumber, pr.merged ? 'merged' : 'closed');
+      await setTrackedPrState(owner, repo, prNumber, pr.merged ? 'merged' : 'closed', {
+        mergedAt: pr.merged_at,
+        closedAt: pr.closed_at,
+      });
     } catch (err) {
       console.error(`Failed to update tracked state for ${owner}/${repo}#${prNumber}:`, err);
     }

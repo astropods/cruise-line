@@ -1,9 +1,23 @@
 import { apiFetch } from './client';
-import type { FileContent, Verdict, Walkthrough } from './types';
+import type { FileContent, Severity, Verdict, Walkthrough } from './types';
 
 /** Status of a review run; 'none' when one was never triggered */
 export type RunStatus = 'none' | 'pending' | 'running' | 'complete' | 'failed';
 export type PrState = 'open' | 'closed' | 'merged';
+
+/** Live PR details from GitHub, shown in the PR bar */
+export interface PrDetails {
+  title: string;
+  author: string;
+  authorAvatarUrl: string | null;
+  headRef: string;
+  baseRef: string;
+  additions: number;
+  deletions: number;
+  changedFiles: number;
+  state: PrState;
+  mergedAt: string | null;
+}
 
 export interface WalkthroughResponse {
   walkthrough: {
@@ -23,8 +37,10 @@ export interface WalkthroughResponse {
     updatedAt: string;
   } | null;
   /** Live PR metadata from GitHub; null if it couldn't be fetched */
-  pr: { title: string; author: string } | null;
+  pr: PrDetails | null;
   currentHeadSha: string | null;
+  /** Commits since the reviewed head; null when not stale or GitHub couldn't compare */
+  commitsSinceReview: number | null;
   githubUrl: string;
 }
 
@@ -42,6 +58,16 @@ export interface PrSummary {
   author: string | null;
   verdict: Verdict | null;
   findingCount: number | null;
+  /** Findings in the latest review by severity; null when there's no review */
+  severityCounts: Record<Severity, number> | null;
+  /** The fields below are null until the PR's details are recorded */
+  authorAvatarUrl: string | null;
+  headRef: string | null;
+  baseRef: string | null;
+  additions: number | null;
+  deletions: number | null;
+  changedFiles: number | null;
+  mergedAt: string | null;
 }
 
 export interface ProgressEntry {

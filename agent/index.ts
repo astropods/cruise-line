@@ -11,6 +11,7 @@ import {
   getAppUrl,
 } from './db/app-config.js';
 import { refreshWebhooks } from './github/webhooks.js';
+import { backfillTrackedPrs } from './github/backfill-tracked-prs.js';
 import { cleanupExpiredRevocations } from './db/sessions.js';
 import { attemptAutoSeedOwner } from './owner.js';
 import { healthRoutes } from './routes/health.js';
@@ -114,6 +115,9 @@ if (dbConfig) {
   updateGitHubConfig(dbConfig);
   refreshWebhooks();
   console.log(`GitHub App loaded from database (${dbConfig.appSlug})`);
+
+  // Runs in the background; startup doesn't wait on GitHub
+  backfillTrackedPrs().catch((err) => console.error('PR details backfill failed:', err));
 
   // Existing installs created before the owner concept won't have an owner
   // claimed. Try to auto-seed from the App owner; fall back to manual claim.

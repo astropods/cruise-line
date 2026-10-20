@@ -33,7 +33,40 @@ export async function getPrMetadata(
     headSha: pr.head.sha,
     installationId,
     body: pr.body ?? undefined,
+    authorAvatarUrl: pr.user?.avatar_url ?? null,
+    additions: pr.additions,
+    deletions: pr.deletions,
+    changedFiles: pr.changed_files,
+    state: pr.merged_at ? 'merged' : pr.state === 'closed' ? 'closed' : 'open',
+    mergedAt: pr.merged_at,
+    closedAt: pr.closed_at,
   };
+}
+
+/**
+ * How many commits `head` is ahead of `base`, or null when GitHub can't
+ * compare them (a force-push can leave `base` unreachable).
+ */
+export async function countCommitsBetween(
+  installationId: number,
+  owner: string,
+  repo: string,
+  base: string,
+  head: string,
+): Promise<number | null> {
+  const token = await getInstallationToken(installationId);
+  const octokit = createInstallationOctokit(token);
+  try {
+    const { data } = await octokit.repos.compareCommitsWithBasehead({
+      owner,
+      repo,
+      basehead: `${base}...${head}`,
+      per_page: 1,
+    });
+    return data.ahead_by;
+  } catch {
+    return null;
+  }
 }
 
 // GitHub caps the response at 3,000 files; larger PRs are silently truncated.
