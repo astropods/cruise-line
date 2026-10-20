@@ -12,7 +12,7 @@ interface ChatPanelProps {
   repo: string;
   prNumber: number;
   files: Record<string, FileContent>;
-  onSwitchToWalkthrough: () => void;
+  onSwitchToAnalysis: () => void;
   initialMessage?: string;
   onRuleClick?: (ruleNumber: number) => void;
   rules?: Array<{ ruleNumber: number; rule: string }>;
@@ -25,7 +25,7 @@ const SAMPLE_PROMPTS = [
   { icon: Lightning, label: 'What are the performance implications?' },
 ];
 
-export function ChatPanel({ owner, repo, prNumber, files, onSwitchToWalkthrough, initialMessage, onRuleClick, rules }: ChatPanelProps) {
+export function ChatPanel({ owner, repo, prNumber, files, onSwitchToAnalysis, initialMessage, onRuleClick, rules }: ChatPanelProps) {
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);

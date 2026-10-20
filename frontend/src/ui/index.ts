@@ -6,6 +6,7 @@ export { IconButton } from './IconButton';
 export { Kbd } from './Kbd';
 export { Menu, type MenuItem } from './Menu';
 export { Pill } from './Pill';
+export { Popover } from './Popover';
 export { ProgressBar } from './ProgressBar';
 export { SegmentedControl, type Segment } from './SegmentedControl';
 export { Spinner } from './Spinner';

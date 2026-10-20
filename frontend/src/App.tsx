@@ -3,7 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation, useParams } from '
 import { AuthGate, SetupGate } from './app/gates';
 import { InboxHome } from './features/inbox/InboxHome';
 import { AppShell } from './shell/AppShell';
-import { WalkthroughPage } from './pages/WalkthroughPage';
+import { ReviewPage } from './features/review/ReviewPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { AuthCompletePage } from './pages/AuthCompletePage';
 import { LoginPage } from './pages/LoginPage';
@@ -16,11 +16,11 @@ const UiGallery = import.meta.env.DEV
   ? lazy(() => import('./dev/UiGallery').then((m) => ({ default: m.UiGallery })))
   : null;
 
-// Keyed by PR so moving between PRs remounts the page instead of carrying
-// tab, chat, and polling state from the previous one.
-function WalkthroughRoute() {
+// Keyed by PR (not view) so moving between PRs remounts the page instead of
+// carrying chat and polling state over, while switching views doesn't.
+function ReviewRoute() {
   const { owner, repo, pr } = useParams();
-  return <WalkthroughPage key={`${owner}/${repo}/${pr}`} />;
+  return <ReviewPage key={`${owner}/${repo}/${pr}`} />;
 }
 
 // Hard redirect for legacy /setup URLs — preserves the query string so the
@@ -53,7 +53,7 @@ export function App() {
           <Route element={<SetupGate />}>
             <Route element={<AppShell />}>
               <Route index element={<InboxHome />} />
-              <Route path="/:owner/:repo/pull/:pr" element={<WalkthroughRoute />} />
+              <Route path="/:owner/:repo/pull/:pr/:view?" element={<ReviewRoute />} />
             </Route>
           </Route>
         </Route>
