@@ -18,7 +18,11 @@
     "frontend/src/domain/**/*",
     "frontend/src/api/types.ts",
     "frontend/src/api/prs.ts",
-    "frontend/src/api/client.ts"
+    "frontend/src/api/client.ts",
+    "frontend/src/lib/time.ts",
+    "frontend/src/lib/time.test.ts",
+    "frontend/src/features/inbox/inboxModel.ts",
+    "frontend/src/features/inbox/inboxModel.test.ts"
   ],
   "exclude": [
     "node_modules",

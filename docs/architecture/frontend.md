@@ -38,6 +38,9 @@ frontend/src/
   "Needs attention" is defined there too.
 - **Pages load data; feature components render it.** Feature components
   take domain objects as props and don't fetch.
+- **Routes:** `/` is the inbox when signed in and the public home page
+  when signed out; `/cli` is the home page for everyone (the account menu's
+  "CLI access"); PR pages live inside the shell; `/reviews` redirects to `/`.
 - **State that should survive a reload or a shared link goes in the URL:**
   the PR view (`/:owner/:repo/pull/:pr/:view?`), the inbox tab
   (`?inbox=`), the settings section (`/settings/:section`).

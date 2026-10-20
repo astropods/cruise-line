@@ -220,10 +220,10 @@ function TopNav({
           )}
           {userChecked && user && (
             <Link
-              to="/reviews"
+              to="/"
               className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
             >
-              Reviews
+              Inbox
             </Link>
           )}
           {userChecked && user && (

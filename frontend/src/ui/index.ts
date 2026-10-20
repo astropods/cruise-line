@@ -1,8 +1,12 @@
 export { Avatar } from './Avatar';
 export { Button, buttonClass, type ButtonSize, type ButtonVariant } from './Button';
 export { Card, CardBody, CardFooter, CardHeader } from './Card';
+export { EmptyState } from './EmptyState';
 export { IconButton } from './IconButton';
+export { Kbd } from './Kbd';
+export { Menu, type MenuItem } from './Menu';
 export { Pill } from './Pill';
+export { ProgressBar } from './ProgressBar';
 export { SegmentedControl, type Segment } from './SegmentedControl';
 export { Spinner } from './Spinner';
 export { StatusIcon } from './StatusIcon';
