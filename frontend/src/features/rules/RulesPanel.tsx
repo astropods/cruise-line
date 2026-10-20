@@ -86,7 +86,7 @@ export function RulesPanel({ owner, repo, onClose, prefill }: RulesPanelProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Backdrop */}
       <div className="absolute inset-0 bg-sunken/70" onClick={onClose} />
 

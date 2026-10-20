@@ -9,6 +9,8 @@ import { resolveFilePath } from './resolvePath';
 import type { FileContent } from '../../../api';
 import { useFileContent } from './useFileContent';
 import { useParsedDiff } from './useParsedDiff';
+import { useMediaQuery, useViewportWidth, WIDE_SCREEN } from '../../../lib/useMediaQuery';
+import { useShellPanel } from '../../../shell/ShellContext';
 
 
 interface FileSlideoutProps {
@@ -18,10 +20,17 @@ interface FileSlideoutProps {
 const DEFAULT_WIDTH = 700;
 const MIN_WIDTH = 350;
 const MAX_WIDTH = 1200;
+// The review beside the panel stays at least this wide
+const MIN_CONTENT_WIDTH = 360;
 
 export function FileSlideout({ files }: FileSlideoutProps) {
   const { activeSlideout, openFile, closeFile, githubFileUrl } = useSlideout();
   const [panelWidth, setPanelWidth] = useState(DEFAULT_WIDTH);
+  const wide = useMediaQuery(WIDE_SCREEN);
+  const viewportWidth = useViewportWidth();
+  // The dragged width, shrunk to leave room for the review on smaller windows
+  const fitWidth = Math.max(MIN_WIDTH, Math.min(panelWidth, viewportWidth - MIN_CONTENT_WIDTH));
+  useShellPanel(!!activeSlideout);
   const isDragging = useRef(false);
   const startX = useRef(0);
   const startWidth = useRef(0);
@@ -40,14 +49,14 @@ export function FileSlideout({ files }: FileSlideoutProps) {
     e.preventDefault();
     isDragging.current = true;
     startX.current = e.clientX;
-    startWidth.current = panelWidth;
+    startWidth.current = fitWidth;
     document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
 
     function onMove(e: MouseEvent) {
       if (!isDragging.current) return;
       const delta = startX.current - e.clientX; // dragging left = wider
-      const newWidth = Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, startWidth.current + delta));
+      const newWidth = Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, window.innerWidth - MIN_CONTENT_WIDTH, startWidth.current + delta));
       setPanelWidth(newWidth);
     }
 
@@ -61,7 +70,7 @@ export function FileSlideout({ files }: FileSlideoutProps) {
 
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
-  }, [panelWidth]);
+  }, [fitWidth]);
 
   // Resolve the file path against known files, and fetch it if the review didn't collect it
   const knownPaths = useMemo(() => Object.keys(files), [files]);
@@ -77,19 +86,26 @@ export function FileSlideout({ files }: FileSlideoutProps) {
     <AnimatePresence>
       {activeSlideout && (
         <motion.div
-          initial={{ width: 0 }}
-          animate={{ width: panelWidth }}
-          exit={{ width: 0 }}
+          role="dialog"
+          aria-label={`File ${activeSlideout.file}`}
+          // Wide screens: a resizable column beside the review. Narrow: the whole screen.
+          {...(wide
+            ? { initial: { width: 0 }, animate: { width: fitWidth }, exit: { width: 0 } }
+            : { initial: { x: '100%' }, animate: { x: 0 }, exit: { x: '100%' } })}
           transition={isDragging.current ? { duration: 0 } : { type: 'spring', damping: 35, stiffness: 250 }}
-          className="flex-shrink-0 h-screen sticky top-0 overflow-hidden border-l border-line bg-canvas relative"
+          className={wide
+            ? 'relative h-full flex-shrink-0 overflow-hidden border-l border-line bg-canvas'
+            : 'fixed inset-0 z-50 overflow-hidden bg-canvas'}
         >
-          {/* Resize handle */}
-          <div
-            onMouseDown={onDragStart}
-            className="absolute left-0 top-0 bottom-0 w-1 cursor-col-resize z-10 hover:bg-accent/30 active:bg-accent/50 transition-colors"
-          />
+          {wide && (
+            <div
+              onMouseDown={onDragStart}
+              aria-hidden="true"
+              className="absolute left-0 top-0 bottom-0 w-1 cursor-col-resize z-10 hover:bg-accent/30 active:bg-accent/50 transition-colors"
+            />
+          )}
 
-          <div className="h-full flex flex-col" style={{ width: panelWidth }}>
+          <div className="h-full flex flex-col" style={{ width: wide ? fitWidth : '100%' }}>
             {/* Header with file picker */}
             <div className="flex items-center justify-between px-4 py-3 bg-surface border-b border-line flex-shrink-0 gap-2">
               <FilePickerDropdown
@@ -103,6 +119,7 @@ export function FileSlideout({ files }: FileSlideoutProps) {
                 rel="noopener noreferrer"
                 className="w-7 h-7 flex items-center justify-center rounded hover:bg-raised text-fg-muted hover:text-accent transition-colors flex-shrink-0"
                 title="View on GitHub"
+                aria-label="View on GitHub"
               >
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
                   <path d="M3.75 2h3.5a.75.75 0 0 1 0 1.5H4.56l6.22 6.22a.75.75 0 1 1-1.06 1.06L3.5 4.56v2.69a.75.75 0 0 1-1.5 0v-3.5A1.75 1.75 0 0 1 3.75 2Zm6.5 0h2A1.75 1.75 0 0 1 14 3.75v8.5A1.75 1.75 0 0 1 12.25 14h-8.5A1.75 1.75 0 0 1 2 12.25v-2a.75.75 0 0 1 1.5 0v2c0 .138.112.25.25.25h8.5a.25.25 0 0 0 .25-.25v-8.5a.25.25 0 0 0-.25-.25h-2a.75.75 0 0 1 0-1.5Z"/>
@@ -110,7 +127,9 @@ export function FileSlideout({ files }: FileSlideoutProps) {
               </a>
               <button
                 onClick={closeFile}
-                className="w-7 h-7 flex items-center justify-center rounded hover:bg-raised text-fg-muted transition-colors flex-shrink-0"
+                aria-label="Close file"
+                title="Close file"
+                className="w-8 h-8 flex items-center justify-center rounded hover:bg-raised text-fg-muted transition-colors flex-shrink-0"
               >
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
                   <path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.75.75 0 1 1 1.06 1.06L9.06 8l3.22 3.22a.75.75 0 1 1-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 0 1-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z"/>
