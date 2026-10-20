@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Check, Copy } from '@phosphor-icons/react';
+import { ArrowClockwise, TreeStructure } from '@phosphor-icons/react';
+import type { ArchitectureAnalysis } from '../../api';
+import { Button, Card, CardBody, EmptyState } from '../../ui';
 import { Md } from '../review/content/Md';
-import type { ArchitectureAnalysis, ArchitectureDiagram } from '../../api';
+import { DiagramCard } from './DiagramCard';
 
 interface ArchitecturePanelProps {
   architecture?: ArchitectureAnalysis;
@@ -10,63 +11,34 @@ interface ArchitecturePanelProps {
   onDiagramRendered?: (source: string, svg: string) => void;
 }
 
-let mermaidInitPromise: Promise<void> | null = null;
-
-export function ArchitecturePanel({
-  architecture,
-  onRegenerate,
-  diagramSvgCache = {},
-  onDiagramRendered,
-}: ArchitecturePanelProps) {
+/** The Architecture view: overview, reading path, then each diagram */
+export function ArchitecturePanel({ architecture, onRegenerate, diagramSvgCache = {}, onDiagramRendered }: ArchitecturePanelProps) {
   if (!architecture?.diagrams?.length) {
     return (
-      <main className="max-w-[920px] mx-auto px-8 py-12 pb-24">
-        <section className="rounded-lg border border-line bg-surface p-6">
-          <h2 className="text-lg font-semibold text-fg-strong">
-            Architecture is not available for this analysis
-          </h2>
-          <p className="mt-2 text-sm leading-6 text-fg-muted">
-            Regenerate the analysis to produce architecture notes and diagrams for this PR.
-          </p>
-          <button
-            onClick={onRegenerate}
-            className="mt-4 inline-flex items-center rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-[#07111f] transition-colors hover:bg-accent-strong"
+      <main className="mx-auto max-w-[920px] px-8 py-12 pb-24">
+        <Card className="bg-surface">
+          <EmptyState
+            icon={<TreeStructure size={28} />}
+            title="No architecture for this review"
+            action={<Button icon={<ArrowClockwise size={14} />} onClick={onRegenerate}>Rerun review</Button>}
           >
-            Regenerate analysis
-          </button>
-        </section>
+            Rerun the review to produce architecture notes and diagrams for this PR.
+          </EmptyState>
+        </Card>
       </main>
     );
   }
 
   return (
-    <main className="max-w-[920px] mx-auto px-8 py-12 pb-24">
+    <main className="mx-auto max-w-[920px] px-8 py-12 pb-24">
       <section className="mb-10">
-        <p className="mb-3 text-xs font-semibold uppercase text-accent">
-          Architecture
-        </p>
+        <p className="mb-3 text-xs font-semibold uppercase text-accent">Architecture</p>
         <div className="cruise-markdown text-[1.05rem] leading-[1.75] text-fg-muted">
           <Md>{architecture.overview}</Md>
         </div>
       </section>
 
-      {architecture.steps.length > 0 && (
-        <section className="mb-10 rounded-lg border border-line bg-surface p-5">
-          <h2 className="mb-4 text-sm font-semibold uppercase text-fg-muted">
-            Reading path
-          </h2>
-          <ol className="space-y-3">
-            {architecture.steps.map((step, index) => (
-              <li key={`${index}-${step}`} className="flex gap-3 text-sm leading-6 text-fg">
-                <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-line bg-raised font-mono text-[11px] text-accent">
-                  {index + 1}
-                </span>
-                <span>{step}</span>
-              </li>
-            ))}
-          </ol>
-        </section>
-      )}
+      {architecture.steps.length > 0 && <ReadingPath steps={architecture.steps} />}
 
       <div className="space-y-6">
         {architecture.diagrams.map((diagram, index) => (
@@ -82,193 +54,22 @@ export function ArchitecturePanel({
   );
 }
 
-function DiagramCard({
-  diagram,
-  diagramSvgCache,
-  onDiagramRendered,
-}: {
-  diagram: ArchitectureDiagram;
-  diagramSvgCache: Record<string, string>;
-  onDiagramRendered?: (source: string, svg: string) => void;
-}) {
-  const [copied, setCopied] = useState(false);
-  const source = normalizeMermaidSource(diagram.mermaid);
-
-  const handleCopy = useCallback(() => {
-    navigator.clipboard.writeText(source).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }).catch((err: unknown) => {
-      console.warn('Failed to copy Mermaid source', err);
-    });
-  }, [source]);
-
+function ReadingPath({ steps }: { steps: string[] }) {
   return (
-    <section className="overflow-hidden rounded-lg border border-line bg-surface">
-      <div className="flex items-start justify-between gap-4 border-b border-line px-5 py-4">
-        <div className="min-w-0">
-          <div className="mb-1 flex items-center gap-2">
-            <h2 className="text-base font-semibold text-fg-strong">
-              {diagram.title}
-            </h2>
-            <span className="rounded bg-raised px-2 py-0.5 text-[11px] font-medium uppercase text-fg-muted">
-              {diagram.kind === 'sequence' ? 'Sequence' : 'Flowchart'}
-            </span>
-          </div>
-          <p className="text-sm leading-6 text-fg-muted">
-            {diagram.description}
-          </p>
-        </div>
-        <button
-          onClick={handleCopy}
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs text-fg-muted transition-colors hover:bg-accent/10 hover:text-accent"
-          title="Copy raw Mermaid source"
-        >
-          {copied ? (
-            <>
-              <Check size={13} weight="bold" className="text-green-400" />
-              <span className="text-green-400">Copied</span>
-            </>
-          ) : (
-            <>
-              <Copy size={13} />
-              Copy Mermaid
-            </>
-          )}
-        </button>
-      </div>
-      <MermaidDiagram
-        source={source}
-        cachedSvg={diagramSvgCache[source]}
-        onRendered={onDiagramRendered}
-      />
-    </section>
+    <Card className="mb-10 bg-surface">
+      <CardBody className="p-5">
+        <h2 className="text-sm font-semibold uppercase text-fg-muted">Reading path</h2>
+        <ol className="space-y-3">
+          {steps.map((step, index) => (
+            <li key={`${index}-${step}`} className="flex gap-3 text-sm leading-6 text-fg">
+              <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-line bg-raised font-mono text-[11px] text-accent">
+                {index + 1}
+              </span>
+              <span>{step}</span>
+            </li>
+          ))}
+        </ol>
+      </CardBody>
+    </Card>
   );
-}
-
-function MermaidDiagram({
-  source,
-  cachedSvg,
-  onRendered,
-}: {
-  source: string;
-  cachedSvg?: string;
-  onRendered?: (source: string, svg: string) => void;
-}) {
-  const idBase = useRef(`architecture-mermaid-${Math.random().toString(36).slice(2)}`);
-  const renderCount = useRef(0);
-  const [svg, setSvg] = useState(cachedSvg ?? '');
-  const [error, setError] = useState<string | null>(null);
-  const cachedSvgRef = useRef(cachedSvg);
-
-  useEffect(() => {
-    cachedSvgRef.current = cachedSvg;
-  }, [source, cachedSvg]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const renderId = `${idBase.current}-${renderCount.current++}`;
-
-    async function render() {
-      if (!source.trim()) {
-        setSvg('');
-        setError('Diagram source is empty.');
-        return;
-      }
-
-      const cached = cachedSvgRef.current;
-      if (cached) {
-        setError(null);
-        setSvg(cached);
-        return;
-      }
-
-      try {
-        setError(null);
-        setSvg('');
-        if (!mermaidInitPromise) {
-          mermaidInitPromise = (async () => {
-            const { default: mermaid } = await import('mermaid');
-            mermaid.initialize({
-              startOnLoad: false,
-              securityLevel: 'strict',
-              theme: 'base',
-              themeVariables: {
-                background: '#161b22',
-                primaryColor: '#21262d',
-                primaryBorderColor: '#58a6ff',
-                primaryTextColor: '#e6edf3',
-                lineColor: '#8b949e',
-                secondaryColor: '#0d1117',
-                tertiaryColor: '#21262d',
-                actorBkg: '#21262d',
-                actorBorder: '#58a6ff',
-                actorTextColor: '#e6edf3',
-                signalColor: '#c9d1d9',
-                signalTextColor: '#c9d1d9',
-                noteBkgColor: '#21262d',
-                noteTextColor: '#c9d1d9',
-                noteBorderColor: '#30363d',
-              },
-            });
-          })().catch((err: unknown) => {
-            mermaidInitPromise = null;
-            throw err;
-          });
-        }
-        await mermaidInitPromise;
-
-        const { default: mermaid } = await import('mermaid');
-        if (cancelled) return;
-
-        const rendered = await mermaid.render(renderId, source);
-        if (!cancelled) {
-          setSvg(rendered.svg);
-          onRendered?.(source, rendered.svg);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'Unable to render diagram.');
-        }
-      }
-    }
-
-    render();
-    return () => {
-      cancelled = true;
-      document.getElementById(renderId)?.remove();
-    };
-  }, [source, onRendered]);
-
-  if (error) {
-    return (
-      <div className="p-5">
-        <div className="rounded-md border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
-          Mermaid could not render this diagram.
-          <pre className="mt-3 overflow-x-auto whitespace-pre-wrap rounded bg-canvas p-3 font-mono text-xs text-fg">
-            {error}
-          </pre>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="architecture-diagram overflow-auto bg-canvas p-5">
-      {svg ? (
-        <div dangerouslySetInnerHTML={{ __html: svg }} />
-      ) : (
-        <div className="flex min-h-48 items-center justify-center text-sm text-fg-muted">
-          Rendering diagram...
-        </div>
-      )}
-    </div>
-  );
-}
-
-function normalizeMermaidSource(source: string) {
-  return source
-    .replace(/^```(?:mermaid)?\s*/i, '')
-    .replace(/\s*```$/i, '')
-    .trim();
 }

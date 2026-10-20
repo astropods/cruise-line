@@ -1,5 +1,6 @@
-import { useCallback, useState } from 'react';
+import { useCallback } from 'react';
 import type { FileContent, Finding } from '../../api';
+import { useCopy } from '../../lib/useCopy';
 import { useCommentsContext } from '../comments/CommentsContext';
 import { useSlideout } from './content/SlideoutContext';
 import { extractCommentTargetFromBody, stripDirectives } from './content/findingUtils';
@@ -8,7 +9,7 @@ import { extractCommentTargetFromBody, stripDirectives } from './content/finding
 export function useFindingActions(finding: Finding, files: Record<string, FileContent>) {
   const { openFile } = useSlideout();
   const { setActiveCommentLine } = useCommentsContext();
-  const [copied, setCopied] = useState(false);
+  const { copy, copied } = useCopy();
 
   // Prefer the structured anchor (new walkthroughs); fall back to body parsing for legacy data.
   const target = finding.commentAnchor
@@ -33,12 +34,8 @@ export function useFindingActions(finding: Finding, files: Record<string, FileCo
   }, [target, canComment, finding, openFile, setActiveCommentLine]);
 
   const copyFixPrompt = useCallback(() => {
-    if (!finding.fixPrompt) return;
-    navigator.clipboard.writeText(finding.fixPrompt).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
-  }, [finding.fixPrompt]);
+    if (finding.fixPrompt) copy(finding.fixPrompt);
+  }, [finding.fixPrompt, copy]);
 
   return { location, openLocation, canComment, postAsComment, copyFixPrompt, copied };
 }

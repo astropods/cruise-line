@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useCallback } from 'react';
 import {
   WarningOctagon, WarningCircle, Warning, ArrowDown, Lightbulb,
   Bug, ShieldCheck, Wrench, Lightning, PaintBrush,
@@ -10,6 +10,7 @@ import { useSlideout } from './SlideoutContext';
 import { useCommentsContext } from '../../comments/CommentsContext';
 import { extractCommentTargetFromBody, stripDirectives } from './findingUtils';
 import type { FileContent, Severity, FindingCategory } from '../../../api';
+import { useCopy } from '../../../lib/useCopy';
 
 interface InlineFindingProps {
   title: string;
@@ -41,7 +42,7 @@ export function InlineFinding({ title, severity, category, body, fixPrompt, file
   const cat = categoryConfig[category] ?? categoryConfig.correctness;
   const { openFile } = useSlideout();
   const { setActiveCommentLine } = useCommentsContext();
-  const [copied, setCopied] = useState(false);
+  const { copy, copied } = useCopy();
 
   const SevIcon = sev.icon;
   const CatIcon = cat.icon;
@@ -50,12 +51,8 @@ export function InlineFinding({ title, severity, category, body, fixPrompt, file
   const canComment = commentTarget && files[commentTarget.file]?.patch;
 
   const handleCopyFixPrompt = useCallback(() => {
-    if (!fixPrompt) return;
-    navigator.clipboard.writeText(fixPrompt).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
-  }, [fixPrompt]);
+    if (fixPrompt) copy(fixPrompt);
+  }, [fixPrompt, copy]);
 
   const handlePostAsComment = useCallback(() => {
     if (!commentTarget || !canComment) return;

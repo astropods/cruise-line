@@ -22,7 +22,11 @@
     "frontend/src/lib/time.ts",
     "frontend/src/lib/time.test.ts",
     "frontend/src/features/inbox/inboxModel.ts",
-    "frontend/src/features/inbox/inboxModel.test.ts"
+    "frontend/src/features/inbox/inboxModel.test.ts",
+    "frontend/src/features/architecture/mermaidSource.ts",
+    "frontend/src/features/architecture/mermaidSource.test.ts",
+    "frontend/src/features/chat/toolCallDetail.ts",
+    "frontend/src/features/chat/toolCallDetail.test.ts"
   ],
   "exclude": [
     "node_modules",

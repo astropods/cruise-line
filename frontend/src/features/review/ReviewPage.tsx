@@ -170,7 +170,6 @@ export function ReviewPage() {
                   repo={repo}
                   prNumber={prNumber}
                   files={walkthrough?.files ?? {}}
-                  onSwitchToAnalysis={() => setView('analysis')}
                   onRuleClick={() => openRules()}
                   rules={repoRules}
                   initialMessage={chatInitialMessage}

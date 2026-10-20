@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router';
 import { logout, type SetupStatus, type UserInfo } from '../../api';
 import { useCurrentUser, useSetupStatus } from '../../app/session';
+import { useCopy } from '../../lib/useCopy';
 import { CliTokensSection } from './CliTokensSection';
 
 /**
@@ -224,20 +225,12 @@ function SectionHeading({ label, title }: { label: string; title: string }) {
 }
 
 function CopyBlock({ value, disabled = false }: { value: string; disabled?: boolean }) {
-  const [copied, setCopied] = useState(false);
+  // A 1.5s window is enough for the user to notice the state change
+  // without leaving the "Copied" state visible after they've moved on.
+  const { copy: copyText, copied } = useCopy(1500);
 
-  async function copy() {
-    if (disabled) return;
-    try {
-      await navigator.clipboard.writeText(value);
-      setCopied(true);
-      // A 1.5s window is enough for the user to notice the state change
-      // without leaving the "Copied" state visible after they've moved on.
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      // navigator.clipboard fails silently in some contexts (insecure origin,
-      // sandboxed iframe). Users can still select the text manually.
-    }
+  function copy() {
+    if (!disabled) copyText(value);
   }
 
   return (
