@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useParams } from 'react-router';
 import { WalkthroughPage } from './pages/WalkthroughPage';
 import { ReviewsPage } from './pages/ReviewsPage';
@@ -8,6 +9,11 @@ import { NotFoundPage } from './pages/NotFoundPage';
 import { CliAuthorizePage } from './pages/CliAuthorizePage';
 import { HomePage } from './pages/HomePage';
 import { useSetupGuard } from './hooks/useSetupGuard';
+
+// Dev-only component sheet; the import is dropped from production builds
+const UiGallery = import.meta.env.DEV
+  ? lazy(() => import('./dev/UiGallery').then((m) => ({ default: m.UiGallery })))
+  : null;
 
 // Keyed by PR so moving between PRs remounts the page instead of carrying
 // tab, chat, and polling state from the previous one.
@@ -57,6 +63,9 @@ export function App() {
         <Route path="/setup" element={<LegacySetupRedirect />} />
         <Route path="/auth/complete" element={<AuthCompletePage />} />
         <Route path="/cli/authorize" element={<CliAuthorizePage />} />
+        {UiGallery && (
+          <Route path="/__ui" element={<Suspense fallback={null}><UiGallery /></Suspense>} />
+        )}
         <Route path="*" element={<GuardedRoutes />} />
       </Routes>
     </BrowserRouter>

@@ -1,18 +1,48 @@
 @import "tailwindcss";
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 
-:root {
-  --bg-primary: #0d1117;
-  --bg-secondary: #161b22;
-  --bg-tertiary: #21262d;
-  --border: #30363d;
-  --text-primary: #c9d1d9;
-  --text-secondary: #8b949e;
-  --text-bright: #e6edf3;
-  --accent: #58a6ff;
-  --accent-hover: #79c0ff;
+/* Theme tokens. Use these through Tailwind classes (bg-surface,
+   text-fg-muted, border-line…); see docs/architecture/frontend.md. */
+@theme static {
+  --color-canvas: #0d1117;
+  --color-sunken: #010409;
+  --color-surface: #161b22;
+  --color-raised: #21262d;
+  --color-line: #30363d;
+  --color-line-strong: #3d444d;
+
+  --color-fg-strong: #e6edf3;
+  --color-fg: #c9d1d9;
+  --color-fg-muted: #8b949e;
+
+  --color-accent: #58a6ff;
+  --color-accent-strong: #79c0ff;
+  --color-accent-emphasis: #1f6feb;
+  --color-success: #3fb950;
+  --color-success-emphasis: #238636;
+  --color-warning: #d29922;
+  --color-warning-fg: #e3b341;
+  --color-severe: #f0883e;
+  --color-danger: #f85149;
+  --color-danger-fg: #ff7b72;
+  --color-done: #a371f7;
+  --color-done-fg: #d2a8ff;
+
   --font-sans: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+}
+
+/* Legacy names, kept until every component uses the tokens above */
+:root {
+  --bg-primary: var(--color-canvas);
+  --bg-secondary: var(--color-surface);
+  --bg-tertiary: var(--color-raised);
+  --border: var(--color-line);
+  --text-primary: var(--color-fg);
+  --text-secondary: var(--color-fg-muted);
+  --text-bright: var(--color-fg-strong);
+  --accent: var(--color-accent);
+  --accent-hover: var(--color-accent-strong);
 }
 
 body {
