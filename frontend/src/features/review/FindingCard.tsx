@@ -41,16 +41,17 @@ export function FindingCard({ finding, files, id, onSaveAsRule, onRuleClick, rul
   const hasActions = canSaveRule || !!finding.fixPrompt || actions.canComment;
 
   return (
-    <Card id={id} className="scroll-mt-6">
-      <CardHeader className={cx(!expanded && 'border-b-0')}>
+    <Card id={id} className="@container scroll-mt-6">
+      <CardHeader className={cx('flex-wrap @md:flex-nowrap', !expanded && 'border-b-0')}>
         <Pill tone={severityTone(finding.severity)} shape="tag">{severityLabel(finding.severity)}</Pill>
-        <h2 className="min-w-0 flex-grow text-[15px] leading-[22px] font-semibold text-fg-strong">{finding.title}</h2>
+        <h2 className="min-w-0 flex-1 basis-0 text-[15px] leading-[22px] font-semibold text-fg-strong">{finding.title}</h2>
         {actions.location && (
           <button
             type="button"
             onClick={actions.openLocation}
             title={`Open ${actions.location.file}`}
-            className="max-w-56 flex-shrink-0 truncate font-mono text-xs text-fg-muted transition-colors hover:text-accent"
+            // On a narrow card the location takes its own line under the title
+            className="order-last basis-full truncate text-left font-mono text-xs text-fg-muted transition-colors hover:text-accent @md:order-none @md:max-w-56 @md:flex-shrink-0 @md:basis-auto"
           >
             {actions.location.file.split('/').pop()}
             {actions.location.line ? `:${actions.location.line}` : ''}

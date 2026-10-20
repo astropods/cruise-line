@@ -32,7 +32,8 @@ export function PrBar(props: PrBarProps) {
   const reviewing = state === 'reviewing';
 
   return (
-    <header className="relative flex h-16 flex-shrink-0 items-center gap-3 border-b border-line bg-canvas px-4 md:px-10">
+    // A container, so what shows follows the bar's width: it narrows when the file panel opens
+    <header className="@container relative flex h-16 flex-shrink-0 items-center gap-3 border-b border-line bg-canvas px-4 @3xl:px-10">
       <Link
         to="/"
         aria-label="Inbox"
@@ -42,27 +43,30 @@ export function PrBar(props: PrBarProps) {
         <CaretLeft size={16} weight="bold" />
       </Link>
 
-      {props.author ? <Avatar login={props.author} src={details?.authorAvatarUrl} size={32} /> : <span className="h-8 w-8 flex-shrink-0 rounded-full bg-raised" />}
+      {/* Gives way to the title when the bar is narrow */}
+      <span className="hidden flex-shrink-0 @md:flex">
+        {props.author ? <Avatar login={props.author} src={details?.authorAvatarUrl} size={32} /> : <span className="h-8 w-8 rounded-full bg-raised" />}
+      </span>
 
       <div className="flex min-w-0 flex-grow flex-col">
         <h1 className="truncate text-[15px] leading-[22px] font-semibold text-fg-strong">{props.title}</h1>
         <div className="flex min-w-0 items-center gap-2.5 overflow-hidden whitespace-nowrap text-xs leading-[18px] text-fg-muted">
           {props.author && <span className="flex-shrink-0 text-fg">@{props.author}</span>}
-          <span className="hidden flex-shrink-0 sm:inline">{props.repo} #{props.number}</span>
+          <span className="hidden flex-shrink-0 @lg:inline">{props.repo} #{props.number}</span>
           {details && (
             <>
-              <span className="hidden min-w-0 truncate rounded bg-accent-emphasis/20 px-1.5 font-mono text-[11px] text-accent-strong lg:inline">
+              <span className="hidden min-w-0 truncate rounded bg-accent-emphasis/20 px-1.5 font-mono text-[11px] text-accent-strong @2xl:inline">
                 {details.headRef}
               </span>
-              <span className="hidden flex-shrink-0 gap-1 font-mono text-[11px] lg:flex">
+              <span className="hidden flex-shrink-0 gap-1 font-mono text-[11px] @2xl:flex">
                 <span className="text-success">+{details.additions}</span>
                 <span className="text-danger">−{details.deletions}</span>
               </span>
-              <span className="hidden flex-shrink-0 lg:inline">
+              <span className="hidden flex-shrink-0 @2xl:inline">
                 {details.changedFiles} {details.changedFiles === 1 ? 'file' : 'files'}
               </span>
               {details.state === 'open' && (
-                <span className="hidden flex-shrink-0 items-center gap-1 text-success xl:flex">
+                <span className="hidden flex-shrink-0 items-center gap-1 text-success @4xl:flex">
                   <span className="h-1.5 w-1.5 rounded-full bg-success" aria-hidden="true" />
                   Open
                 </span>
@@ -89,7 +93,7 @@ export function PrBar(props: PrBarProps) {
         value={props.view}
         onChange={props.onViewChange}
         segments={reviewViewSegments({ hasReview: props.hasReview })}
-        className="hidden sm:inline-flex"
+        collapseLabels
       />
 
       <Menu
