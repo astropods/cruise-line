@@ -10,8 +10,8 @@ export function Logo({ size = 24, className }: { size?: number; className?: stri
       width={size}
       height={size}
       draggable={false}
-      // Corners scale with size so the mark reads the same from 24px to 160px
-      style={{ borderRadius: Math.round(size * 0.22) }}
+      // A small radius that grows a little with size: 3px at 24, 17px at 120
+      style={{ borderRadius: Math.max(3, Math.round(size * 0.14)) }}
       className={cx('flex-shrink-0 select-none object-cover', className)}
     />
   );

@@ -8,8 +8,11 @@ logo everywhere the app shows one.
 - `frontend/public/logo.jpg` (256px) is the avatar from
   `assets.astropods.ai/avatars/agents/astropods/cruise-line.jpg`;
   `favicon-32.png`, `favicon-192.png`, and `apple-touch-icon.png` are sized
-  from the same 512px source. `favicon.svg` and the old `logo.png` are gone.
-- `shell/Logo` renders the image with corners that scale with its size.
+  from the same 512px source. `favicon.svg` embeds a 64px copy clipped to
+  rounded corners; browsers without SVG favicons use the PNGs. The old
+  `logo.png` is gone.
+- `shell/Logo` renders the image with a small corner radius (3px at 24px,
+  growing slightly with size).
 - **Where it shows up:**
   - The inbox sidebar and the setup flow (both already used `Logo`).
   - The home page hero.
