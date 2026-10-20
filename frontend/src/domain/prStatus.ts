@@ -69,8 +69,8 @@ export function reviewStatusView(pr: PrStatusInput): StatusView {
 /**
  * Open PRs that need a person to act: a review is running, failed, or was
  * never run, or the last review requested changes or found something
- * blocking. Merged and closed PRs never count; there's no record of
- * whether their findings were dealt with.
+ * blocking. Merged and closed PRs never count: there's nothing left to act
+ * on once a PR is done.
  */
 export function needsAttention(pr: PrStatusInput): boolean {
   if (!isOpen(pr)) return false;
