@@ -46,7 +46,7 @@ commentRoutes.get('/:owner/:repo/:pr', async (c) => {
     auth: session.githubToken,
   });
 
-  const { data } = await octokit.pulls.listReviewComments({
+  const data = await octokit.paginate(octokit.pulls.listReviewComments, {
     owner,
     repo,
     pull_number: prNumber,

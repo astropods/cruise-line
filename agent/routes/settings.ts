@@ -11,6 +11,7 @@ import {
 } from '../db/users.js';
 import { getInstallationForRepo, listInstallationsWithRepos } from '../github/client.js';
 import { getRepoSettings, setRepoScopePaths } from '../db/repo-settings.js';
+import { deleteRepoScopeDecisions } from '../db/pr-scope-decisions.js';
 import {
   EFFORT_LEVELS,
   checkModelSetting,
@@ -80,6 +81,8 @@ settingsRoutes.patch('/repos/:owner/:repo/scope', async (c) => {
   }
 
   const settings = await setRepoScopePaths(owner, repo, body.scopePaths as string[]);
+  // Open PRs were judged against the old paths; the next event decides again
+  await deleteRepoScopeDecisions(owner, repo);
   return c.json({ settings });
 });
 

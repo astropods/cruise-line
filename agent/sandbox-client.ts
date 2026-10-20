@@ -101,57 +101,82 @@ export async function sandboxEnsureClone(params: EnsureCloneParams): Promise<Ens
 // POST /query — returns an async generator of SSE events
 // ---------------------------------------------------------------------------
 
+// The sandbox sends a heartbeat every 5s, so this much silence means it's stuck
+const QUERY_IDLE_MS = 2 * 60_000;
+// A ceiling for runaway runs; big reviews at high effort can pass 10 minutes
+const QUERY_MAX_MS = 60 * 60_000;
+
+/**
+ * Runs a query and yields its events. Stopping early (a consumer that
+ * throws or returns) closes the connection, which stops the run in the
+ * sandbox too.
+ */
 export async function* sandboxQuery(params: QueryParams): AsyncGenerator<SSEEvent> {
-  const res = await fetch(sandboxUrl('/query'), {
-    method: 'POST',
-    headers: sandboxHeaders(),
-    body: JSON.stringify(params),
-    signal: AbortSignal.timeout(600_000),
-  });
+  const controller = new AbortController();
+  const ceiling = setTimeout(() => controller.abort(new Error('Sandbox query ran over 60 minutes')), QUERY_MAX_MS);
+  let idle: ReturnType<typeof setTimeout> | undefined;
+  const stillAlive = () => {
+    clearTimeout(idle);
+    idle = setTimeout(() => controller.abort(new Error('Sandbox stopped responding')), QUERY_IDLE_MS);
+  };
 
-  if (!res.ok) {
-    const body = await res.text().catch(() => 'Unknown error');
-    throw new Error(`Sandbox query failed (${res.status}): ${body}`);
+  try {
+    stillAlive();
+    const res = await fetch(sandboxUrl('/query'), {
+      method: 'POST',
+      headers: sandboxHeaders(),
+      body: JSON.stringify(params),
+      signal: controller.signal,
+    });
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => 'Unknown error');
+      throw new Error(`Sandbox query failed (${res.status}): ${body}`);
+    }
+
+    for await (const event of readEvents(res.body!, stillAlive)) {
+      if (event.type !== 'heartbeat') yield event;
+    }
+  } finally {
+    clearTimeout(ceiling);
+    clearTimeout(idle);
+    controller.abort();
   }
+}
 
-  const reader = res.body!.getReader();
+/** Parses an SSE body into events, calling onChunk whenever bytes arrive */
+async function* readEvents(body: ReadableStream<Uint8Array>, onChunk: () => void): AsyncGenerator<SSEEvent> {
+  const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
+
+  const parse = (line: string): SSEEvent | null => {
+    if (!line.startsWith('data:')) return null;
+    const data = line.slice(5).trim();
+    if (!data) return null;
+    try {
+      return JSON.parse(data) as SSEEvent;
+    } catch {
+      return null; // Skip malformed events
+    }
+  };
 
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
+    onChunk();
 
     buffer += decoder.decode(value, { stream: true });
     const lines = buffer.split('\n');
     buffer = lines.pop()!; // Keep incomplete last line
-
     for (const line of lines) {
-      if (!line.startsWith('data:')) continue;
-      const data = line.slice(5).trim();
-      if (!data) continue;
-
-      try {
-        const event = JSON.parse(data) as SSEEvent;
-        if (event.type !== 'heartbeat') {
-          yield event;
-        }
-      } catch {
-        // Skip malformed events
-      }
+      const event = parse(line);
+      if (event) yield event;
     }
   }
 
-  // Process any remaining buffer
-  if (buffer.startsWith('data:')) {
-    const data = buffer.slice(5).trim();
-    if (data) {
-      try {
-        const event = JSON.parse(data) as SSEEvent;
-        if (event.type !== 'heartbeat') yield event;
-      } catch { /* skip */ }
-    }
-  }
+  const last = parse(buffer);
+  if (last) yield last;
 }
 
 // ---------------------------------------------------------------------------

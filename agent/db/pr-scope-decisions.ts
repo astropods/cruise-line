@@ -26,6 +26,11 @@ export async function setPrScopeDecision(
   `;
 }
 
+/** Forget every decision for a repo, after its scope paths change */
+export async function deleteRepoScopeDecisions(owner: string, repo: string): Promise<void> {
+  await sql`DELETE FROM pr_scope_decisions WHERE owner = ${owner} AND repo = ${repo}`;
+}
+
 export async function deletePrScopeDecision(
   owner: string,
   repo: string,

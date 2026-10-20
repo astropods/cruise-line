@@ -1,6 +1,7 @@
 import { sql } from './client.js';
 import { replaceNul } from './replace-nul.js';
 import type { Walkthrough } from '../analysis/types.js';
+import { summarizeReview } from '../analysis/summary.js';
 
 export interface WalkthroughRow {
   id: number;
@@ -93,7 +94,6 @@ export interface PrSummaryRow {
   title: string | null;
   author: string | null;
   verdict: Walkthrough['verdict'] | null;
-  finding_count: number | null;
   /** Severity → count for the latest review; null when there's no review */
   severity_counts: Record<string, number> | null;
   author_avatar_url: string | null;
@@ -128,30 +128,20 @@ export async function listPrSummaries(): Promise<PrSummaryRow[]> {
       COALESCE(latest.head_sha, t.head_sha) AS head_sha,
       GREATEST(latest.updated_at, t.updated_at) AS updated_at,
       t.state AS pr_state,
-      COALESCE(t.title, reviewed.data->'pr'->>'title') AS title,
-      COALESCE(t.author, reviewed.data->'pr'->>'author') AS author,
-      reviewed.data->>'verdict' AS verdict,
-      CASE WHEN jsonb_typeof(reviewed.data->'findings') = 'array'
-        THEN jsonb_array_length(reviewed.data->'findings') END AS finding_count,
-      CASE WHEN reviewed.data IS NOT NULL THEN COALESCE((
-        SELECT jsonb_object_agg(sev, n) FROM (
-          SELECT f->>'severity' AS sev, COUNT(*) AS n
-          FROM jsonb_array_elements(
-            CASE WHEN jsonb_typeof(reviewed.data->'findings') = 'array'
-              THEN reviewed.data->'findings' ELSE '[]'::jsonb END
-          ) f
-          GROUP BY 1
-        ) s
-      ), '{}'::jsonb) END AS severity_counts,
+      COALESCE(t.title, reviewed.summary->>'title') AS title,
+      COALESCE(t.author, reviewed.summary->>'author') AS author,
+      reviewed.summary->>'verdict' AS verdict,
+      reviewed.summary->'severityCounts' AS severity_counts,
       t.author_avatar_url, t.head_ref, t.base_ref,
       t.additions, t.deletions, t.changed_files, t.merged_at
     FROM prs
     LEFT JOIN latest USING (owner, repo, pr_number)
     LEFT JOIN tracked_prs t USING (owner, repo, pr_number)
     LEFT JOIN LATERAL (
-      SELECT data FROM walkthroughs w
+      -- summary, not data: data holds file contents and is large
+      SELECT summary FROM walkthroughs w
       WHERE w.owner = prs.owner AND w.repo = prs.repo
-        AND w.pr_number = prs.pr_number AND w.data IS NOT NULL
+        AND w.pr_number = prs.pr_number AND w.summary IS NOT NULL
       ORDER BY w.created_at DESC
       LIMIT 1
     ) reviewed ON TRUE
@@ -188,8 +178,22 @@ export async function updateWalkthroughStatus(
     UPDATE walkthroughs
     SET status = ${status},
         data = ${data ? sql.json(replaceNul(data)) : sql`data`},
+        summary = ${data ? sql.json(replaceNul(summarizeReview(data)) as any) : sql`summary`},
         error = ${error ? replaceNul(error) : null},
         updated_at = NOW()
     WHERE id = ${id}
+  `;
+}
+
+/**
+ * Marks every pending or running row failed. Jobs live in memory, so after a
+ * restart nothing will ever finish these; left alone they'd spin forever.
+ */
+export async function failInterruptedWalkthroughs(): Promise<WalkthroughRow[]> {
+  return sql<WalkthroughRow[]>`
+    UPDATE walkthroughs
+    SET status = 'failed', error = 'Interrupted by a restart. Run the review again.', updated_at = NOW()
+    WHERE status IN ('pending', 'running')
+    RETURNING id, owner, repo, pr_number, head_sha, status, error, NULL::jsonb AS data, created_at, updated_at
   `;
 }

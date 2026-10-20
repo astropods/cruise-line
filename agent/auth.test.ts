@@ -931,7 +931,7 @@ describe('GET /api/walkthroughs — PR list', () => {
   const summary = (repo: string, number: number, status: string | null = 'complete') => ({
     owner: 'listco', repo, pr_number: number, status, pr_state: 'open', head_sha: 'abc',
     updated_at: new Date('2026-01-01T00:00:00Z'), title: `PR ${number}`, author: 'someone',
-    verdict: 'approve', finding_count: 3,
+    verdict: 'approve',
     severity_counts: status === null ? null : { high: '1', info: '2' },
     author_avatar_url: 'https://avatars.example/someone', head_ref: 'feat/x', base_ref: 'main',
     additions: 12, deletions: 3, changed_files: 2, merged_at: null,

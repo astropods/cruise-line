@@ -13,6 +13,10 @@ import { upsertTrackedPr } from '../db/tracked-prs.js';
 import { countCommitsBetween, getPrMetadata, getInstallationForRepo } from '../github/client.js';
 import type { PrMetadata } from '../github/types.js';
 import { jobManager } from '../analysis/jobs.js';
+import { severityCounts } from '../analysis/summary.js';
+import { mapWithConcurrency } from '../concurrency.js';
+
+const REPO_ACCESS_CONCURRENCY = 8;
 import { AppError } from '../middleware/error.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import type { AppEnv } from '../env.js';
@@ -42,30 +46,26 @@ type PrDetails = Pick<
   'title' | 'author' | 'authorAvatarUrl' | 'headRef' | 'baseRef' | 'additions' | 'deletions' | 'changedFiles' | 'state' | 'mergedAt'
 >;
 
-const SEVERITIES = ['critical', 'high', 'medium', 'low', 'info'] as const;
-
-/** Every severity present, zero when the review had none */
-function severityCounts(raw: Record<string, number>): Record<(typeof SEVERITIES)[number], number> {
-  return Object.fromEntries(SEVERITIES.map((s) => [s, Number(raw[s] ?? 0)])) as Record<(typeof SEVERITIES)[number], number>;
-}
 
 walkthroughRoutes.get('/', requireAuth, async (c) => {
   const session = c.get('session');
   const rows = await listPrSummaries();
 
+  // A few at a time: each uncached check is two GitHub calls, and a burst
+  // trips the secondary rate limit, which reads as "no access"
   const repoKeys = [...new Set(rows.map((r) => `${r.owner}/${r.repo}`))];
   const access = new Map(
-    await Promise.all(
-      repoKeys.map(async (key) => {
-        const [owner, repo] = key.split('/');
-        return [key, await hasRepoAccess(session, owner, repo)] as const;
-      }),
-    ),
+    await mapWithConcurrency(repoKeys, REPO_ACCESS_CONCURRENCY, async (key) => {
+      const [owner, repo] = key.split('/');
+      return [key, await hasRepoAccess(session, owner, repo)] as const;
+    }),
   );
 
   const prs = rows
     .filter((r) => access.get(`${r.owner}/${r.repo}`))
-    .map((r) => ({
+    .map((r) => {
+      const counts = r.severity_counts && severityCounts(r.severity_counts);
+      return {
       owner: r.owner,
       repo: r.repo,
       number: r.pr_number,
@@ -76,8 +76,8 @@ walkthroughRoutes.get('/', requireAuth, async (c) => {
       title: r.title,
       author: r.author,
       verdict: r.verdict,
-      findingCount: r.finding_count,
-      severityCounts: r.severity_counts && severityCounts(r.severity_counts),
+      findingCount: counts && Object.values(counts).reduce((a, b) => a + b, 0),
+      severityCounts: counts,
       authorAvatarUrl: r.author_avatar_url,
       headRef: r.head_ref,
       baseRef: r.base_ref,
@@ -85,7 +85,8 @@ walkthroughRoutes.get('/', requireAuth, async (c) => {
       deletions: r.deletions,
       changedFiles: r.changed_files,
       mergedAt: r.merged_at,
-    }));
+      };
+    });
 
   return c.json({ prs, githubUrl: config.github.htmlUrl });
 });

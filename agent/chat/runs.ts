@@ -77,6 +77,14 @@ export class ChatRunManager {
     return this.runs.get(id);
   }
 
+  /** Whether anyone has a run in progress on this PR */
+  hasActiveForPr(owner: string, repo: string, prNumber: number): boolean {
+    for (const run of this.runs.values()) {
+      if (run.state === 'running' && run.owner === owner && run.repo === repo && run.prNumber === prNumber) return true;
+    }
+    return false;
+  }
+
   /** The user's in-progress run on this PR, if any */
   getActive(owner: string, repo: string, prNumber: number, userId: number): ChatRun | undefined {
     for (const run of this.runs.values()) {
