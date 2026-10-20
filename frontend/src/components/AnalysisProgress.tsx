@@ -5,6 +5,8 @@ import {
 } from '@phosphor-icons/react';
 import type { ProgressEntry } from '../api';
 import type { Icon } from '@phosphor-icons/react';
+import { formatElapsed } from '../lib/time';
+import { useElapsed } from '../lib/useNow';
 
 interface AnalysisProgressProps {
   status: string;
@@ -39,29 +41,8 @@ function cleanToolText(text: string): string {
     .replace(/^\/.*?\/repos\/[^/]+\/[^/]+\//, '');
 }
 
-export function formatElapsed(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return m > 0 ? `${m}m ${s}s` : `${s}s`;
-}
-
-/** Seconds since `startedAt` (or since mount when unknown), ticking every second. */
-export function useElapsed(startedAt: string | null): number {
-  const [elapsed, setElapsed] = useState(0);
-
-  useEffect(() => {
-    const baseTime = startedAt ? new Date(startedAt).getTime() : Date.now();
-    const tick = () => setElapsed(Math.max(0, Math.floor((Date.now() - baseTime) / 1000)));
-    tick();
-    const interval = setInterval(tick, 1000);
-    return () => clearInterval(interval);
-  }, [startedAt]);
-
-  return elapsed;
-}
-
 /** The headline for a run in progress: the latest status entry, or a placeholder. */
-export function progressStatusText(status: string, progress: ProgressEntry[]): string {
+function progressStatusText(status: string, progress: ProgressEntry[]): string {
   if (status === 'none' || status === 'pending') return 'Starting analysis...';
   const latestStatus = [...progress].reverse().find((e) => e.type === 'status');
   return latestStatus?.text ?? 'Analyzing pull request...';
@@ -82,7 +63,7 @@ export function ActivityFeed({ progress, className = '' }: { progress: ProgressE
   return (
     <div
       ref={feedRef}
-      className={`max-h-48 overflow-y-auto rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] p-3 ${className}`}
+      className={`max-h-48 overflow-y-auto rounded-lg bg-surface border border-line p-3 ${className}`}
     >
       {progress.map((entry, i) => {
         const ToolIcon = entry.type === 'tool' ? getToolIcon(entry.text) : null;
@@ -95,7 +76,7 @@ export function ActivityFeed({ progress, className = '' }: { progress: ProgressE
             key={i}
             className={`flex items-center gap-2 py-1 text-xs transition-opacity ${
               isLatest ? 'opacity-100' : 'opacity-40'
-            } ${isStatus ? 'text-[var(--accent)]' : 'text-[var(--text-secondary)] font-mono'}`}
+            } ${isStatus ? 'text-accent' : 'text-fg-muted font-mono'}`}
           >
             {ToolIcon ? (
               <ToolIcon size={12} className="flex-shrink-0" />
@@ -119,14 +100,14 @@ export function AnalysisProgress({ status, progress, startedAt, error, onRetry }
     <div className="flex items-center justify-center h-full p-8">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-[var(--accent)]/10 mb-4">
-            <Anchor size={24} weight="duotone" className="text-[var(--accent)]" />
+          <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-accent/10 mb-4">
+            <Anchor size={24} weight="duotone" className="text-accent" />
           </div>
-          <h1 className="text-lg font-semibold text-[var(--text-bright)] mb-1">
+          <h1 className="text-lg font-semibold text-fg-strong mb-1">
             {isFailed ? 'Review failed' : 'Reviewing this PR'}
           </h1>
           {!isFailed && (
-            <p className="text-sm text-[var(--text-secondary)]">
+            <p className="text-sm text-fg-muted">
               This is the first review for this PR. It usually takes a few minutes.
             </p>
           )}
@@ -140,12 +121,12 @@ export function AnalysisProgress({ status, progress, startedAt, error, onRetry }
               <span className="text-sm font-medium">Analysis failed</span>
             </div>
             {error && (
-              <p className="text-xs text-[var(--text-secondary)] text-center max-w-sm">{error}</p>
+              <p className="text-xs text-fg-muted text-center max-w-sm">{error}</p>
             )}
             {onRetry && (
               <button
                 onClick={onRetry}
-                className="inline-flex items-center gap-1.5 px-4 py-2 text-sm rounded-lg border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--accent)] transition-colors mt-1"
+                className="inline-flex items-center gap-1.5 px-4 py-2 text-sm rounded-lg border border-line text-fg-muted hover:text-fg hover:border-accent transition-colors mt-1"
               >
                 <ArrowsClockwise size={14} />
                 Try again
@@ -154,8 +135,8 @@ export function AnalysisProgress({ status, progress, startedAt, error, onRetry }
           </div>
         ) : (
           <div className="flex items-center justify-center gap-2.5 mb-6">
-            <CircleNotch size={16} weight="bold" className="text-[var(--accent)] animate-spin" />
-            <span className="text-sm text-[var(--text-secondary)]">{progressStatusText(status, progress)}</span>
+            <CircleNotch size={16} weight="bold" className="text-accent animate-spin" />
+            <span className="text-sm text-fg-muted">{progressStatusText(status, progress)}</span>
           </div>
         )}
 
@@ -163,7 +144,7 @@ export function AnalysisProgress({ status, progress, startedAt, error, onRetry }
 
         {/* Elapsed time */}
         {!isFailed && (
-          <div className="text-center text-xs text-[var(--text-secondary)]/40">
+          <div className="text-center text-xs text-fg-muted/40">
             {formatElapsed(elapsed)}
           </div>
         )}

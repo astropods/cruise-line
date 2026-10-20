@@ -32,17 +32,17 @@ function CommentBubble({ comment, isReply }: { comment: PRComment; isReply?: boo
       />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 mb-1">
-          <span className="text-xs font-medium text-[var(--text-bright)]">
+          <span className="text-xs font-medium text-fg-strong">
             {comment.user.login}
           </span>
-          <span className="text-xs text-[var(--text-secondary)]">
+          <span className="text-xs text-fg-muted">
             {timeAgo(comment.createdAt)}
           </span>
           <a
             href={comment.htmlUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-xs text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors ml-auto"
+            className="text-xs text-fg-muted hover:text-accent transition-colors ml-auto"
             title="View on GitHub"
           >
             <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
@@ -56,7 +56,7 @@ function CommentBubble({ comment, isReply }: { comment: PRComment; isReply?: boo
         {!isReply && (
           <button
             onClick={() => setReplyingTo(comment.id)}
-            className="mt-1.5 text-xs text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors"
+            className="mt-1.5 text-xs text-fg-muted hover:text-accent transition-colors"
           >
             Reply
           </button>
@@ -71,7 +71,7 @@ export function InlineComment({ comment, replies }: InlineCommentProps) {
   const isReplying = replyingTo === comment.id;
 
   return (
-    <div className="bg-[var(--bg-tertiary)] border-y border-[var(--border)]">
+    <div className="bg-raised border-y border-line">
       <CommentBubble comment={comment} />
       {replies?.map((reply) => (
         <CommentBubble key={reply.id} comment={reply} isReply />

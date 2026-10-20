@@ -82,22 +82,22 @@ export function InlineSuggestion({ file, lines, suggestion, fileContent }: Inlin
   if (!content && !suggestion) return null;
 
   return (
-    <div className="my-4 rounded-lg border border-[var(--accent)]/30 overflow-hidden">
+    <div className="my-4 rounded-lg border border-accent/30 overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-2 bg-[var(--accent)]/5 border-b border-[var(--accent)]/20">
+      <div className="flex items-center justify-between px-4 py-2 bg-accent/5 border-b border-accent/20">
         <div className="flex items-center gap-2">
-          <PencilSimpleLine size={14} className="text-[var(--accent)]" />
-          <span className="text-xs font-medium text-[var(--accent)]">Suggested change</span>
+          <PencilSimpleLine size={14} className="text-accent" />
+          <span className="text-xs font-medium text-accent">Suggested change</span>
         </div>
         <div className="flex items-center gap-2">
-          <a href={githubFileUrl(file)} target="_blank" rel="noopener noreferrer" className="text-xs font-mono text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors">
+          <a href={githubFileUrl(file)} target="_blank" rel="noopener noreferrer" className="text-xs font-mono text-fg-muted hover:text-accent transition-colors">
             {file}
             {lines && <span className="opacity-50 ml-2">L{lines[0]}–{lines[1]}</span>}
           </a>
           {canComment && (
             <button
               onClick={handleCommentSuggestion}
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs text-[var(--text-secondary)] hover:text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors"
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs text-fg-muted hover:text-accent hover:bg-accent/10 transition-colors"
               title="Post this suggestion as a GitHub review comment"
             >
               <ChatText size={12} />
@@ -106,7 +106,7 @@ export function InlineSuggestion({ file, lines, suggestion, fileContent }: Inlin
           )}
           <button
             onClick={() => openFile(file, lines)}
-            className="text-xs text-[var(--accent)] hover:underline"
+            className="text-xs text-accent hover:underline"
           >
             View file
           </button>
@@ -114,7 +114,7 @@ export function InlineSuggestion({ file, lines, suggestion, fileContent }: Inlin
       </div>
 
       {/* Before/after diff */}
-      <div className="max-h-[500px] overflow-auto bg-[var(--bg-secondary)]">
+      <div className="max-h-[500px] overflow-auto bg-surface">
         <pre className="text-[13px] leading-[1.5] font-mono m-0">
           {/* Old lines (deletions) */}
           {(highlightedOld.length > 0 ? highlightedOld : oldLines).map((lineHtml, i) => (
@@ -122,7 +122,7 @@ export function InlineSuggestion({ file, lines, suggestion, fileContent }: Inlin
               <span className="select-none w-8 flex-shrink-0 text-center text-xs text-red-400/60" style={{ lineHeight: '1.5em' }}>
                 -
               </span>
-              <span className="select-none w-12 flex-shrink-0 text-right pr-4 text-xs text-[var(--text-secondary)]/40" style={{ lineHeight: '1.5em' }}>
+              <span className="select-none w-12 flex-shrink-0 text-right pr-4 text-xs text-fg-muted/40" style={{ lineHeight: '1.5em' }}>
                 {startLine + i}
               </span>
               <span
@@ -137,7 +137,7 @@ export function InlineSuggestion({ file, lines, suggestion, fileContent }: Inlin
               <span className="select-none w-8 flex-shrink-0 text-center text-xs text-green-400/60" style={{ lineHeight: '1.5em' }}>
                 +
               </span>
-              <span className="select-none w-12 flex-shrink-0 text-right pr-4 text-xs text-[var(--text-secondary)]/40" style={{ lineHeight: '1.5em' }}>
+              <span className="select-none w-12 flex-shrink-0 text-right pr-4 text-xs text-fg-muted/40" style={{ lineHeight: '1.5em' }}>
                 {startLine + i}
               </span>
               <span

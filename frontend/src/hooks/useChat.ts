@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
+import { chatRunEventsUrl, fetchChatSession, resetChatSession, sendChatMessage } from '../api';
 
 export interface ChatEntry {
   type: 'user' | 'text' | 'tool_call' | 'tool_result' | 'error';
@@ -89,10 +90,7 @@ export function useChat({ owner, repo, pr }: UseChatOptions) {
     sourceRef.current?.close();
     setIsStreaming(true);
 
-    const source = new EventSource(
-      `/api/chat/${owner}/${repo}/${pr}/runs/${runId}/events?after=0`,
-      { withCredentials: true },
-    );
+    const source = new EventSource(chatRunEventsUrl(owner, repo, pr, runId), { withCredentials: true });
     sourceRef.current = source;
 
     const finish = () => {
@@ -124,14 +122,10 @@ export function useChat({ owner, repo, pr }: UseChatOptions) {
   useEffect(() => {
     async function loadHistory() {
       try {
-        const res = await fetch(`/api/chat/${owner}/${repo}/${pr}/session`, {
-          credentials: 'include',
-        });
-        if (!res.ok) { setHistoryLoaded(true); return; }
-        const data = await res.json();
+        const data = await fetchChatSession(owner, repo, pr);
 
-        let restored = historyToEntries(data.messages ?? []);
-        const activeRun = data.activeRun as { id: string; prompt: string } | null;
+        let restored = historyToEntries((data.messages ?? []) as any[]);
+        const activeRun = data.activeRun;
         if (activeRun) {
           // The session may already hold part of the running turn; drop it so
           // the replayed run events don't duplicate it.
@@ -158,19 +152,7 @@ export function useChat({ owner, repo, pr }: UseChatOptions) {
     setIsStreaming(true);
 
     try {
-      const res = await fetch(`/api/chat/${owner}/${repo}/${pr}/message`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text }),
-      });
-
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error((body as any).error ?? `HTTP ${res.status}`);
-      }
-
-      const { runId } = await res.json() as { runId: string };
+      const { runId } = await sendChatMessage(owner, repo, pr, text);
       followRun(runId);
     } catch (err) {
       addError((err as Error).message);
@@ -180,10 +162,7 @@ export function useChat({ owner, repo, pr }: UseChatOptions) {
 
   const resetSession = useCallback(async () => {
     try {
-      await fetch(`/api/chat/${owner}/${repo}/${pr}/session`, {
-        method: 'DELETE',
-        credentials: 'include',
-      });
+      await resetChatSession(owner, repo, pr);
       sourceRef.current?.close();
       sourceRef.current = null;
       setIsStreaming(false);

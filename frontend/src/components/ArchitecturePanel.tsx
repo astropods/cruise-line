@@ -21,16 +21,16 @@ export function ArchitecturePanel({
   if (!architecture?.diagrams?.length) {
     return (
       <main className="max-w-[920px] mx-auto px-8 py-12 pb-24">
-        <section className="rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] p-6">
-          <h2 className="text-lg font-semibold text-[var(--text-bright)]">
+        <section className="rounded-lg border border-line bg-surface p-6">
+          <h2 className="text-lg font-semibold text-fg-strong">
             Architecture is not available for this analysis
           </h2>
-          <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
+          <p className="mt-2 text-sm leading-6 text-fg-muted">
             Regenerate the analysis to produce architecture notes and diagrams for this PR.
           </p>
           <button
             onClick={onRegenerate}
-            className="mt-4 inline-flex items-center rounded-md bg-[var(--accent)] px-3 py-1.5 text-sm font-medium text-[#07111f] transition-colors hover:bg-[var(--accent-hover)]"
+            className="mt-4 inline-flex items-center rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-[#07111f] transition-colors hover:bg-accent-strong"
           >
             Regenerate analysis
           </button>
@@ -42,23 +42,23 @@ export function ArchitecturePanel({
   return (
     <main className="max-w-[920px] mx-auto px-8 py-12 pb-24">
       <section className="mb-10">
-        <p className="mb-3 text-xs font-semibold uppercase text-[var(--accent)]">
+        <p className="mb-3 text-xs font-semibold uppercase text-accent">
           Architecture
         </p>
-        <div className="cruise-markdown text-[1.05rem] leading-[1.75] text-[var(--text-secondary)]">
+        <div className="cruise-markdown text-[1.05rem] leading-[1.75] text-fg-muted">
           <Md>{architecture.overview}</Md>
         </div>
       </section>
 
       {architecture.steps.length > 0 && (
-        <section className="mb-10 rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] p-5">
-          <h2 className="mb-4 text-sm font-semibold uppercase text-[var(--text-secondary)]">
+        <section className="mb-10 rounded-lg border border-line bg-surface p-5">
+          <h2 className="mb-4 text-sm font-semibold uppercase text-fg-muted">
             Reading path
           </h2>
           <ol className="space-y-3">
             {architecture.steps.map((step, index) => (
-              <li key={`${index}-${step}`} className="flex gap-3 text-sm leading-6 text-[var(--text-primary)]">
-                <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--bg-tertiary)] font-mono text-[11px] text-[var(--accent)]">
+              <li key={`${index}-${step}`} className="flex gap-3 text-sm leading-6 text-fg">
+                <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-line bg-raised font-mono text-[11px] text-accent">
                   {index + 1}
                 </span>
                 <span>{step}</span>
@@ -104,24 +104,24 @@ function DiagramCard({
   }, [source]);
 
   return (
-    <section className="overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)]">
-      <div className="flex items-start justify-between gap-4 border-b border-[var(--border)] px-5 py-4">
+    <section className="overflow-hidden rounded-lg border border-line bg-surface">
+      <div className="flex items-start justify-between gap-4 border-b border-line px-5 py-4">
         <div className="min-w-0">
           <div className="mb-1 flex items-center gap-2">
-            <h2 className="text-base font-semibold text-[var(--text-bright)]">
+            <h2 className="text-base font-semibold text-fg-strong">
               {diagram.title}
             </h2>
-            <span className="rounded bg-[var(--bg-tertiary)] px-2 py-0.5 text-[11px] font-medium uppercase text-[var(--text-secondary)]">
+            <span className="rounded bg-raised px-2 py-0.5 text-[11px] font-medium uppercase text-fg-muted">
               {diagram.kind === 'sequence' ? 'Sequence' : 'Flowchart'}
             </span>
           </div>
-          <p className="text-sm leading-6 text-[var(--text-secondary)]">
+          <p className="text-sm leading-6 text-fg-muted">
             {diagram.description}
           </p>
         </div>
         <button
           onClick={handleCopy}
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--accent)]/10 hover:text-[var(--accent)]"
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs text-fg-muted transition-colors hover:bg-accent/10 hover:text-accent"
           title="Copy raw Mermaid source"
         >
           {copied ? (
@@ -245,7 +245,7 @@ function MermaidDiagram({
       <div className="p-5">
         <div className="rounded-md border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
           Mermaid could not render this diagram.
-          <pre className="mt-3 overflow-x-auto whitespace-pre-wrap rounded bg-[var(--bg-primary)] p-3 font-mono text-xs text-[var(--text-primary)]">
+          <pre className="mt-3 overflow-x-auto whitespace-pre-wrap rounded bg-canvas p-3 font-mono text-xs text-fg">
             {error}
           </pre>
         </div>
@@ -254,11 +254,11 @@ function MermaidDiagram({
   }
 
   return (
-    <div className="architecture-diagram overflow-auto bg-[var(--bg-primary)] p-5">
+    <div className="architecture-diagram overflow-auto bg-canvas p-5">
       {svg ? (
         <div dangerouslySetInnerHTML={{ __html: svg }} />
       ) : (
-        <div className="flex min-h-48 items-center justify-center text-sm text-[var(--text-secondary)]">
+        <div className="flex min-h-48 items-center justify-center text-sm text-fg-muted">
           Rendering diagram...
         </div>
       )}

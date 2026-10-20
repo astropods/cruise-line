@@ -115,17 +115,17 @@ export function FileSlideout({ files }: FileSlideoutProps) {
           animate={{ width: panelWidth }}
           exit={{ width: 0 }}
           transition={isDragging.current ? { duration: 0 } : { type: 'spring', damping: 35, stiffness: 250 }}
-          className="flex-shrink-0 h-screen sticky top-0 overflow-hidden border-l border-[var(--border)] bg-[var(--bg-primary)] relative"
+          className="flex-shrink-0 h-screen sticky top-0 overflow-hidden border-l border-line bg-canvas relative"
         >
           {/* Resize handle */}
           <div
             onMouseDown={onDragStart}
-            className="absolute left-0 top-0 bottom-0 w-1 cursor-col-resize z-10 hover:bg-[var(--accent)]/30 active:bg-[var(--accent)]/50 transition-colors"
+            className="absolute left-0 top-0 bottom-0 w-1 cursor-col-resize z-10 hover:bg-accent/30 active:bg-accent/50 transition-colors"
           />
 
           <div className="h-full flex flex-col" style={{ width: panelWidth }}>
             {/* Header with file picker */}
-            <div className="flex items-center justify-between px-4 py-3 bg-[var(--bg-secondary)] border-b border-[var(--border)] flex-shrink-0 gap-2">
+            <div className="flex items-center justify-between px-4 py-3 bg-surface border-b border-line flex-shrink-0 gap-2">
               <FilePickerDropdown
                 currentFile={activeSlideout.file}
                 allFiles={Object.keys(files)}
@@ -135,7 +135,7 @@ export function FileSlideout({ files }: FileSlideoutProps) {
                 href={githubFileUrl(activeSlideout.file)}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="w-7 h-7 flex items-center justify-center rounded hover:bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors flex-shrink-0"
+                className="w-7 h-7 flex items-center justify-center rounded hover:bg-raised text-fg-muted hover:text-accent transition-colors flex-shrink-0"
                 title="View on GitHub"
               >
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
@@ -144,7 +144,7 @@ export function FileSlideout({ files }: FileSlideoutProps) {
               </a>
               <button
                 onClick={closeFile}
-                className="w-7 h-7 flex items-center justify-center rounded hover:bg-[var(--bg-tertiary)] text-[var(--text-secondary)] transition-colors flex-shrink-0"
+                className="w-7 h-7 flex items-center justify-center rounded hover:bg-raised text-fg-muted transition-colors flex-shrink-0"
               >
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
                   <path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.75.75 0 1 1 1.06 1.06L9.06 8l3.22 3.22a.75.75 0 1 1-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 0 1-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z"/>
@@ -182,7 +182,7 @@ function SlideoutContent({ filePath, fileContent, focusLines, loading }: { fileP
 
   if (loading) {
     return (
-      <div className="p-8 text-center text-[var(--text-secondary)]">
+      <div className="p-8 text-center text-fg-muted">
         Loading file...
       </div>
     );
@@ -191,7 +191,7 @@ function SlideoutContent({ filePath, fileContent, focusLines, loading }: { fileP
   return (
     <>
       {fileContent && !isInDiff && (
-        <div className="flex items-center gap-2 px-4 py-2 bg-[var(--text-secondary)]/5 border-b border-[var(--border)] text-xs text-[var(--text-secondary)]">
+        <div className="flex items-center gap-2 px-4 py-2 bg-fg-muted/5 border-b border-line text-xs text-fg-muted">
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" className="flex-shrink-0 opacity-60">
             <path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"/>
           </svg>
@@ -203,7 +203,7 @@ function SlideoutContent({ filePath, fileContent, focusLines, loading }: { fileP
       ) : fileContent?.after ? (
         <SlideoutCodeView filePath={filePath} fileContent={fileContent} focusLines={focusLines} />
       ) : (
-        <div className="p-8 text-center text-[var(--text-secondary)]">
+        <div className="p-8 text-center text-fg-muted">
           File content not available
         </div>
       )}
@@ -223,12 +223,12 @@ function FilePickerDropdown({ currentFile, allFiles, onSelect }: {
     <div className="relative min-w-0 flex-1">
       <button
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-2 min-w-0 w-full text-left px-2 py-1 -mx-2 -my-1 rounded hover:bg-[var(--bg-tertiary)] transition-colors"
+        className="flex items-center gap-2 min-w-0 w-full text-left px-2 py-1 -mx-2 -my-1 rounded hover:bg-raised transition-colors"
       >
-        <span className="text-sm font-mono text-[var(--text-primary)] truncate">
+        <span className="text-sm font-mono text-fg truncate">
           {currentFile}
         </span>
-        <svg width="12" height="12" viewBox="0 0 16 16" fill="var(--text-secondary)" className="flex-shrink-0">
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="var(--color-fg-muted)" className="flex-shrink-0">
           <path d="M4.427 7.427l3.396 3.396a.25.25 0 00.354 0l3.396-3.396A.25.25 0 0011.396 7H4.604a.25.25 0 00-.177.427z"/>
         </svg>
       </button>
@@ -236,15 +236,15 @@ function FilePickerDropdown({ currentFile, allFiles, onSelect }: {
       {open && (
         <>
           <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
-          <div className="absolute top-full left-0 mt-1 max-w-[min(22rem,90vw)] max-h-[50vh] overflow-y-auto overflow-x-hidden rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] shadow-xl z-30 py-1">
+          <div className="absolute top-full left-0 mt-1 max-w-[min(22rem,90vw)] max-h-[50vh] overflow-y-auto overflow-x-hidden rounded-lg bg-surface border border-line shadow-xl z-30 py-1">
             {sorted.map((file) => (
               <button
                 key={file}
                 onClick={() => { onSelect(file); setOpen(false); }}
                 className={`w-full text-left px-3 py-2 text-xs font-mono transition-colors ${
                   file === currentFile
-                    ? 'text-[var(--accent)] bg-[var(--accent)]/5'
-                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]'
+                    ? 'text-accent bg-accent/5'
+                    : 'text-fg-muted hover:text-fg hover:bg-raised'
                 }`}
                 title={file}
               >
@@ -488,7 +488,7 @@ function SlideoutCodeView({ filePath, fileContent, focusLines }: { filePath: str
   }, [focusLines]);
 
   return (
-    <div className="text-[13px] leading-[1.5] font-mono m-0 bg-[var(--bg-secondary)] min-w-fit">
+    <div className="text-[13px] leading-[1.5] font-mono m-0 bg-surface min-w-fit">
       {lines.map((line, i) => {
         const lineNum = i + 1;
         const inFocus = focusLines && lineNum >= focusLines[0] && lineNum <= focusLines[1];
@@ -502,16 +502,16 @@ function SlideoutCodeView({ filePath, fileContent, focusLines }: { filePath: str
             data-slideout-focus={inFocus ? true : undefined}
             style={{
               background: inFocus ? 'rgba(88,166,255,0.06)' : 'transparent',
-              boxShadow: inFocus ? 'inset 3px 0 0 var(--accent)' : 'none',
+              boxShadow: inFocus ? 'inset 3px 0 0 var(--color-accent)' : 'none',
             }}
           >
             <span
-              className="select-none w-12 flex-shrink-0 text-right pr-4 text-xs text-[var(--text-secondary)]/40"
+              className="select-none w-12 flex-shrink-0 text-right pr-4 text-xs text-fg-muted/40"
               style={{ lineHeight: '1.5em' }}
             >
               {lineNum}
             </span>
-            <span className="flex-1 px-4 whitespace-pre text-[var(--text-primary)]">
+            <span className="flex-1 px-4 whitespace-pre text-fg">
               {line}
             </span>
           </div>

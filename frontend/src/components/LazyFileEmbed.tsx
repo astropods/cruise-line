@@ -49,11 +49,11 @@ export function LazyFileEmbed({ type, file, lines, suggestion }: LazyFileEmbedPr
 
   if (loading) {
     return (
-      <div className="my-4 rounded-lg border border-[var(--border)] overflow-hidden">
-        <div className="flex items-center justify-between px-4 py-2 bg-[var(--bg-tertiary)] border-b border-[var(--border)]">
-          <span className="text-xs font-mono text-[var(--text-secondary)]">{file}</span>
+      <div className="my-4 rounded-lg border border-line overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-2 bg-raised border-b border-line">
+          <span className="text-xs font-mono text-fg-muted">{file}</span>
         </div>
-        <div className="px-4 py-6 bg-[var(--bg-secondary)] text-center text-xs text-[var(--text-secondary)]">
+        <div className="px-4 py-6 bg-surface text-center text-xs text-fg-muted">
           Loading file...
         </div>
       </div>

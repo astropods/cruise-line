@@ -46,21 +46,21 @@ export function CliTokensSection() {
   }
 
   return (
-    <div className="p-6 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)]">
+    <div className="p-6 rounded-lg bg-surface border border-line">
       <div className="flex items-baseline justify-between mb-4">
-        <h2 className="text-lg font-semibold text-[var(--text-primary)]">
+        <h2 className="text-lg font-semibold text-fg">
           Your CLI tokens
         </h2>
         {tokens && (
-          <span className="text-xs text-[var(--text-secondary)]">
+          <span className="text-xs text-fg-muted">
             {tokens.length} active
           </span>
         )}
       </div>
 
-      <p className="text-xs text-[var(--text-secondary)] mb-4">
+      <p className="text-xs text-fg-muted mb-4">
         Bearer tokens issued to the Cruise Line CLI on your local machines. Each{' '}
-        <code className="text-[var(--text-primary)]">cruise-line login</code>{' '}
+        <code className="text-fg">cruise-line login</code>{' '}
         mints a new one; they read reviews and review status but cannot
         post to GitHub. Tokens expire 90 days after issue.
       </p>
@@ -72,26 +72,26 @@ export function CliTokensSection() {
       )}
 
       {!tokens && !error && (
-        <div className="text-sm text-[var(--text-secondary)]">Loading…</div>
+        <div className="text-sm text-fg-muted">Loading…</div>
       )}
 
       {tokens && tokens.length === 0 && (
-        <div className="text-sm text-[var(--text-secondary)]">
+        <div className="text-sm text-fg-muted">
           No active tokens. Run{' '}
-          <code className="text-[var(--text-primary)]">cruise-line login</code>{' '}
+          <code className="text-fg">cruise-line login</code>{' '}
           on your machine to issue one.
         </div>
       )}
 
       {tokens && tokens.length > 0 && (
-        <ul className="divide-y divide-[var(--border)]">
+        <ul className="divide-y divide-line">
           {tokens.map((t) => (
             <li key={t.id} className="flex items-center gap-3 py-3">
               <div className="flex-1 min-w-0">
-                <div className="text-sm text-[var(--text-primary)] font-mono">
+                <div className="text-sm text-fg font-mono">
                   {t.tokenPrefix}…
                 </div>
-                <div className="text-xs text-[var(--text-secondary)]">
+                <div className="text-xs text-fg-muted">
                   Created {formatRelative(t.createdAt)}
                   {t.lastUsedAt
                     ? ` · Last used ${formatRelative(t.lastUsedAt)}`
@@ -102,7 +102,7 @@ export function CliTokensSection() {
               <button
                 onClick={() => revoke(t.id)}
                 disabled={revokingId !== null}
-                className="text-xs px-3 py-1.5 rounded-md border border-[var(--border)] text-[var(--text-secondary)] hover:text-red-400 hover:border-red-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                className="text-xs px-3 py-1.5 rounded-md border border-line text-fg-muted hover:text-red-400 hover:border-red-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 {revokingId === t.id ? 'Revoking…' : 'Revoke'}
               </button>

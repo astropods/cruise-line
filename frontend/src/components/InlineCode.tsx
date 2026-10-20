@@ -57,27 +57,27 @@ export function InlineCode({ file, lines, fileContent }: InlineCodeProps) {
   if (!content) return null;
 
   return (
-    <div className="my-4 rounded-lg border border-[var(--border)] overflow-hidden">
+    <div className="my-4 rounded-lg border border-line overflow-hidden">
       {/* File header */}
-      <div className="flex items-center justify-between px-4 py-2 bg-[var(--bg-tertiary)] border-b border-[var(--border)]">
-        <a href={githubFileUrl(file)} target="_blank" rel="noopener noreferrer" className="text-xs font-mono text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors">
+      <div className="flex items-center justify-between px-4 py-2 bg-raised border-b border-line">
+        <a href={githubFileUrl(file)} target="_blank" rel="noopener noreferrer" className="text-xs font-mono text-fg-muted hover:text-accent transition-colors">
           {file}
           {lines && <span className="opacity-50 ml-2">L{lines[0]}–{lines[1]}</span>}
         </a>
         <button
           onClick={() => openFile(file, lines)}
-          className="text-xs text-[var(--accent)] hover:underline"
+          className="text-xs text-accent hover:underline"
         >
           View full file
         </button>
       </div>
 
       {/* Code content */}
-      <div className="max-h-[500px] overflow-auto bg-[var(--bg-secondary)]">
+      <div className="max-h-[500px] overflow-auto bg-surface">
         <pre className="text-[13px] leading-[1.5] font-mono m-0">
           {(highlightedLines.length > 0 ? highlightedLines : visibleLines).map((lineHtml, i) => (
             <div key={i} className="flex">
-              <span className="select-none w-12 flex-shrink-0 text-right pr-4 text-xs text-[var(--text-secondary)]/50" style={{ lineHeight: '1.5em' }}>
+              <span className="select-none w-12 flex-shrink-0 text-right pr-4 text-xs text-fg-muted/50" style={{ lineHeight: '1.5em' }}>
                 {startLine + i}
               </span>
               <span

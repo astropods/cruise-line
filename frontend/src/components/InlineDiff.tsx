@@ -79,10 +79,10 @@ export function InlineDiff({ file, lines, fileContent }: InlineDiffProps) {
   if (hunks.length === 0) return null;
 
   return (
-    <div className="my-4 rounded-lg border border-[var(--border)] overflow-hidden">
+    <div className="my-4 rounded-lg border border-line overflow-hidden">
       {/* File header */}
-      <div className="flex items-center justify-between px-4 py-2 bg-[var(--bg-tertiary)] border-b border-[var(--border)]">
-        <a href={githubFileUrl(file)} target="_blank" rel="noopener noreferrer" className="text-xs font-mono text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors">
+      <div className="flex items-center justify-between px-4 py-2 bg-raised border-b border-line">
+        <a href={githubFileUrl(file)} target="_blank" rel="noopener noreferrer" className="text-xs font-mono text-fg-muted hover:text-accent transition-colors">
           {file}
           {lines && <span className="opacity-50 ml-2">L{lines[0]}–{lines[1]}</span>}
         </a>
@@ -90,7 +90,7 @@ export function InlineDiff({ file, lines, fileContent }: InlineDiffProps) {
           {canComment && (
             <button
               onClick={handleComment}
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs text-[var(--text-secondary)] hover:text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors"
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs text-fg-muted hover:text-accent hover:bg-accent/10 transition-colors"
               title="Comment on this code"
             >
               <ChatText size={12} />
@@ -99,7 +99,7 @@ export function InlineDiff({ file, lines, fileContent }: InlineDiffProps) {
           )}
           <button
             onClick={() => openFile(file, lines)}
-            className="text-xs text-[var(--accent)] hover:underline"
+            className="text-xs text-accent hover:underline"
           >
             View full file
           </button>

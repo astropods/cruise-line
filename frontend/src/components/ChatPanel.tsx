@@ -93,7 +93,7 @@ export function ChatPanel({ owner, repo, prNumber, files, onSwitchToAnalysis, in
         ) : (
         <div className="max-w-[800px] mx-auto space-y-1">
           {!historyLoaded && (
-            <div className="text-center text-[var(--text-secondary)] text-sm py-12">
+            <div className="text-center text-fg-muted text-sm py-12">
               Loading conversation...
             </div>
           )}
@@ -105,9 +105,9 @@ export function ChatPanel({ owner, repo, prNumber, files, onSwitchToAnalysis, in
           {/* Thinking indicator */}
           {isStreaming && (entries.length === 0 || entries[entries.length - 1]?.type === 'user') && (
             <div className="flex gap-1 py-3">
-              <span className="w-1.5 h-1.5 rounded-full bg-[var(--text-secondary)] animate-bounce" style={{ animationDelay: '0ms' }} />
-              <span className="w-1.5 h-1.5 rounded-full bg-[var(--text-secondary)] animate-bounce" style={{ animationDelay: '150ms' }} />
-              <span className="w-1.5 h-1.5 rounded-full bg-[var(--text-secondary)] animate-bounce" style={{ animationDelay: '300ms' }} />
+              <span className="w-1.5 h-1.5 rounded-full bg-fg-muted animate-bounce" style={{ animationDelay: '0ms' }} />
+              <span className="w-1.5 h-1.5 rounded-full bg-fg-muted animate-bounce" style={{ animationDelay: '150ms' }} />
+              <span className="w-1.5 h-1.5 rounded-full bg-fg-muted animate-bounce" style={{ animationDelay: '300ms' }} />
             </div>
           )}
 
@@ -117,7 +117,7 @@ export function ChatPanel({ owner, repo, prNumber, files, onSwitchToAnalysis, in
       </div>
 
       {/* Input bar */}
-      <div className="border-t border-[var(--border)] bg-[var(--bg-secondary)]">
+      <div className="border-t border-line bg-surface">
         <div className="max-w-[800px] mx-auto px-8 py-4">
           <div className="flex items-end gap-3">
             <textarea
@@ -128,24 +128,24 @@ export function ChatPanel({ owner, repo, prNumber, files, onSwitchToAnalysis, in
               placeholder="Ask about this PR..."
               rows={1}
               disabled={isStreaming}
-              className="flex-1 px-4 py-2.5 text-sm rounded-lg bg-[var(--bg-primary)] border border-[var(--border)] text-[var(--text-primary)] placeholder-[var(--text-secondary)] resize-none focus:outline-none focus:border-[var(--accent)] disabled:opacity-50 overflow-hidden"
+              className="flex-1 px-4 py-2.5 text-sm rounded-lg bg-canvas border border-line text-fg placeholder:text-fg-muted resize-none focus:outline-none focus:border-accent disabled:opacity-50 overflow-hidden"
             />
             <button
               onClick={handleSubmit}
               disabled={!input.trim() || isStreaming}
-              className="w-10 h-10 flex items-center justify-center rounded-lg bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex-shrink-0"
+              className="w-10 h-10 flex items-center justify-center rounded-lg bg-accent text-white hover:bg-accent-strong disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex-shrink-0"
             >
               <PaperPlaneRight size={16} weight="bold" />
             </button>
           </div>
           <div className="flex items-center justify-between mt-2">
-            <span className="text-xs text-[var(--text-secondary)] opacity-40">
+            <span className="text-xs text-fg-muted opacity-40">
               Enter to send, Shift+Enter for new line
             </span>
             {entries.length > 0 && (
               <button
                 onClick={resetSession}
-                className="inline-flex items-center gap-1 text-xs text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors"
+                className="inline-flex items-center gap-1 text-xs text-fg-muted hover:text-accent transition-colors"
               >
                 <Plus size={12} weight="bold" />
                 New chat
@@ -161,13 +161,13 @@ export function ChatPanel({ owner, repo, prNumber, files, onSwitchToAnalysis, in
 function EmptyState({ onPromptClick }: { onPromptClick: (prompt: string) => void }) {
   return (
     <div className="flex flex-col items-center justify-center w-full">
-      <div className="w-16 h-16 rounded-2xl bg-[var(--accent)]/10 flex items-center justify-center mb-6">
-        <Anchor size={32} weight="duotone" className="text-[var(--accent)]" />
+      <div className="w-16 h-16 rounded-2xl bg-accent/10 flex items-center justify-center mb-6">
+        <Anchor size={32} weight="duotone" className="text-accent" />
       </div>
-      <h3 className="text-lg font-semibold text-[var(--text-bright)] mb-2">
+      <h3 className="text-lg font-semibold text-fg-strong mb-2">
         Ask about this PR
       </h3>
-      <p className="text-sm text-[var(--text-secondary)] mb-8 max-w-[360px] text-center">
+      <p className="text-sm text-fg-muted mb-8 max-w-[360px] text-center">
         Claude can read the codebase to answer questions about the changes, architecture, and implications.
       </p>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full max-w-[520px]">
@@ -175,9 +175,9 @@ function EmptyState({ onPromptClick }: { onPromptClick: (prompt: string) => void
           <button
             key={prompt.label}
             onClick={() => onPromptClick(prompt.label)}
-            className="flex items-center gap-2.5 px-4 py-3 rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] text-left text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--accent)]/50 transition-colors"
+            className="flex items-center gap-2.5 px-4 py-3 rounded-lg border border-line bg-surface text-left text-sm text-fg-muted hover:text-fg hover:border-accent/50 transition-colors"
           >
-            <prompt.icon size={16} className="flex-shrink-0 text-[var(--accent)]/60" />
+            <prompt.icon size={16} className="flex-shrink-0 text-accent/60" />
             <span className="line-clamp-2">{prompt.label}</span>
           </button>
         ))}
@@ -199,7 +199,7 @@ function EntryView({ entry, files, onRuleClick, rules }: { entry: ChatEntry; fil
   if (entry.type === 'user') {
     return (
       <div className="flex justify-end pt-4">
-        <div className="max-w-[85%] px-4 py-2.5 rounded-lg bg-[var(--accent)]/15 text-sm text-[var(--text-primary)]">
+        <div className="max-w-[85%] px-4 py-2.5 rounded-lg bg-accent/15 text-sm text-fg">
           {entry.content}
         </div>
       </div>
@@ -217,7 +217,7 @@ function EntryView({ entry, files, onRuleClick, rules }: { entry: ChatEntry; fil
                    .replace(/^\/.*?\/repos\/[^/]+\/[^/]+\//, '');
 
     return (
-      <div className="my-0.5 flex items-center gap-1.5 px-1 py-0.5 text-xs text-[var(--text-secondary)]/60">
+      <div className="my-0.5 flex items-center gap-1.5 px-1 py-0.5 text-xs text-fg-muted/60">
         <ToolIcon size={11} className="flex-shrink-0" />
         {detail && (
           <span className="font-mono truncate">{detail}</span>

@@ -59,7 +59,7 @@ export function CommentInput({ onSubmit, onCancel, userAvatarUrl, prefill }: Com
   }
 
   return (
-    <div className="flex gap-2.5 px-4 py-3 bg-[var(--bg-tertiary)] border-y border-[var(--border)]">
+    <div className="flex gap-2.5 px-4 py-3 bg-raised border-y border-line">
       {userAvatarUrl && (
         <img
           src={userAvatarUrl}
@@ -75,7 +75,7 @@ export function CommentInput({ onSubmit, onCancel, userAvatarUrl, prefill }: Com
           onKeyDown={handleKeyDown}
           placeholder="Leave a comment... (Ctrl+Enter to submit)"
           rows={2}
-          className="w-full px-3 py-2 text-sm rounded-md bg-[var(--bg-primary)] border border-[var(--border)] text-[var(--text-primary)] placeholder-[var(--text-secondary)] resize-none focus:outline-none focus:border-[var(--accent)] font-[var(--font-sans)]"
+          className="w-full px-3 py-2 text-sm rounded-md bg-canvas border border-line text-fg placeholder:text-fg-muted resize-none focus:outline-none focus:border-accent font-[var(--font-sans)]"
         />
         {error && (
           <div className="mt-1.5 px-3 py-1.5 text-xs rounded bg-red-500/10 text-red-400 border border-red-500/20">
@@ -85,14 +85,14 @@ export function CommentInput({ onSubmit, onCancel, userAvatarUrl, prefill }: Com
         <div className="flex items-center justify-end gap-2 mt-2">
           <button
             onClick={onCancel}
-            className="px-3 py-1 text-xs rounded text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+            className="px-3 py-1 text-xs rounded text-fg-muted hover:text-fg transition-colors"
           >
             Cancel
           </button>
           <button
             onClick={handleSubmit}
             disabled={!body.trim() || submitting}
-            className="px-3 py-1 text-xs rounded bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            className="px-3 py-1 text-xs rounded bg-accent text-white hover:bg-accent-strong disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
             {submitting ? 'Posting...' : 'Comment'}
           </button>

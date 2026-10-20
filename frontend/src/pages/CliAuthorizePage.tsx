@@ -1,15 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router';
-
-interface AuthorizeInfo {
-  user: {
-    userId: number;
-    login: string;
-    avatarUrl: string;
-  };
-  redirectUri: string;
-  clientId: string;
-}
+import {
+  approveCliAuthorization,
+  fetchCliAuthorizeInfo,
+  type CliAuthorizeInfo as AuthorizeInfo,
+  type CliAuthorizeParams,
+} from '../api';
 
 type State =
   | { kind: 'loading' }
@@ -35,7 +31,7 @@ export function CliAuthorizePage() {
   // Bundle up every OAuth param once. The consent screen echoes the same
   // set of params back when the user clicks Approve, so both requests hit
   // the same server-side validator.
-  const params = {
+  const params: CliAuthorizeParams = {
     response_type: searchParams.get('response_type') ?? '',
     client_id: searchParams.get('client_id') ?? '',
     redirect_uri: searchParams.get('redirect_uri') ?? '',
@@ -45,64 +41,18 @@ export function CliAuthorizePage() {
   };
 
   useEffect(() => {
-    (async () => {
-      const query = new URLSearchParams(params).toString();
-      const res = await fetch(`/api/cli/authorize/params?${query}`, {
-        credentials: 'include',
-      });
-
-      if (res.status === 401) {
-        // Not logged in — kick to GitHub OAuth and come back to this exact
-        // URL (path + query) so all the PKCE params survive the round-trip.
-        const returnTo = encodeURIComponent(
-          window.location.pathname + window.location.search,
-        );
-        window.location.href = `/api/auth/github?return_to=${returnTo}`;
-        return;
-      }
-
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        setState({
-          kind: 'error',
-          message: (body as { error?: string }).error ?? `HTTP ${res.status}`,
-        });
-        return;
-      }
-
-      const info = (await res.json()) as AuthorizeInfo;
-      setState({ kind: 'ready', info });
-    })();
+    // A signed-out viewer is sent through GitHub sign-in and back to this
+    // exact URL, query included, so the PKCE params survive the round trip.
+    fetchCliAuthorizeInfo(params)
+      .then((info) => setState({ kind: 'ready', info }))
+      .catch((err) => setState({ kind: 'error', message: err instanceof Error ? err.message : 'Failed to load' }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function approve() {
     setState({ kind: 'approving' });
     try {
-      const res = await fetch('/api/cli/authorize/approve', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          responseType: params.response_type,
-          clientId: params.client_id,
-          redirectUri: params.redirect_uri,
-          state: params.state,
-          codeChallenge: params.code_challenge,
-          codeChallengeMethod: params.code_challenge_method,
-        }),
-      });
-
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        setState({
-          kind: 'error',
-          message: (body as { error?: string }).error ?? `HTTP ${res.status}`,
-        });
-        return;
-      }
-
-      const { redirectUrl } = (await res.json()) as { redirectUrl: string };
+      const { redirectUrl } = await approveCliAuthorization(params);
       window.location.href = redirectUrl;
     } catch (err) {
       setState({
@@ -121,19 +71,19 @@ export function CliAuthorizePage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[var(--bg-primary)] p-6">
-      <div className="w-full max-w-md rounded-2xl bg-[var(--bg-secondary)] p-8 shadow-lg border border-[var(--border-subtle)]">
-        <h1 className="text-xl font-semibold text-[var(--text-primary)] mb-1">
+    <div className="min-h-screen flex items-center justify-center bg-canvas p-6">
+      <div className="w-full max-w-md rounded-2xl bg-surface p-8 shadow-lg border border-[var(--border-subtle)]">
+        <h1 className="text-xl font-semibold text-fg mb-1">
           Authorize the Cruise Line CLI
         </h1>
-        <p className="text-sm text-[var(--text-secondary)] mb-6">
+        <p className="text-sm text-fg-muted mb-6">
           A command-line tool on your machine is requesting access to Cruise
           Line as you.
         </p>
 
         {state.kind === 'loading' && (
           <div className="flex justify-center py-8">
-            <div className="w-6 h-6 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
+            <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin" />
           </div>
         )}
 
@@ -144,7 +94,7 @@ export function CliAuthorizePage() {
         )}
 
         {state.kind === 'denied' && (
-          <div className="rounded-lg bg-[var(--bg-primary)] p-4 text-sm text-[var(--text-secondary)]">
+          <div className="rounded-lg bg-canvas p-4 text-sm text-fg-muted">
             Request denied. You can close this window.
           </div>
         )}
@@ -158,20 +108,20 @@ export function CliAuthorizePage() {
                 className="w-10 h-10 rounded-full"
               />
               <div>
-                <div className="text-sm text-[var(--text-primary)] font-medium">
+                <div className="text-sm text-fg font-medium">
                   Signed in as{' '}
                   {state.kind === 'ready' ? state.info.user.login : ''}
                 </div>
-                <div className="text-xs text-[var(--text-secondary)]">
+                <div className="text-xs text-fg-muted">
                   Redirects to{' '}
-                  <code className="text-[var(--text-primary)]">
+                  <code className="text-fg">
                     {state.kind === 'ready' ? state.info.redirectUri : ''}
                   </code>
                 </div>
               </div>
             </div>
 
-            <ul className="text-sm text-[var(--text-secondary)] space-y-2 mb-6 list-disc list-inside">
+            <ul className="text-sm text-fg-muted space-y-2 mb-6 list-disc list-inside">
               <li>Read pull request reviews and review rules</li>
               <li>Check analysis status and list connected repositories</li>
               <li>Trigger a new analysis on a pull request</li>
@@ -182,14 +132,14 @@ export function CliAuthorizePage() {
               <button
                 onClick={deny}
                 disabled={state.kind === 'approving'}
-                className="flex-1 px-4 py-2 rounded-lg border border-[var(--border-subtle)] text-[var(--text-primary)] hover:bg-[var(--bg-primary)] disabled:opacity-50"
+                className="flex-1 px-4 py-2 rounded-lg border border-[var(--border-subtle)] text-fg hover:bg-canvas disabled:opacity-50"
               >
                 Deny
               </button>
               <button
                 onClick={approve}
                 disabled={state.kind === 'approving'}
-                className="flex-1 px-4 py-2 rounded-lg bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] disabled:opacity-50"
+                className="flex-1 px-4 py-2 rounded-lg bg-accent text-white hover:bg-accent-strong disabled:opacity-50"
               >
                 {state.kind === 'approving' ? 'Approving…' : 'Approve'}
               </button>

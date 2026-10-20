@@ -65,12 +65,12 @@ export function RichContent({ content, files = {}, className = 'cruise-markdown'
                           <span className="relative inline-block group">
                             <button
                               onClick={() => onRuleClick?.(ruleNum)}
-                              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-[var(--accent)]/10 text-[var(--accent)] text-xs font-medium hover:bg-[var(--accent)]/20 transition-colors cursor-pointer"
+                              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-accent/10 text-accent text-xs font-medium hover:bg-accent/20 transition-colors cursor-pointer"
                             >
                               {children}
                             </button>
                             {ruleText && (
-                              <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] shadow-xl text-xs text-[var(--text-primary)] w-64 hidden group-hover:block z-50 pointer-events-none">
+                              <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 rounded-lg bg-surface border border-line shadow-xl text-xs text-fg w-64 hidden group-hover:block z-50 pointer-events-none">
                                 {ruleText}
                               </span>
                             )}

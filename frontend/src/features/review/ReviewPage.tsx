@@ -8,7 +8,6 @@ import { ArchitecturePanel } from '../../components/ArchitecturePanel';
 import { ChatInputBar } from '../../components/ChatInputBar';
 import { ChatPanel } from '../../components/ChatPanel';
 import { FileSlideout } from '../../components/FileSlideout';
-import { PageLoading } from '../../components/LoadingStates';
 import { Md } from '../../components/Md';
 import type { RuleRef } from '../../components/RichContent';
 import { RulesPanel } from '../../components/RulesPanel';
@@ -17,6 +16,7 @@ import { SlideoutProvider } from '../../contexts/SlideoutContext';
 import { barState } from '../../domain/prStatus';
 import { countBySeverity, sortBySeverity } from '../../domain/severity';
 import { useWalkthrough } from '../../hooks/useWalkthrough';
+import { PageSpinner } from '../../ui';
 import { FindingCard } from './FindingCard';
 import { PrBar } from './PrBar';
 import { VerdictCard } from './VerdictCard';
@@ -71,7 +71,7 @@ export function ReviewPage() {
     setArchitectureSvgCache((cache) => (cache[source] === svg ? cache : { ...cache, [source]: svg }));
   }, []);
 
-  if (status === 'loading') return <PageLoading />;
+  if (status === 'loading') return <PageSpinner fill="parent" />;
 
   const hasReview = !!walkthrough;
   const findings = sortBySeverity(walkthrough?.findings ?? []);

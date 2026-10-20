@@ -25,7 +25,7 @@ const severityConfig: Record<string, { label: string; icon: Icon; color: string;
   high: { label: 'High', icon: WarningCircle, color: 'text-orange-400', bg: 'bg-orange-500/10', border: 'border-orange-500/30' },
   medium: { label: 'Medium', icon: Warning, color: 'text-yellow-400', bg: 'bg-yellow-500/10', border: 'border-yellow-500/30' },
   low: { label: 'Low', icon: ArrowDown, color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/30' },
-  info: { label: 'Info', icon: Lightbulb, color: 'text-[var(--text-secondary)]', bg: 'bg-[var(--text-secondary)]/5', border: 'border-[var(--text-secondary)]/20' },
+  info: { label: 'Info', icon: Lightbulb, color: 'text-fg-muted', bg: 'bg-fg-muted/5', border: 'border-fg-muted/20' },
 };
 
 const categoryConfig: Record<string, { label: string; icon: Icon }> = {
@@ -72,10 +72,10 @@ export function InlineFinding({ title, severity, category, body, fixPrompt, file
   }, [commentTarget, canComment, title, body, openFile, setActiveCommentLine]);
 
   return (
-    <div className="my-4 rounded-lg border border-[var(--border)] overflow-hidden">
+    <div className="my-4 rounded-lg border border-line overflow-hidden">
       {/* Finding header */}
-      <div className="px-4 py-3 bg-[var(--bg-tertiary)]/50 border-b border-[var(--border)]">
-        <div className="font-semibold text-sm text-[var(--text-bright)] mb-2">
+      <div className="px-4 py-3 bg-raised/50 border-b border-line">
+        <div className="font-semibold text-sm text-fg-strong mb-2">
           {title}
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -83,7 +83,7 @@ export function InlineFinding({ title, severity, category, body, fixPrompt, file
             <SevIcon size={12} weight="bold" />
             {sev.label}
           </span>
-          <span className="inline-flex items-center gap-1 text-xs text-[var(--text-secondary)] bg-[var(--bg-tertiary)] px-2 py-0.5 rounded">
+          <span className="inline-flex items-center gap-1 text-xs text-fg-muted bg-raised px-2 py-0.5 rounded">
             <CatIcon size={12} />
             {cat.label}
           </span>
@@ -92,7 +92,7 @@ export function InlineFinding({ title, severity, category, body, fixPrompt, file
               {fixPrompt && (
                 <button
                   onClick={handleCopyFixPrompt}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs text-[var(--text-secondary)] hover:text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors"
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs text-fg-muted hover:text-accent hover:bg-accent/10 transition-colors"
                   title="Copy a prompt you can paste into Claude Code to fix this issue"
                 >
                   {copied ? (
@@ -111,7 +111,7 @@ export function InlineFinding({ title, severity, category, body, fixPrompt, file
               {canComment && (
                 <button
                   onClick={handlePostAsComment}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs text-[var(--text-secondary)] hover:text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors"
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs text-fg-muted hover:text-accent hover:bg-accent/10 transition-colors"
                   title="Open comment input on the relevant line, pre-filled with this finding"
                 >
                   <ChatText size={12} />

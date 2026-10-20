@@ -1,11 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router';
-import {
-  fetchSetupStatus,
-  logout,
-  type SetupStatus,
-  type UserInfo,
-} from '../api';
+import { logout, type SetupStatus, type UserInfo } from '../api';
+import { useCurrentUser, useSetupStatus } from '../app/session';
 import { CliTokensSection } from '../components/CliTokensSection';
 
 /**
@@ -15,39 +11,11 @@ import { CliTokensSection } from '../components/CliTokensSection';
  * render conditionally.
  */
 export function HomePage() {
-  const [status, setStatus] = useState<SetupStatus | null>(null);
-  const [user, setUser] = useState<UserInfo | null>(null);
-  const [userChecked, setUserChecked] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const s = await fetchSetupStatus();
-        if (!cancelled) setStatus(s);
-      } catch {
-        /* setup status is best-effort */
-      }
-    })();
-    // Auth is optional here — a 401 is fine and just means "not signed in".
-    // We can't reuse fetchUser directly because it force-redirects on 401.
-    (async () => {
-      try {
-        const res = await fetch('/api/auth/me', { credentials: 'include' });
-        if (res.ok) {
-          const u = (await res.json()) as UserInfo;
-          if (!cancelled) setUser(u);
-        }
-      } catch {
-        /* offline / server down — treat as signed-out */
-      } finally {
-        if (!cancelled) setUserChecked(true);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // Both are optional here: signed out just means no token list
+  const status = useSetupStatus().data ?? null;
+  const currentUser = useCurrentUser();
+  const user = currentUser.data ?? null;
+  const userChecked = !currentUser.isPending;
 
   const host = status?.appUrl?.replace(/\/$/, '') ?? '';
   const installCommand = host
@@ -55,7 +23,7 @@ export function HomePage() {
     : 'Loading install command…';
 
   return (
-    <div className="min-h-screen bg-[var(--bg-primary)] text-[var(--text-primary)]">
+    <div className="min-h-screen bg-canvas text-fg">
       <TopNav user={user} userChecked={userChecked} status={status} />
 
       <main className="max-w-2xl mx-auto px-6 py-16">
@@ -69,7 +37,7 @@ export function HomePage() {
             className="mb-4 select-none"
             draggable={false}
           />
-          <h1 className="text-4xl font-semibold text-[var(--text-bright)] tracking-tight">
+          <h1 className="text-4xl font-semibold text-fg-strong tracking-tight">
             Cruise Line
           </h1>
         </div>
@@ -78,7 +46,7 @@ export function HomePage() {
         <section className="mb-10">
           <SectionHeading label="1" title="Install" />
           <CopyBlock value={installCommand} disabled={!host} />
-          <p className="text-xs text-[var(--text-secondary)] mt-3">
+          <p className="text-xs text-fg-muted mt-3">
             Installs to <code>/usr/local/bin</code> if writable, otherwise{' '}
             <code>~/.local/bin</code>. Only macOS binaries are shipped today
             (arm64 + amd64).
@@ -89,12 +57,12 @@ export function HomePage() {
         <section className="mb-10">
           <SectionHeading label="2" title="Sign in and issue a token" />
           {!userChecked ? (
-            <div className="p-6 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] text-sm text-[var(--text-secondary)]">
+            <div className="p-6 rounded-lg bg-surface border border-line text-sm text-fg-muted">
               Loading…
             </div>
           ) : user ? (
             <>
-              <div className="p-6 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] mb-4">
+              <div className="p-6 rounded-lg bg-surface border border-line mb-4">
                 <div className="flex items-center gap-3">
                   <img
                     src={user.avatarUrl}
@@ -102,17 +70,17 @@ export function HomePage() {
                     className="w-10 h-10 rounded-full"
                   />
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm text-[var(--text-primary)]">
+                    <div className="text-sm text-fg">
                       Signed in as{' '}
                       <span className="font-medium">@{user.login}</span>
                     </div>
-                    <div className="text-xs text-[var(--text-secondary)]">
+                    <div className="text-xs text-fg-muted">
                       Run the login command below to issue a token for this account.
                     </div>
                   </div>
                   <button
                     onClick={() => logout()}
-                    className="text-xs px-3 py-1.5 rounded-md border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+                    className="text-xs px-3 py-1.5 rounded-md border border-line text-fg-muted hover:text-fg transition-colors"
                   >
                     Sign out
                   </button>
@@ -130,22 +98,22 @@ export function HomePage() {
             // so the sign-in button would land the user on a GitHub error
             // page. Show a waiting message instead. The owner sees the
             // "Finish setup" chip in the top nav.
-            <div className="p-6 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)]">
-              <p className="text-sm text-[var(--text-secondary)]">
+            <div className="p-6 rounded-lg bg-surface border border-line">
+              <p className="text-sm text-fg-muted">
                 This deployment isn't fully set up yet. Once an owner
                 completes the GitHub App connection, you'll be able to sign
                 in here and issue CLI tokens.
               </p>
             </div>
           ) : (
-            <div className="p-6 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)]">
-              <p className="text-sm text-[var(--text-secondary)] mb-4">
+            <div className="p-6 rounded-lg bg-surface border border-line">
+              <p className="text-sm text-fg-muted mb-4">
                 Sign in to view and manage the CLI tokens issued to your
                 machines. Tokens are read-only and expire after 90 days.
               </p>
               <a
                 href="/api/auth/github?return_to=/"
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-[var(--accent)] text-white text-sm font-medium hover:bg-[var(--accent-hover)] transition-colors"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-accent text-white text-sm font-medium hover:bg-accent-strong transition-colors"
               >
                 <GitHubMark />
                 Sign in with GitHub
@@ -157,14 +125,14 @@ export function HomePage() {
         {/* Getting started */}
         <section className="mb-12">
           <SectionHeading label="3" title="Try it" />
-          <p className="text-sm text-[var(--text-secondary)] mb-4">
+          <p className="text-sm text-fg-muted mb-4">
             After you're logged in, poll for a review and fetch it as JSON:
           </p>
           <div className="space-y-3">
             <CopyBlock value="cruise-line pr status owner/repo#42 --wait" />
             <CopyBlock value="cruise-line pr walkthrough owner/repo#42 | jq ." />
           </div>
-          <p className="text-xs text-[var(--text-secondary)] mt-4">
+          <p className="text-xs text-fg-muted mt-4">
             Full command list:{' '}
             <code>cruise-line help</code>. Upgrade the CLI later with{' '}
             <code>cruise-line upgrade</code>.
@@ -172,13 +140,13 @@ export function HomePage() {
         </section>
       </main>
 
-      <footer className="border-t border-[var(--border)] py-6">
-        <div className="max-w-2xl mx-auto px-6 flex items-center justify-between text-xs text-[var(--text-secondary)]">
+      <footer className="border-t border-line py-6">
+        <div className="max-w-2xl mx-auto px-6 flex items-center justify-between text-xs text-fg-muted">
           <div>Cruise Line</div>
           {user?.isOwner && (
             <Link
               to="/settings"
-              className="hover:text-[var(--text-primary)] transition-colors"
+              className="hover:text-fg transition-colors"
             >
               Install settings →
             </Link>
@@ -204,16 +172,16 @@ function TopNav({
   // there's no visible entry point to /settings from the home page.
   const needsSetup = status && !status.configured;
   return (
-    <nav className="border-b border-[var(--border)] py-3">
+    <nav className="border-b border-line py-3">
       <div className="max-w-2xl mx-auto px-6 flex items-center justify-between">
-        <div className="text-sm font-medium tracking-tight text-[var(--text-primary)]">
+        <div className="text-sm font-medium tracking-tight text-fg">
           Cruise Line
         </div>
         <div className="flex items-center gap-3">
           {needsSetup && (
             <Link
               to="/settings"
-              className="text-xs px-3 py-1.5 rounded-md bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] transition-colors"
+              className="text-xs px-3 py-1.5 rounded-md bg-accent text-white hover:bg-accent-strong transition-colors"
             >
               Finish setup
             </Link>
@@ -221,13 +189,13 @@ function TopNav({
           {userChecked && user && (
             <Link
               to="/"
-              className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+              className="text-xs text-fg-muted hover:text-fg transition-colors"
             >
               Inbox
             </Link>
           )}
           {userChecked && user && (
-            <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
+            <div className="flex items-center gap-2 text-xs text-fg-muted">
               <img
                 src={user.avatarUrl}
                 alt=""
@@ -245,10 +213,10 @@ function TopNav({
 function SectionHeading({ label, title }: { label: string; title: string }) {
   return (
     <div className="flex items-baseline gap-3 mb-3">
-      <span className="text-xs font-mono text-[var(--text-secondary)]">
+      <span className="text-xs font-mono text-fg-muted">
         {label}
       </span>
-      <h2 className="text-lg font-semibold text-[var(--text-primary)]">
+      <h2 className="text-lg font-semibold text-fg">
         {title}
       </h2>
     </div>
@@ -274,14 +242,14 @@ function CopyBlock({ value, disabled = false }: { value: string; disabled?: bool
 
   return (
     <div className="group relative">
-      <pre className="p-4 pr-14 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] font-mono text-sm text-[var(--text-primary)] overflow-x-auto">
+      <pre className="p-4 pr-14 rounded-lg bg-surface border border-line font-mono text-sm text-fg overflow-x-auto">
         <code>{value}</code>
       </pre>
       <button
         onClick={copy}
         disabled={disabled}
         aria-label="Copy to clipboard"
-        className="absolute top-2 right-2 px-2 py-1 text-xs rounded-md border border-[var(--border)] bg-[var(--bg-primary)] text-[var(--text-secondary)] opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity hover:text-[var(--text-primary)] disabled:cursor-not-allowed"
+        className="absolute top-2 right-2 px-2 py-1 text-xs rounded-md border border-line bg-canvas text-fg-muted opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity hover:text-fg disabled:cursor-not-allowed"
       >
         {copied ? 'Copied' : 'Copy'}
       </button>
