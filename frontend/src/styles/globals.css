@@ -28,8 +28,15 @@
   --color-done: #a371f7;
   --color-done-fg: #d2a8ff;
 
+  --animate-progress-indeterminate: progress-indeterminate 1.4s ease-in-out infinite;
+
   --font-sans: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+}
+
+@keyframes progress-indeterminate {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(300%); }
 }
 
 /* Legacy names, kept until every component uses the tokens above */
@@ -498,39 +505,6 @@ body {
 }
 .cruise-diff-wrapper .token.string {
   color: #a5d6ff;
-}
-
-/* ============================================
-   Finding navigation — container query layout
-   ============================================ */
-
-.cruise-main-container {
-  container-type: inline-size;
-  container-name: main;
-}
-
-/* Sidebar nav: hidden by default, shown when container is wide enough */
-.cruise-finding-sidebar {
-  display: none;
-}
-
-/* Header nav: shown by default, hidden when sidebar has room */
-.cruise-finding-header-nav {
-  animation: finding-nav-fade-in 0.2s ease;
-}
-
-@keyframes finding-nav-fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-@container main (min-width: 1400px) {
-  .cruise-finding-sidebar {
-    display: block;
-  }
-  .cruise-finding-header-nav {
-    display: none;
-  }
 }
 
 /* ============================================

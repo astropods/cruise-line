@@ -29,6 +29,14 @@ export function fetchUser() {
   return apiFetch<UserInfo>('/api/auth/me');
 }
 
+/** The signed-in user, or null when signed out. Unlike fetchUser, never redirects. */
+export async function fetchCurrentUser(): Promise<UserInfo | null> {
+  const res = await fetch('/api/auth/me', { credentials: 'include' });
+  if (res.status === 401) return null;
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json() as Promise<UserInfo>;
+}
+
 /** Public endpoint: no OAuth redirect on failure, unlike apiFetch */
 export async function fetchSetupStatus(): Promise<SetupStatus> {
   const res = await fetch('/api/setup/status', { credentials: 'include' });

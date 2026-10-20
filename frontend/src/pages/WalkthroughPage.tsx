@@ -6,8 +6,6 @@ import { SlideoutProvider } from '../contexts/SlideoutContext';
 import { CommentsProvider } from '../contexts/CommentsContext';
 import { FindingRenderer } from '../components/FindingRenderer';
 import { VerdictBanner } from '../components/VerdictBanner';
-import { FindingNav } from '../components/FindingNav';
-import { MiniNav } from '../components/MiniNav';
 import { AnalysisProgress } from '../components/AnalysisProgress';
 import { FileSlideout } from '../components/FileSlideout';
 import { ProgressBar } from '../components/ProgressBar';
@@ -19,8 +17,8 @@ import { ArchitecturePanel } from '../components/ArchitecturePanel';
 import { PageLoading } from '../components/LoadingStates';
 import { Md } from '../components/Md';
 import { RulesPanel } from '../components/RulesPanel';
-import { DotsThree, ArrowsClockwise, ArrowSquareOut, ListNumbers, SignOut, CaretLeft, WarningCircle } from '@phosphor-icons/react';
-import { fetchRules, logout } from '../api';
+import { DotsThree, ArrowsClockwise, ArrowSquareOut, ListNumbers, CaretLeft, WarningCircle } from '@phosphor-icons/react';
+import { fetchRules } from '../api';
 import type { RuleRef } from '../components/RichContent';
 
 type ViewMode = 'walkthrough' | 'architecture' | 'chat';
@@ -134,18 +132,18 @@ export function WalkthroughPage() {
         commitId={walkthrough?.pr.headSha ?? currentHeadSha ?? ''}
         userAvatarUrl={user?.avatarUrl ?? ''}
       >
-      <div className="flex h-screen overflow-hidden bg-[var(--bg-primary)]">
+      <div className="flex h-full overflow-hidden bg-[var(--bg-primary)]">
         {/* Main content area */}
-        <div className="flex-1 min-w-0 flex flex-col overflow-hidden cruise-main-container">
+        <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
           {/* Header with tabs */}
           <header className="sticky top-0 z-30 bg-[var(--bg-primary)]/80 backdrop-blur-md border-b border-[var(--border)]">
             <div className="max-w-[920px] mx-auto px-8 py-4 flex items-center justify-between gap-4">
               <div className="flex min-w-0 items-center gap-3">
                 <Link
-                  to="/reviews"
-                  title="All reviews"
-                  aria-label="All reviews"
-                  className="-ml-2 w-7 h-7 flex flex-shrink-0 items-center justify-center rounded text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] transition-colors"
+                  to="/"
+                  title="Inbox"
+                  aria-label="Inbox"
+                  className="md:hidden -ml-2 w-7 h-7 flex flex-shrink-0 items-center justify-center rounded text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] transition-colors"
                 >
                   <CaretLeft size={16} weight="bold" />
                 </Link>
@@ -234,11 +232,6 @@ export function WalkthroughPage() {
 
           {/* Content area — walkthrough & chat always mounted; architecture mounts on demand */}
           <div className="flex-1 overflow-hidden relative">
-            {/* Finding header nav — overlays top of content area when sidebar doesn't fit */}
-            {viewMode === 'walkthrough' && findings.length > 1 && (
-              <FindingNav findings={findings} />
-            )}
-
             {/* Walkthrough view */}
             <div
               className="absolute inset-0 overflow-auto transition-opacity duration-200"
@@ -289,7 +282,6 @@ export function WalkthroughPage() {
                   />
                 ))}
               </main>
-              <MiniNav findings={findings} />
               </>
               )}
             </div>
@@ -405,14 +397,6 @@ function HeaderMenu({ onRegenerate, regenerateDisabled, prUrl, onOpenRules }: {
               <ArrowSquareOut size={14} />
               View PR on GitHub
             </a>
-            <div className="my-1 border-t border-[var(--border)]" />
-            <button
-              onClick={() => { logout(); setOpen(false); }}
-              className="w-full text-left px-3 py-2 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] transition-colors flex items-center gap-2"
-            >
-              <SignOut size={14} />
-              Log out
-            </button>
           </div>
         </>
       )}

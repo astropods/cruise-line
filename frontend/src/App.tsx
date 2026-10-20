@@ -1,14 +1,15 @@
 import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useParams } from 'react-router';
+import { AuthGate, SetupGate } from './app/gates';
+import { InboxHome } from './features/inbox/InboxHome';
+import { AppShell } from './shell/AppShell';
 import { WalkthroughPage } from './pages/WalkthroughPage';
-import { ReviewsPage } from './pages/ReviewsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { AuthCompletePage } from './pages/AuthCompletePage';
 import { LoginPage } from './pages/LoginPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { CliAuthorizePage } from './pages/CliAuthorizePage';
 import { HomePage } from './pages/HomePage';
-import { useSetupGuard } from './hooks/useSetupGuard';
 
 // Dev-only component sheet; the import is dropped from production builds
 const UiGallery = import.meta.env.DEV
@@ -20,29 +21,6 @@ const UiGallery = import.meta.env.DEV
 function WalkthroughRoute() {
   const { owner, repo, pr } = useParams();
   return <WalkthroughPage key={`${owner}/${repo}/${pr}`} />;
-}
-
-function GuardedRoutes() {
-  const { ready, checking } = useSetupGuard();
-
-  if (checking) {
-    return (
-      <div className="flex items-center justify-center h-screen bg-[var(--bg-primary)]">
-        <div className="w-8 h-8 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
-
-  if (!ready) return null; // Redirecting to /settings
-
-  return (
-    <Routes>
-      <Route path="/reviews" element={<ReviewsPage />} />
-      <Route path="/:owner/:repo/pull/:pr" element={<WalkthroughRoute />} />
-      <Route path="/login" element={<LoginPage />} />
-      <Route path="*" element={<NotFoundPage />} />
-    </Routes>
-  );
 }
 
 // Hard redirect for legacy /setup URLs — preserves the query string so the
@@ -57,16 +35,30 @@ export function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Public home page — CLI install + tokens for signed-in users. */}
-        <Route path="/" element={<HomePage />} />
+        {/* Public: CLI install steps, plus the viewer's tokens when signed in */}
+        <Route path="/cli" element={<HomePage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/setup" element={<LegacySetupRedirect />} />
         <Route path="/auth/complete" element={<AuthCompletePage />} />
         <Route path="/cli/authorize" element={<CliAuthorizePage />} />
+        <Route path="/login" element={<LoginPage />} />
+        {/* The sidebar replaced the PR list page */}
+        <Route path="/reviews" element={<Navigate to="/" replace />} />
         {UiGallery && (
           <Route path="/__ui" element={<Suspense fallback={null}><UiGallery /></Suspense>} />
         )}
-        <Route path="*" element={<GuardedRoutes />} />
+
+        {/* Signed out, the root is the public home page; signed in, it's the inbox */}
+        <Route element={<AuthGate signedOut={<HomePage />} />}>
+          <Route element={<SetupGate />}>
+            <Route element={<AppShell />}>
+              <Route index element={<InboxHome />} />
+              <Route path="/:owner/:repo/pull/:pr" element={<WalkthroughRoute />} />
+            </Route>
+          </Route>
+        </Route>
+
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </BrowserRouter>
   );
