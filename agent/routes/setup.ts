@@ -11,12 +11,17 @@ import {
 import { claimOwnerIfNone, countUsersByRole, touchUser } from '../db/users.js';
 import { AppError } from '../middleware/error.js';
 import { refreshWebhooks } from '../github/webhooks.js';
+import { signStateToken, verifyStateToken } from '../github/tokens.js';
 import { requireAuth, requireOwner, requireCookieSession } from '../middleware/session.js';
 import { validateGitHubUrl, validateAppUrl } from '../middleware/validation.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import type { AppEnv } from '../env.js';
 
 export const setupRoutes = new Hono<AppEnv>();
+
+// GitHub hands the manifest flow's `state` back to the callback; it proves the
+// callback finishes a flow this server started, not a code minted elsewhere.
+const MANIFEST_STATE = 'manifest-state';
 
 // 5 requests per minute per IP for setup operations
 const setupLimiter = rateLimit<AppEnv>('setup', { windowMs: 60_000, max: 5 });
@@ -126,9 +131,10 @@ setupRoutes.post('/github', setupLimiter, requireSetupAuth, async (c) => {
   };
 
   // GitHub's manifest creation URL — use org path if an organization is specified
-  const manifestUrl = body.org
+  const state = await signStateToken(MANIFEST_STATE);
+  const manifestUrl = (body.org
     ? `${config.github.htmlUrl}/organizations/${encodeURIComponent(body.org)}/settings/apps/new`
-    : `${config.github.htmlUrl}/settings/apps/new`;
+    : `${config.github.htmlUrl}/settings/apps/new`) + `?state=${encodeURIComponent(state)}`;
 
   // Return the manifest and URL so the frontend can POST a form to GitHub
   return c.json({
@@ -142,15 +148,19 @@ setupRoutes.post('/github', setupLimiter, requireSetupAuth, async (c) => {
  * GitHub redirects here after the user creates the app.
  * We exchange the code for the app's credentials.
  */
-setupRoutes.get('/github/callback', async (c) => {
+setupRoutes.get('/github/callback', setupLimiter, requireSetupAuth, async (c) => {
   const code = c.req.query('code');
   if (!code) {
     return c.json({ error: 'Missing code parameter' }, 400);
   }
+  const state = c.req.query('state');
+  if (!state || !(await verifyStateToken(MANIFEST_STATE, state))) {
+    return c.json({ error: 'Invalid or expired setup state' }, 400);
+  }
 
   // Exchange the temporary code for the app configuration
   const res = await fetch(
-    `${config.github.baseUrl}/app-manifests/${code}/conversions`,
+    `${config.github.baseUrl}/app-manifests/${encodeURIComponent(code)}/conversions`,
     {
       method: 'POST',
       headers: {

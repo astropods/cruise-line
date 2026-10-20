@@ -52,6 +52,8 @@ export const config = {
   sandbox: {
     host: optionalEnv('KNOWLEDGE_CHAT_SANDBOX_HOST', 'localhost'),
     port: Number(optionalEnv('KNOWLEDGE_CHAT_SANDBOX_PORT', '3000')),
+    /** Shared with the sandbox's SANDBOX_TOKEN; requests are unauthenticated without it */
+    token: process.env.SANDBOX_TOKEN || undefined,
     get url(): string {
       return `http://${config.sandbox.host}:${config.sandbox.port}`;
     },

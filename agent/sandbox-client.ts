@@ -11,12 +11,21 @@ function sandboxUrl(path: string): string {
   return `${config.sandbox.url}${path}`;
 }
 
+function sandboxHeaders(): Record<string, string> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (config.sandbox.token) headers['x-sandbox-token'] = config.sandbox.token;
+  return headers;
+}
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 export interface EnsureCloneParams {
+  /** https URL of the base repo, without credentials */
   cloneUrl: string;
+  /** Installation token for the fetch; the sandbox never writes it to disk */
+  token: string;
   repoPath: string;
   headSha: string;
   headRef: string;
@@ -75,7 +84,7 @@ export function sandboxRepoPath(owner: string, repo: string, prNumber: number): 
 export async function sandboxEnsureClone(params: EnsureCloneParams): Promise<EnsureCloneResult> {
   const res = await fetch(sandboxUrl('/ensure-clone'), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: sandboxHeaders(),
     body: JSON.stringify(params),
     signal: AbortSignal.timeout(120_000),
   });
@@ -95,7 +104,7 @@ export async function sandboxEnsureClone(params: EnsureCloneParams): Promise<Ens
 export async function* sandboxQuery(params: QueryParams): AsyncGenerator<SSEEvent> {
   const res = await fetch(sandboxUrl('/query'), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: sandboxHeaders(),
     body: JSON.stringify(params),
     signal: AbortSignal.timeout(600_000),
   });
@@ -156,7 +165,7 @@ export async function sandboxFileContent(
 ): Promise<FileContentResult> {
   const res = await fetch(sandboxUrl('/file-content'), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: sandboxHeaders(),
     body: JSON.stringify({ repoPath, filePath, baseRef }),
     signal: AbortSignal.timeout(10_000),
   });
@@ -180,7 +189,7 @@ export async function sandboxCollectFiles(
 ): Promise<CollectFilesResult> {
   const res = await fetch(sandboxUrl('/collect-files'), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: sandboxHeaders(),
     body: JSON.stringify({ repoPath, baseRef, filePaths }),
     signal: AbortSignal.timeout(30_000),
   });
@@ -200,7 +209,7 @@ export async function sandboxCollectFiles(
 export async function sandboxCleanup(repoPath: string): Promise<void> {
   const res = await fetch(sandboxUrl('/cleanup'), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: sandboxHeaders(),
     body: JSON.stringify({ repoPath }),
     signal: AbortSignal.timeout(10_000),
   });
@@ -221,7 +230,7 @@ export async function sandboxSessionMessages(
 ): Promise<any[]> {
   const res = await fetch(sandboxUrl('/session-messages'), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: sandboxHeaders(),
     body: JSON.stringify({ sessionId, repoPath }),
     signal: AbortSignal.timeout(10_000),
   });
@@ -246,6 +255,7 @@ export interface SandboxModel {
 
 export async function sandboxListModels(): Promise<SandboxModel[]> {
   const res = await fetch(sandboxUrl('/models'), {
+    headers: sandboxHeaders(),
     signal: AbortSignal.timeout(15_000),
   });
   if (!res.ok) {
@@ -262,6 +272,7 @@ export async function sandboxListModels(): Promise<SandboxModel[]> {
 
 export async function sandboxTelemetryStatus(): Promise<unknown> {
   const res = await fetch(sandboxUrl('/telemetry-status'), {
+    headers: sandboxHeaders(),
     signal: AbortSignal.timeout(5_000),
   });
   if (!res.ok) {
@@ -273,6 +284,7 @@ export async function sandboxTelemetryStatus(): Promise<unknown> {
 export async function sandboxTelemetryTest(): Promise<unknown> {
   const res = await fetch(sandboxUrl('/telemetry-test'), {
     method: 'POST',
+    headers: sandboxHeaders(),
     signal: AbortSignal.timeout(15_000),
   });
   if (!res.ok) {

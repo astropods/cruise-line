@@ -5,10 +5,9 @@ import { updateWalkthroughStatus } from '../db/walkthroughs.js';
 import { listRules } from '../db/rules.js';
 import { resolveModel } from '../db/model-settings.js';
 import { postAnalysisComment } from '../github/client.js';
-import { getInstallationToken } from '../github/app.js';
+import { ensurePrCheckout } from '../pr-checkout.js';
 import { jobManager } from './jobs.js';
 import {
-  sandboxEnsureClone,
   sandboxQuery,
   sandboxCollectFiles,
   sandboxRepoPath,
@@ -53,19 +52,8 @@ export async function analyzePr(
     addProgress(walkthroughId, 'status', 'Preparing repository...');
 
     // Clone/update the repo in the sandbox's persistent volume
-    const token = await getInstallationToken(prMetadata.installationId);
-    const host = new URL(config.github.htmlUrl).host;
-    const cloneUrl = `https://x-access-token:${token}@${host}/${prMetadata.owner}/${prMetadata.repo}.git`;
     const repoPath = sandboxRepoPath(prMetadata.owner, prMetadata.repo, prMetadata.number);
-
-    const cloneResult = await sandboxEnsureClone({
-      cloneUrl,
-      repoPath,
-      headSha: prMetadata.headSha,
-      headRef: prMetadata.headRef,
-      prNumber: prMetadata.number,
-      baseRef: prMetadata.baseRef,
-    });
+    const cloneResult = await ensurePrCheckout(prMetadata);
 
     const diffOutput = cloneResult.diff;
     const diffLines = diffOutput.split('\n').length;

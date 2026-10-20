@@ -10,9 +10,9 @@ import {
   setSessionCookie,
   verifySessionToken,
 } from '../github/oauth.js';
+import { signStateToken, verifyStateToken } from '../github/tokens.js';
 import { revokeSession } from '../db/sessions.js';
 import { recordUserLogin, getUser, claimOwnerIfNone } from '../db/users.js';
-import { SignJWT, jwtVerify } from 'jose';
 import { AppError } from '../middleware/error.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 
@@ -21,24 +21,16 @@ export const authRoutes = new Hono();
 // 10 requests per minute per IP for auth endpoints
 const authLimiter = rateLimit('auth', { windowMs: 60_000, max: 10 });
 
+const OAUTH_STATE = 'oauth-state';
+
 // Encode the CSRF state + return_to into a signed JWT that round-trips via GitHub's state param
-async function encodeState(returnTo: string): Promise<string> {
-  const secret = new TextEncoder().encode(config.session.secret);
-  return new SignJWT({ returnTo })
-    .setProtectedHeader({ alg: 'HS256' })
-    .setIssuedAt()
-    .setExpirationTime('10m')
-    .sign(secret);
+function encodeState(returnTo: string): Promise<string> {
+  return signStateToken(OAUTH_STATE, { returnTo });
 }
 
 async function decodeState(state: string): Promise<{ returnTo: string } | null> {
-  try {
-    const secret = new TextEncoder().encode(config.session.secret);
-    const { payload } = await jwtVerify(state, secret);
-    return { returnTo: (payload.returnTo as string) ?? '/' };
-  } catch {
-    return null;
-  }
+  const payload = await verifyStateToken(OAUTH_STATE, state);
+  return payload ? { returnTo: (payload.returnTo as string) ?? '/' } : null;
 }
 
 authRoutes.get('/github', authLimiter, async (c) => {

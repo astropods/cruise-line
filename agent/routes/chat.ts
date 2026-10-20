@@ -4,8 +4,8 @@ import { config } from '../config.js';
 import { requireAuth, requireRepoAccess, requireCookieSession } from '../middleware/session.js';
 import { AppError } from '../middleware/error.js';
 import { rateLimit } from '../middleware/rate-limit.js';
-import { getInstallationToken } from '../github/app.js';
-import { sandboxEnsureClone, sandboxRepoPath, sandboxQuery, sandboxSessionMessages } from '../sandbox-client.js';
+import { ensurePrCheckout } from '../pr-checkout.js';
+import { sandboxRepoPath, sandboxQuery, sandboxSessionMessages } from '../sandbox-client.js';
 import { chatRuns, streamRunEvents } from '../chat/runs.js';
 import { getOrCreateChatSession, getChatSession, touchChatSession, deleteChatSession } from '../db/chat-sessions.js';
 import { getLatestWalkthrough } from '../db/walkthroughs.js';
@@ -65,16 +65,7 @@ chatRoutes.post('/:owner/:repo/:pr/message', chatLimiter, async (c) => {
       const pr = await getPrMetadata(installationId, owner, repo, prNumber);
 
       // Ensure clone exists in the sandbox's persistent volume
-      const token = await getInstallationToken(installationId);
-      const host = new URL(config.github.htmlUrl).host;
-      const cloneUrl = `https://x-access-token:${token}@${host}/${owner}/${repo}.git`;
-      const cloneResult = await sandboxEnsureClone({
-        cloneUrl,
-        repoPath: sandboxRepoPath(owner, repo, prNumber),
-        headSha: pr.headSha,
-        headRef: pr.headRef,
-        prNumber,
-      });
+      const cloneResult = await ensurePrCheckout(pr);
 
       const walkthrough = await getLatestWalkthrough(owner, repo, prNumber);
       const summary = walkthrough?.data?.summary ?? undefined;
@@ -90,6 +81,8 @@ chatRoutes.post('/:owner/:repo/:pr/message', chatLimiter, async (c) => {
           sessionId: chatSession.session_id,
           repoPath: cloneResult.repoDir,
           ...modelChoice,
+          // Bash lets chat run git log and git diff; reviews stay read-only
+          allowedTools: ['Read', 'Glob', 'Grep', 'Bash'],
           maxTurns: 30,
         })) {
           emit(event);
