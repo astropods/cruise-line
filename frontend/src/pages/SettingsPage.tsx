@@ -9,12 +9,19 @@ import {
   fetchRepoSettings,
   updateRepoScopePaths,
   setUserRole,
+  fetchModelSettings,
+  updateModelSetting,
   type SetupStatus,
   type UserInfo,
   type ConnectedInstallation,
   type ConnectedRepo,
   type KnownUser,
   type UserRole,
+  type ModelSettingsResponse,
+  type ModelSetting,
+  type ModelUse,
+  type EffortLevel,
+  type AvailableModel,
 } from '../api';
 import { normalizeScopePathClient } from '../lib/scopePath';
 
@@ -321,6 +328,7 @@ export function SettingsPage() {
 
         {user?.isOwner && status?.configured && (
           <>
+            <ModelsSection />
             <RepositoriesSection installUrl={status.installUrl} />
             <UsersSection currentUserId={user.userId} />
           </>
@@ -669,6 +677,195 @@ function RepoScopeEditor({ owner, repo }: { owner: string; repo: string }) {
           <span className="text-xs text-green-400">Saved</span>
         )}
       </div>
+    </div>
+  );
+}
+
+const EFFORT_LABELS: Record<EffortLevel, string> = {
+  low: 'Low',
+  medium: 'Medium',
+  high: 'High',
+  xhigh: 'Extra high',
+  max: 'Max',
+};
+
+const MODEL_USES: { use: ModelUse; label: string; hint: string }[] = [
+  { use: 'review', label: 'Reviews', hint: 'Writes the walkthrough and findings for each PR.' },
+  { use: 'chat', label: 'Chat', hint: 'Answers questions about a PR.' },
+];
+
+function ModelsSection() {
+  const [data, setData] = useState<ModelSettingsResponse | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchModelSettings()
+      .then(setData)
+      .catch((err) => setLoadError(err instanceof Error ? err.message : 'Failed to load model settings'));
+  }, []);
+
+  return (
+    <div className="mt-6 p-6 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)]">
+      <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-4">Models</h2>
+      <p className="text-xs text-[var(--text-secondary)] mb-4">
+        Changes apply to the next review or chat message. Higher effort thinks
+        longer: more thorough, but slower and more expensive.
+      </p>
+
+      {loadError && (
+        <div className="p-3 rounded-lg bg-red-900/20 border border-red-700/50 text-red-400 text-sm">
+          {loadError}
+        </div>
+      )}
+      {!data && !loadError && (
+        <div className="text-sm text-[var(--text-secondary)]">Loading…</div>
+      )}
+
+      {data && (
+        <>
+          {data.modelsError && (
+            <div className="mb-4 p-3 rounded-lg bg-yellow-900/20 border border-yellow-700/50 text-yellow-300 text-xs">
+              Couldn't load the model list from the Anthropic API ({data.modelsError}).
+              Only the current models are shown.
+            </div>
+          )}
+          <div className="divide-y divide-[var(--border)]">
+            {MODEL_USES.map(({ use, label, hint }) => (
+              <ModelRow
+                key={use}
+                label={label}
+                hint={hint}
+                use={use}
+                setting={data.settings[use]}
+                defaults={data.defaults}
+                models={data.models}
+                onSaved={(settings) => setData((d) => (d ? { ...d, settings } : d))}
+              />
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function ModelRow({
+  label,
+  hint,
+  use,
+  setting,
+  defaults,
+  models,
+  onSaved,
+}: {
+  label: string;
+  hint: string;
+  use: ModelUse;
+  setting: ModelSetting;
+  defaults: ModelSettingsResponse['defaults'];
+  models: AvailableModel[] | null;
+  onSaved: (settings: ModelSettingsResponse['settings']) => void;
+}) {
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const nameOf = (id: string) => models?.find((m) => m.id === id)?.displayName ?? id;
+  const effectiveModel = setting.model ?? defaults.model;
+  const levels = models?.find((m) => m.id === effectiveModel)?.effortLevels ?? null;
+  const supports = (level: EffortLevel) => !levels || levels.includes(level);
+
+  // Without the API list, still show the default and the saved pick
+  const modelOptions: { id: string; displayName: string }[] = models ?? [
+    ...new Set([defaults.model, setting.model].filter((m): m is string => !!m)),
+  ].map((id) => ({ id, displayName: id }));
+
+  async function save(next: ModelSetting) {
+    setSaving(true);
+    setSaved(false);
+    setError(null);
+    try {
+      const { settings } = await updateModelSetting(use, next);
+      onSaved(settings);
+      setSaved(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function changeModel(value: string) {
+    const model = value || null;
+    const nextLevels = models?.find((m) => m.id === (model ?? defaults.model))?.effortLevels ?? null;
+    let effort = setting.effort;
+    // Keep the effort valid for the new model
+    if (nextLevels) {
+      const wanted = effort ?? defaults.effort;
+      if (nextLevels.length === 0) {
+        effort = 'auto';
+      } else if (wanted !== 'auto' && !nextLevels.includes(wanted)) {
+        effort = nextLevels.includes(defaults.effort) ? null : 'auto';
+      }
+    }
+    save({ model, effort });
+  }
+
+  const selectClass =
+    'w-full px-2 py-1.5 rounded-md bg-[var(--bg-primary)] border border-[var(--border)] text-[var(--text-primary)] text-sm disabled:opacity-50';
+
+  return (
+    <div className="py-3 first:pt-0 last:pb-0">
+      <div className="flex items-baseline justify-between mb-2">
+        <div>
+          <span className="text-sm font-medium text-[var(--text-primary)]">{label}</span>
+          <span className="ml-2 text-xs text-[var(--text-secondary)]">{hint}</span>
+        </div>
+        <span className="text-xs text-[var(--text-secondary)]">
+          {saving ? 'Saving…' : saved ? 'Saved' : ''}
+        </span>
+      </div>
+      <div className="grid grid-cols-[1fr_auto] gap-2">
+        <label className="block">
+          <span className="sr-only">{label} model</span>
+          <select
+            value={setting.model ?? ''}
+            onChange={(e) => changeModel(e.target.value)}
+            disabled={saving}
+            className={selectClass}
+          >
+            <option value="">Default ({nameOf(defaults.model)})</option>
+            {modelOptions.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.displayName}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block">
+          <span className="sr-only">{label} effort</span>
+          <select
+            value={setting.effort ?? ''}
+            onChange={(e) =>
+              save({ ...setting, effort: (e.target.value || null) as ModelSetting['effort'] })
+            }
+            disabled={saving || levels?.length === 0}
+            title={levels?.length === 0 ? `${nameOf(effectiveModel)} doesn't take an effort setting` : undefined}
+            className={selectClass}
+          >
+            <option value="" disabled={!supports(defaults.effort)}>
+              Default ({EFFORT_LABELS[defaults.effort]})
+            </option>
+            {(Object.keys(EFFORT_LABELS) as EffortLevel[]).map((level) => (
+              <option key={level} value={level} disabled={!supports(level)}>
+                {EFFORT_LABELS[level]}
+              </option>
+            ))}
+            <option value="auto">Model's default</option>
+          </select>
+        </label>
+      </div>
+      {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
     </div>
   );
 }

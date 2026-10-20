@@ -25,6 +25,8 @@ const mockResolveCliToken = mock(() => Promise.resolve(null as any));
 const mockTouchCliTokenUsed = mock(() => Promise.resolve());
 const mockUpsertWalkthrough = mock();
 const mockGetLatestWalkthrough = mock();
+const mockGetLatestReviewedWalkthrough = mock(() => Promise.resolve(null as any));
+const mockListPrSummaries = mock(() => Promise.resolve([] as any[]));
 const mockJobManager = {
   enqueue: mock(),
   getJob: mock(() => null),
@@ -79,8 +81,18 @@ mock.module(path.resolve(import.meta.dir, './db/users.ts'), () => ({
 mock.module(path.resolve(import.meta.dir, './db/walkthroughs.ts'), () => ({
   upsertWalkthrough: mockUpsertWalkthrough,
   getLatestWalkthrough: mockGetLatestWalkthrough,
+  getLatestReviewedWalkthrough: mockGetLatestReviewedWalkthrough,
+  listPrSummaries: mockListPrSummaries,
   getWalkthroughById: mock(),
   deleteWalkthrough: mock(),
+}));
+
+const mockUpsertTrackedPr = mock(() => Promise.resolve());
+
+mock.module(path.resolve(import.meta.dir, './db/tracked-prs.ts'), () => ({
+  upsertTrackedPr: mockUpsertTrackedPr,
+  updateTrackedPrTitle: mock(),
+  setTrackedPrState: mock(),
 }));
 
 mock.module(path.resolve(import.meta.dir, './analysis/jobs.ts'), () => ({
@@ -854,6 +866,10 @@ describe('POST /api/walkthroughs/:owner/:repo/:pr/generate — auth boundary', (
     const body = (await res.json()) as { walkthroughId: number; status: string };
     expect(body.walkthroughId).toBe(7);
     expect(mockJobManager.enqueue).toHaveBeenCalledTimes(1);
+    // PRs opened before tracking existed get tracked on their first review
+    expect(mockUpsertTrackedPr).toHaveBeenCalledWith(
+      expect.objectContaining({ owner: 'acme', repo: 'app', number: 1, headSha: 'bbb' }),
+    );
   });
 
   it('rejects a Bearer caller with force=true (destructive branch stays cookie-only)', async () => {
@@ -864,8 +880,8 @@ describe('POST /api/walkthroughs/:owner/:repo/:pr/generate — auth boundary', (
     expect(res.status).toBe(403);
     const body = (await res.json()) as { error: string };
     expect(body.error).toMatch(/force=true/);
-    // The destructive branch — upsertWalkthrough with force=true nulls out
-    // the existing walkthrough's data — must not have executed.
+    // The overwrite branch — upsertWalkthrough with force=true resets the
+    // existing walkthrough for a rerun — must not have executed.
     expect(mockUpsertWalkthrough).not.toHaveBeenCalled();
     expect(mockJobManager.enqueue).not.toHaveBeenCalled();
   });
@@ -894,3 +910,93 @@ describe('POST /api/walkthroughs/:owner/:repo/:pr/generate — auth boundary', (
   });
 });
 
+
+describe('GET /api/walkthroughs — PR list', () => {
+  beforeEach(() => {
+    mockGetPermissionLevel.mockReset();
+    mockGetRepoInstallation.mockReset();
+    mockResolveCliToken.mockReset();
+    mockGetUser.mockReset();
+    mockListPrSummaries.mockReset();
+
+    mockGetRepoInstallation.mockResolvedValue({ data: { id: 12345 } });
+    mockResolveCliToken.mockResolvedValue({ id: 'tok', userId: 42 });
+    mockGetUser.mockResolvedValue(generateBearerUser);
+  });
+
+  const summary = (repo: string, number: number, status: string | null = 'complete') => ({
+    owner: 'listco', repo, pr_number: number, status, pr_state: 'open', head_sha: 'abc',
+    updated_at: new Date('2026-01-01T00:00:00Z'), title: `PR ${number}`, author: 'someone',
+    verdict: 'approve', finding_count: 3,
+  });
+
+  it('drops PRs in repos the caller cannot push to', async () => {
+    mockListPrSummaries.mockResolvedValue([summary('visible', 1), summary('hidden', 2), summary('visible', 3, null)]);
+    mockGetPermissionLevel.mockImplementation(({ repo }: { repo: string }) =>
+      Promise.resolve({ data: { permission: repo === 'visible' ? 'write' : 'read' } }),
+    );
+
+    const res = await generateApp.request('/api/walkthroughs', {
+      headers: { authorization: 'Bearer cl_live_test' },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { prs: { repo: string; number: number; status: string; prState: string; findingCount: number }[] };
+    expect(body.prs.map((p) => `${p.repo}#${p.number}`)).toEqual(['visible#1', 'visible#3']);
+    expect(body.prs[0].findingCount).toBe(3);
+    expect(body.prs[0].prState).toBe('open');
+    // A tracked PR that was never reviewed comes back as status 'none'
+    expect(body.prs[1].status).toBe('none');
+  });
+
+  it('returns 401 without auth', async () => {
+    const res = await generateApp.request('/api/walkthroughs');
+    expect(res.status).toBe(401);
+    expect(mockListPrSummaries).not.toHaveBeenCalled();
+  });
+});
+
+describe('GET /api/walkthroughs/:owner/:repo/:pr — rerun in flight', () => {
+  beforeEach(() => {
+    mockGetPermissionLevel.mockReset();
+    mockGetRepoInstallation.mockReset();
+    mockPullsGet.mockReset();
+    mockResolveCliToken.mockReset();
+    mockGetUser.mockReset();
+    mockGetLatestWalkthrough.mockReset();
+    mockGetLatestReviewedWalkthrough.mockReset();
+
+    mockGetRepoInstallation.mockResolvedValue({ data: { id: 12345 } });
+    mockGetPermissionLevel.mockResolvedValue({ data: { permission: 'write' } });
+    mockResolveCliToken.mockResolvedValue({ id: 'tok', userId: 42 });
+    mockGetUser.mockResolvedValue(generateBearerUser);
+    mockPullsGet.mockResolvedValue({
+      data: {
+        title: 'Live title',
+        user: { login: 'author' },
+        base: { ref: 'main', sha: 'aaa' },
+        head: { ref: 'feat/x', sha: 'bbb' },
+        body: '',
+      },
+    });
+  });
+
+  it('serves the previous review as latestReview but not as walkthrough.data', async () => {
+    const previous = { pr: { title: 'Old' }, findings: [] };
+    const row = {
+      id: 7, head_sha: 'bbb', status: 'running', error: null, data: previous,
+      created_at: new Date(), updated_at: new Date(),
+    };
+    mockGetLatestWalkthrough.mockResolvedValue(row);
+    mockGetLatestReviewedWalkthrough.mockResolvedValue(row);
+
+    const res = await generateApp.request('/api/walkthroughs/acme/app/1', {
+      headers: { authorization: 'Bearer cl_live_test' },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as any;
+    expect(body.walkthrough.status).toBe('running');
+    expect(body.walkthrough.data).toBeNull();
+    expect(body.latestReview.data).toEqual(previous);
+    expect(body.pr).toEqual({ title: 'Live title', author: 'author' });
+  });
+});

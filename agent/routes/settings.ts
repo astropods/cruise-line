@@ -11,6 +11,16 @@ import {
 } from '../db/users.js';
 import { getInstallationForRepo, listInstallationsWithRepos } from '../github/client.js';
 import { getRepoSettings, setRepoScopePaths } from '../db/repo-settings.js';
+import {
+  EFFORT_LEVELS,
+  checkModelSetting,
+  getModelSettings,
+  saveModelSetting,
+  type ModelSetting,
+  type ModelUse,
+} from '../db/model-settings.js';
+import { sandboxListModels, type SandboxModel } from '../sandbox-client.js';
+import { config } from '../config.js';
 import type { AppEnv } from '../env.js';
 
 async function assertRepoInstalled(owner: string, repo: string): Promise<void> {
@@ -71,6 +81,66 @@ settingsRoutes.patch('/repos/:owner/:repo/scope', async (c) => {
 
   const settings = await setRepoScopePaths(owner, repo, body.scopePaths as string[]);
   return c.json({ settings });
+});
+
+async function listModelsOrError(): Promise<{ models: SandboxModel[] | null; modelsError: string | null }> {
+  try {
+    return { models: await sandboxListModels(), modelsError: null };
+  } catch (err) {
+    return { models: null, modelsError: err instanceof Error ? err.message : 'Failed to list models' };
+  }
+}
+
+/**
+ * GET /api/settings/models
+ * The model and effort used for reviews and for chat, the deploy defaults
+ * they fall back to, and every model the Anthropic API key can use.
+ */
+settingsRoutes.get('/models', async (c) => {
+  const [settings, list] = await Promise.all([getModelSettings(), listModelsOrError()]);
+  return c.json({
+    settings,
+    defaults: { model: config.claude.model, effort: config.claude.effort },
+    ...list,
+  });
+});
+
+/**
+ * PUT /api/settings/models/:use
+ * Body: { model: string | null, effort: EffortLevel | 'auto' | null }.
+ * null resets that field to the deploy default.
+ */
+settingsRoutes.put('/models/:use', async (c) => {
+  const use = c.req.param('use');
+  if (use !== 'review' && use !== 'chat') {
+    throw new AppError(404, 'Unknown model use');
+  }
+
+  const body = await c.req
+    .json<{ model?: unknown; effort?: unknown }>()
+    .catch((): { model?: unknown; effort?: unknown } => ({}));
+  const { model, effort } = body;
+
+  if (model !== null && (typeof model !== 'string' || !model || model.length > 200)) {
+    throw new AppError(400, 'model must be a model id or null');
+  }
+  if (effort !== null && effort !== 'auto' && !(EFFORT_LEVELS as readonly unknown[]).includes(effort)) {
+    throw new AppError(400, `effort must be one of ${EFFORT_LEVELS.join(', ')}, 'auto', or null`);
+  }
+  const setting = { model, effort } as ModelSetting;
+
+  // Check the pick against the API's model list when we can get it. If the
+  // list is unavailable, save anyway rather than lock owners out.
+  const { models } = await listModelsOrError();
+  const problem = models && checkModelSetting(setting, models);
+  if (problem) throw new AppError(400, problem);
+
+  await saveModelSetting(use as ModelUse, setting);
+  const session = c.get('session');
+  console.log(
+    `Cruise Line models: ${session.login} (${session.userId}) set ${use} -> ${setting.model ?? 'default'} / ${setting.effort ?? 'default'}`,
+  );
+  return c.json({ settings: await getModelSettings() });
 });
 
 /**

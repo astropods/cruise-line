@@ -55,8 +55,12 @@ Optional environment variables can be set in `astropods.yml`:
 
 | Variable | Default | Description |
 |---|---|---|
-| `CLAUDE_MODEL` | `claude-opus-4-8` | Claude model used for analysis |
+| `CLAUDE_MODEL` | `claude-opus-5-5` | Default Claude model for analysis and chat |
 | `MAX_CONCURRENT_JOBS` | `3` | Maximum concurrent analysis jobs |
+
+Owners can override the model, and its effort level (default `high`), for
+reviews and chat separately under **Settings → Models**. The picker lists every
+model the deploy's Anthropic API key can use, from the Models API.
 
 ### GitHub Enterprise
 
@@ -73,6 +77,22 @@ ast dev --local
 ```
 
 Visit `http://localhost:3200` to access the frontend.
+
+### UI-only mock mode
+
+To work on the frontend without GitHub, Postgres, or Claude:
+
+```bash
+cd frontend && bun run dev:mock
+```
+
+Open `http://localhost:5174/reviews`. The Vite dev server answers `/api/*` from
+an in-memory mock (`frontend/dev/mock-api.ts`) seeded with one PR per UI state:
+a finished review, a first review, a rerun that fails, a first review that
+fails, a stale review, a rerun already in progress, an open PR nobody has
+reviewed, and merged and closed PRs. Simulated runs take 15s
+(`MOCK_JOB_SECONDS` to change it); `curl -X POST localhost:5174/__mock/reset`
+restores the seeds. Chat streams a canned reply; posting comments and editing rules are not mocked.
 
 ## Architecture
 

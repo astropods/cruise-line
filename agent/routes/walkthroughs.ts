@@ -1,12 +1,15 @@
 import { Hono } from 'hono';
 import { config } from '../config.js';
-import { requireAuth, requireRepoAccess, requireCookieSession } from '../middleware/session.js';
+import { requireAuth, requireRepoAccess, requireCookieSession, hasRepoAccess } from '../middleware/session.js';
 import {
   upsertWalkthrough,
   getLatestWalkthrough,
+  getLatestReviewedWalkthrough,
+  listPrSummaries,
   getWalkthroughById,
   deleteWalkthrough,
 } from '../db/walkthroughs.js';
+import { upsertTrackedPr } from '../db/tracked-prs.js';
 import { getPrMetadata, getInstallationForRepo } from '../github/client.js';
 import { jobManager } from '../analysis/jobs.js';
 import { AppError } from '../middleware/error.js';
@@ -30,8 +33,51 @@ const generateLimiter = rateLimit<AppEnv>('generate', {
 walkthroughRoutes.use('/:owner/:repo/:pr/*', requireAuth, requireRepoAccess);
 
 /**
+ * GET /api/walkthroughs
+ * Every PR with a walkthrough, limited to repos the caller can push to.
+ */
+walkthroughRoutes.get('/', requireAuth, async (c) => {
+  const session = c.get('session');
+  const rows = await listPrSummaries();
+
+  const repoKeys = [...new Set(rows.map((r) => `${r.owner}/${r.repo}`))];
+  const access = new Map(
+    await Promise.all(
+      repoKeys.map(async (key) => {
+        const [owner, repo] = key.split('/');
+        return [key, await hasRepoAccess(session, owner, repo)] as const;
+      }),
+    ),
+  );
+
+  const prs = rows
+    .filter((r) => access.get(`${r.owner}/${r.repo}`))
+    .map((r) => ({
+      owner: r.owner,
+      repo: r.repo,
+      number: r.pr_number,
+      status: r.status ?? 'none',
+      prState: r.pr_state,
+      headSha: r.head_sha,
+      updatedAt: r.updated_at,
+      title: r.title,
+      author: r.author,
+      verdict: r.verdict,
+      findingCount: r.finding_count,
+    }));
+
+  return c.json({ prs, githubUrl: config.github.htmlUrl });
+});
+
+/**
  * GET /api/walkthroughs/:owner/:repo/:pr
- * Returns the latest walkthrough for a PR, plus the current head SHA for staleness detection.
+ * Returns the latest walkthrough row for a PR (the current or most recent job),
+ * the latest review that has content (`latestReview`, which may be an older
+ * row while a new one runs), the PR's title/author, and the current head SHA
+ * for staleness detection.
+ *
+ * `walkthrough.data` is only set once that row is complete, so API callers
+ * never mistake a previous run's output for the one in progress.
  */
 walkthroughRoutes.get('/:owner/:repo/:pr', async (c) => {
   const owner = c.req.param('owner');
@@ -40,32 +86,40 @@ walkthroughRoutes.get('/:owner/:repo/:pr', async (c) => {
 
   if (isNaN(prNumber)) throw new AppError(400, 'Invalid PR number');
 
-  const walkthrough = await getLatestWalkthrough(owner, repo, prNumber);
+  const [walkthrough, reviewed] = await Promise.all([
+    getLatestWalkthrough(owner, repo, prNumber),
+    getLatestReviewedWalkthrough(owner, repo, prNumber),
+  ]);
 
   // Also fetch current head SHA to detect staleness
   let currentHeadSha: string | null = null;
+  let pr: { title: string; author: string } | null = null;
   try {
     const installationId = await getInstallationForRepo(owner, repo);
-    const pr = await getPrMetadata(installationId, owner, repo, prNumber);
-    currentHeadSha = pr.headSha;
+    const meta = await getPrMetadata(installationId, owner, repo, prNumber);
+    currentHeadSha = meta.headSha;
+    pr = { title: meta.title, author: meta.author };
   } catch {
     // If we can't fetch the PR (e.g., it's closed), that's fine
   }
 
-  if (!walkthrough) {
-    return c.json({ walkthrough: null, currentHeadSha, githubUrl: config.github.htmlUrl });
-  }
-
   return c.json({
-    walkthrough: {
+    walkthrough: walkthrough && {
       id: walkthrough.id,
       status: walkthrough.status,
       headSha: walkthrough.head_sha,
       error: walkthrough.error,
-      data: walkthrough.data,
+      data: walkthrough.status === 'complete' ? walkthrough.data : null,
       createdAt: walkthrough.created_at,
       updatedAt: walkthrough.updated_at,
     },
+    latestReview: reviewed && {
+      id: reviewed.id,
+      headSha: reviewed.head_sha,
+      data: reviewed.data,
+      updatedAt: reviewed.updated_at,
+    },
+    pr,
     currentHeadSha,
     githubUrl: config.github.htmlUrl,
   });
@@ -88,9 +142,10 @@ walkthroughRoutes.post('/:owner/:repo/:pr/generate', generateLimiter, async (c) 
   if (!owner || !repo) throw new AppError(400, 'Missing route parameters');
   if (isNaN(prNumber)) throw new AppError(400, 'Invalid PR number');
 
-  // force=true wipes an existing completed walkthrough (upsertWalkthrough
-  // nulls out `data` when force is set) — a destructive action. CLI tokens
-  // can start work but never destroy it, so this branch stays cookie-only.
+  // force=true replaces an existing completed walkthrough once the rerun
+  // succeeds — and spends a full analysis on a SHA that already has one.
+  // CLI tokens can start work but never overwrite it, so this branch stays
+  // cookie-only.
   // Non-force /generate remains reachable via bearer, which is what coding
   // agents need for the open-PR → trigger → poll loop.
   //
@@ -127,6 +182,11 @@ walkthroughRoutes.post('/:owner/:repo/:pr/generate', generateLimiter, async (c) 
       202,
     );
   }
+
+  // Covers PRs opened before tracking existed. Best-effort, like the webhook.
+  await upsertTrackedPr(pr).catch((err) =>
+    console.error(`Failed to track ${owner}/${repo}#${prNumber}:`, err),
+  );
 
   // Create DB row and enqueue job
   const row = await upsertWalkthrough(owner, repo, prNumber, pr.headSha, force);

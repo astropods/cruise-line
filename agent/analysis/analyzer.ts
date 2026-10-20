@@ -3,6 +3,7 @@ import { SYSTEM_PROMPT, buildUserPrompt } from './prompt.js';
 import { walkthroughJsonSchema, type Walkthrough, type ClaudeWalkthroughOutput } from './types.js';
 import { updateWalkthroughStatus } from '../db/walkthroughs.js';
 import { listRules } from '../db/rules.js';
+import { resolveModel } from '../db/model-settings.js';
 import { postAnalysisComment } from '../github/client.js';
 import { getInstallationToken } from '../github/app.js';
 import { jobManager } from './jobs.js';
@@ -98,12 +99,13 @@ export async function analyzePr(
 
     // Run Claude Agent SDK query in the sandbox
     let claudeOutput: ClaudeWalkthroughOutput | undefined;
+    const modelChoice = await resolveModel('review');
 
     for await (const event of sandboxQuery({
       prompt: userPrompt,
       systemPrompt: SYSTEM_PROMPT,
       repoPath: cloneResult.repoDir,
-      model: config.claude.model,
+      ...modelChoice,
       maxTurns: 60,
       outputFormat: {
         type: 'json_schema',
