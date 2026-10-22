@@ -8,10 +8,13 @@ interface WalkthroughState {
   /** The review to display — the latest one with content, even while a newer run is in flight */
   walkthrough: Walkthrough | null;
   /**
-   * Status of the most recent run. 'loading' until the first fetch returns;
-   * 'failed' also covers a failed fetch or start, with the message in `error`.
+   * Status of the most recent run. 'loading' until the first fetch returns,
+   * 'unavailable' when it failed (no access, or an outage: see `loadError`).
+   * 'failed' is a run, or starting one, that failed, with the message in `error`.
    */
-  status: 'loading' | RunStatus;
+  status: 'loading' | 'unavailable' | RunStatus;
+  /** Why the PR couldn't be loaded; the page shows this instead of the PR */
+  loadError: Error | null;
   error: string | null;
   currentHeadSha: string | null;
   /** The displayed review predates the PR's current head */
@@ -50,10 +53,8 @@ export function useReview(owner: string, repo: string, pr: number) {
   let status: WalkthroughState['status'] = liveStatus;
   let error = run?.error ?? null;
   if (prQuery.isPending) status = 'loading';
-  else if (prQuery.isError) {
-    status = 'failed';
-    error = prQuery.error.message;
-  } else if (start.isError) {
+  else if (prQuery.isError) status = 'unavailable';
+  else if (start.isError) {
     status = 'failed';
     error = start.error.message;
   }
@@ -62,6 +63,7 @@ export function useReview(owner: string, repo: string, pr: number) {
     walkthrough: review?.data ?? null,
     status,
     error,
+    loadError: prQuery.isError ? prQuery.error : null,
     currentHeadSha: res?.currentHeadSha ?? null,
     isStale: !!(review && res?.currentHeadSha && review.headSha !== res.currentHeadSha),
     commitsSinceReview: res?.commitsSinceReview ?? null,
@@ -79,5 +81,5 @@ export function useReview(owner: string, repo: string, pr: number) {
     start.mutate({ owner, repo, number: pr, force });
   }, [owner, repo, pr, runStatus, start]);
 
-  return { ...state, generate };
+  return { ...state, generate, retryLoad: prQuery.refetch };
 }

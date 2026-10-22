@@ -7,7 +7,8 @@ import { ArchitecturePanel } from '../architecture/ArchitecturePanel';
 import { ChatInputBar } from '../chat/ChatInputBar';
 import { ChatPanel, type ChatRequest } from '../chat/ChatPanel';
 import { FileSlideout } from './content/FileSlideout';
-import { Md, PageSpinner } from '../../ui';
+import { Md } from '../../ui';
+import { PrPageSkeleton, PrUnavailable } from './PrPageStates';
 import type { RuleRef } from './content/RichContent';
 import { RulesPanel } from '../rules/RulesPanel';
 import { useRules } from '../rules/useRules';
@@ -33,9 +34,10 @@ export function ReviewPage() {
   const { data: user } = useCurrentUser();
 
   const {
-    walkthrough, status, error, isStale, commitsSinceReview, progress,
-    githubUrl, startedAt, prInfo, currentHeadSha, generate,
+    walkthrough, status, error, loadError, isStale, commitsSinceReview, progress,
+    githubUrl, startedAt, prInfo, currentHeadSha, generate, retryLoad,
   } = useReview(owner, repo, prNumber);
+  const loaded = status !== 'loading' && status !== 'unavailable';
 
   // A new object per question, so asking the same thing twice still sends it
   const [chatRequest, setChatRequest] = useState<ChatRequest | undefined>();
@@ -57,14 +59,27 @@ export function ReviewPage() {
     }
   }, [status, generate]);
 
-  // Rules, for the hover tooltips on rule citations; a failure just means no tooltips
-  const repoRules: RuleRef[] = useRules(owner, repo).data ?? [];
+  // Rules, for the hover tooltips on rule citations; a failure just means no
+  // tooltips. Waits for the PR, which is where access is established.
+  const repoRules: RuleRef[] = useRules(owner, repo, { enabled: loaded }).data ?? [];
 
   const cacheArchitectureSvg = useCallback((source: string, svg: string) => {
     setArchitectureSvgCache((cache) => (cache[source] === svg ? cache : { ...cache, [source]: svg }));
   }, []);
 
-  if (status === 'loading') return <PageSpinner fill="parent" />;
+  if (status === 'loading') return <PrPageSkeleton owner={owner} repo={repo} />;
+  // Nothing else mounts (comments, chat, the bar's actions): none of it can work
+  if (status === 'unavailable') {
+    return (
+      <PrUnavailable
+        owner={owner}
+        repo={repo}
+        number={prNumber}
+        error={loadError ?? new Error('Unavailable')}
+        onRetry={() => void retryLoad()}
+      />
+    );
+  }
 
   const hasReview = !!walkthrough;
   const findings = sortBySeverity(walkthrough?.findings ?? []);
