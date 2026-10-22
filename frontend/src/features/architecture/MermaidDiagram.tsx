@@ -44,8 +44,9 @@ export function MermaidDiagram({ source, cachedSvg, onRendered }: MermaidDiagram
         if (cancelled) return;
         const rendered = await mermaid.render(renderId, source);
         if (!cancelled) {
-          setSvg(rendered.svg);
-          onRendered?.(source, rendered.svg);
+          const svg = withoutImages(rendered.svg);
+          setSvg(svg);
+          onRendered?.(source, svg);
         }
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Unable to render diagram.');
@@ -79,4 +80,9 @@ export function MermaidDiagram({ source, cachedSvg, onRendered }: MermaidDiagram
       )}
     </div>
   );
+}
+
+/** Mermaid's image shapes load a URL from the diagram source, which the model writes */
+function withoutImages(svg: string): string {
+  return svg.replace(/<image\b[^>]*?(\/>|>[\s\S]*?<\/image>)/gi, '');
 }
