@@ -93,7 +93,7 @@ approved one with nothing blocking, a first review, a rerun that fails, a first
 review that fails, stale reviews with and without a known commit count, a rerun
 already in progress, an open PR nobody has reviewed, and merged and closed PRs.
 Simulated runs take 15s (`MOCK_JOB_SECONDS` to change it);
-`curl -X POST localhost:5174/__mock/reset` restores the seeds. Chat streams a canned reply; posting comments and editing rules are not mocked.
+`curl -X POST localhost:5174/__mock/reset` restores the seeds. Any PR under `private/` answers 403 and any under `outage/` answers 503, both after 1.5s, for trying the PR page's loading and error states (for example `/private/vault/pull/7`). Chat streams a canned reply; posting comments and editing rules are not mocked.
 
 ## Architecture
 

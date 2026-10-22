@@ -384,6 +384,16 @@ function handle(req: IncomingMessage, res: ServerResponse): boolean {
   }
   if (!path.startsWith('/api/')) return false;
 
+  // Repos for trying the PR page's error states: private/* is a repo the
+  // signed-in user can't access (after a GitHub-length pause), outage/* is down
+  if ((m = path.match(/^\/api\/(?:walkthroughs|rules|comments|chat|files)\/(private|outage)\//))) {
+    const [status, body] = m[1] === 'private'
+      ? [403, { error: 'You must be a collaborator on this repository to access Cruise Line' }]
+      : [503, { error: 'Service unavailable' }];
+    setTimeout(() => send(res, status, body), 1500);
+    return true;
+  }
+
   if (path === '/api/setup/status') {
     send(res, 200, { configured: true, appSlug: 'cruise-line-mock', appUrl: 'http://localhost:5174', githubUrl: GITHUB_URL, installUrl: `${GITHUB_URL}/apps/cruise-line-mock/installations/new`, hasOwner: true });
     return true;
