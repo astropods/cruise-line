@@ -23,10 +23,10 @@ import {
 import type { HookCallback } from '@astropods/adapter-claude-agent-sdk';
 import Anthropic from '@anthropic-ai/sdk';
 import { existsSync } from 'fs';
-import { symlink, readlink, lstat, mkdir, rm } from 'fs/promises';
+import { symlink, readlink, lstat, mkdir, rm, writeFile } from 'fs/promises';
 import { join, relative, resolve } from 'path';
 import {
-  gitAuthEnv, readRepoFile, redactCredentials, repoDirFor, repoFilePath, splitCloneUrl, toolStaysInRepo,
+  cleanGitConfig, gitEnv, readRepoFile, redactCredentials, repoDirFor, repoFilePath, splitCloneUrl, toolStaysInRepo,
 } from './paths.js';
 
 const app = new Hono();
@@ -67,21 +67,20 @@ async function ensureSymlink(repoDir: string, sessionDir: string): Promise<void>
   await symlink(sessionDir, linkPath);
 }
 
-/** Reset working tree to clean state */
+/** Reset the working tree to the commit, including ignored files a previous run left behind */
 async function resetRepo(repoDir: string): Promise<void> {
-  const checkout = Bun.spawn(['git', 'checkout', '.'], { cwd: repoDir, stdout: 'pipe', stderr: 'pipe' });
-  await checkout.exited;
-  const clean = Bun.spawn(['git', 'clean', '-fd'], { cwd: repoDir, stdout: 'pipe', stderr: 'pipe' });
-  await clean.exited;
+  await exec(['git', 'checkout', '.'], repoDir);
+  await exec(['git', 'clean', '-ffdx', '-e', '.claude'], repoDir);
 }
 
-/** Run a shell command and return stdout/stderr/ok */
+/** Run a command and return stdout/stderr/ok. git always runs with gitEnv's protections. */
 async function exec(
   cmd: string[],
   cwd?: string,
   env?: Record<string, string>,
 ): Promise<{ ok: boolean; stdout: string; stderr: string }> {
-  const proc = Bun.spawn(cmd, { cwd, env: env && { ...process.env, ...env }, stdout: 'pipe', stderr: 'pipe' });
+  const gitDefaults = cmd[0] === 'git' ? gitEnv() : {};
+  const proc = Bun.spawn(cmd, { cwd, env: { ...process.env, ...gitDefaults, ...env }, stdout: 'pipe', stderr: 'pipe' });
   const exitCode = await proc.exited;
   const stdout = await new Response(proc.stdout).text();
   const stderr = await new Response(proc.stderr).text();
@@ -301,14 +300,14 @@ app.post('/ensure-clone', async (c) => {
 
   // Older agents put the token in the URL; accept it there but never store it
   const secret = token ?? remote.token;
-  const auth = gitAuthEnv(secret);
+  const auth = secret ? gitEnv({ token: secret, remoteUrl: remote.url }) : gitEnv();
 
   try {
     await withCloneLock(repoDir, async () => {
       try {
         if (await isGitRepo(repoDir)) {
-          // Clones made before tokens moved out of URLs still have one in .git/config
-          await exec(['git', 'remote', 'set-url', 'origin', remote.url], repoDir);
+          // Back to a config we wrote: drops old tokens in URLs and anything planted since
+          await writeFile(join(repoDir, '.git', 'config'), cleanGitConfig(remote.url));
           if ((await getCurrentSha(repoDir)) === headSha) return;
           // Try to update — fetch PR ref (works for forks) with branch fallback
           if ((await fetchPrAndCheckout(repoDir, headSha, prNumber, auth)).ok) return;

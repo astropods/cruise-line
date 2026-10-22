@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { serveStatic } from 'hono/bun';
 import { cors } from 'hono/cors';
 import { secureHeaders } from 'hono/secure-headers';
+import { contentSecurityPolicy } from './middleware/csp.js';
 import { config, updateGitHubConfig } from './config.js';
 import { initDb } from './db/client.js';
 import {
@@ -42,15 +43,8 @@ if (!isDev) {
   app.use('*', secureHeaders({
     strictTransportSecurity: 'max-age=31536000; includeSubDomains',
     referrerPolicy: 'strict-origin-when-cross-origin',
-    contentSecurityPolicy: {
-      defaultSrc: ["'self'"],
-      scriptSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      imgSrc: ["'self'", 'https:', 'data:'],
-      connectSrc: ["'self'"],
-      frameSrc: ["'none'"],
-    },
   }));
+  app.use('*', contentSecurityPolicy);
 }
 
 // CORS for Vite dev server

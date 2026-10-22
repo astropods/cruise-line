@@ -60,6 +60,33 @@ const VERDICT_LABELS: Record<string, { emoji: string; label: string }> = {
   needs_discussion: { emoji: '💬', label: 'Needs discussion' },
 };
 
+// Credentials the sandbox can see, in the shapes they're issued in
+const SECRET_PATTERNS = [
+  /sk-ant-[A-Za-z0-9_-]{8,}/g, // Anthropic keys
+  /\bgh[pousr]_[A-Za-z0-9]{20,}/g, // GitHub tokens
+  /\bgithub_pat_[A-Za-z0-9_]{20,}/g,
+  /\bcl_live_[A-Za-z0-9_-]{16,}/g, // Cruise Line CLI tokens
+  /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g,
+];
+
+// HTML elements that load a URL when GitHub renders the comment
+const LOADING_TAGS = /<\/?(?:img|picture|source|video|audio|iframe|object|embed|svg|image|link|meta|base)\b[^>]*>/gi;
+
+/**
+ * Model-written text bound for a PR comment, which on a public repo anyone
+ * can read. Images and other loading elements go (GitHub fetches them, so a
+ * URL can carry data out without anyone clicking), and anything shaped like
+ * a credential is redacted. Other angle brackets stay: `Array<string>` is
+ * ordinary review text.
+ */
+export function sanitizeForComment(text: string): string {
+  let out = text
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+    .replace(LOADING_TAGS, '');
+  for (const pattern of SECRET_PATTERNS) out = out.replace(pattern, '[redacted]');
+  return out.trim();
+}
+
 function verdictBody(summary: AnalysisSummary, analysisUrl: string, stale: boolean): string {
   const v = VERDICT_LABELS[summary.verdict] ?? VERDICT_LABELS.needs_discussion;
   const counts = SEVERITIES.filter((s) => summary.findingCounts[s] > 0).map((s) => `${summary.findingCounts[s]} ${s}`);
@@ -71,7 +98,7 @@ function verdictBody(summary: AnalysisSummary, analysisUrl: string, stale: boole
   return `${COMMENT_MARKER}
 ## ${v.emoji} Cruise Line — ${v.label}
 
-${staleNote}${summary.verdictRationale}
+${staleNote}${sanitizeForComment(summary.verdictRationale)}
 
 ${total > 0 ? `**${total} finding${total === 1 ? '' : 's'}:** ${counts.join(' · ')}` : 'No findings.'}
 

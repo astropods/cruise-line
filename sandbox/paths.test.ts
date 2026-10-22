@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, rm, symlink, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import {
-  gitAuthEnv, readRepoFile, redactCredentials, repoDirFor, repoFilePath, splitCloneUrl, toolStaysInRepo,
+  cleanGitConfig, gitEnv, readRepoFile, redactCredentials, repoDirFor, repoFilePath, splitCloneUrl, toolStaysInRepo,
 } from './paths';
 
 describe('repoDirFor', () => {
@@ -94,6 +94,18 @@ describe('files on disk', () => {
     expect(await toolStaysInRepo(repo, 'Glob', { pattern: '../**' })).toBe(false);
     expect(await toolStaysInRepo(repo, 'Grep', { pattern: 'x', glob: '../**' })).toBe(false);
   });
+
+  test('toolStaysInRepo denies paths the SDK would rewrite before using', async () => {
+    // The SDK trims and expands ~, so these reach / and the home directory
+    expect(await toolStaysInRepo(repo, 'Grep', { pattern: 'x', path: ' /data/repos' })).toBe(false);
+    expect(await toolStaysInRepo(repo, 'Glob', { pattern: '*', path: '\t/' })).toBe(false);
+    expect(await toolStaysInRepo(repo, 'Grep', { pattern: 'x', path: '~/.claude/projects' })).toBe(false);
+    expect(await toolStaysInRepo(repo, 'Grep', { pattern: 'x', path: '~' })).toBe(false);
+    expect(await toolStaysInRepo(repo, 'Read', { file_path: 'src/a.ts ' })).toBe(false);
+    expect(await toolStaysInRepo(repo, 'Read', { file_path: 'src/a.ts\0' })).toBe(false);
+    expect(await toolStaysInRepo(repo, 'Glob', { pattern: ' /data/**' })).toBe(false);
+    expect(await toolStaysInRepo(repo, 'Glob', { pattern: '~/**' })).toBe(false);
+  });
 });
 
 describe('clone credentials', () => {
@@ -111,11 +123,26 @@ describe('clone credentials', () => {
     expect(splitCloneUrl('http://github.com/acme/api.git')).toBeNull();
   });
 
-  test('gitAuthEnv sends the token as a header, never in config', () => {
-    const env = gitAuthEnv('ghs_abc');
-    expect(env.GIT_CONFIG_KEY_0).toBe('http.extraHeader');
-    expect(env.GIT_CONFIG_VALUE_0).toBe(`Authorization: Basic ${Buffer.from('x-access-token:ghs_abc').toString('base64')}`);
-    expect(gitAuthEnv(undefined)).toEqual({ GIT_TERMINAL_PROMPT: '0' });
+  test('gitEnv sends the token as a header scoped to the remote, never in config', () => {
+    const env = gitEnv({ token: 'ghs_abc', remoteUrl: 'https://github.com/acme/api.git' });
+    const entries = Object.fromEntries(
+      Array.from({ length: Number(env.GIT_CONFIG_COUNT) }, (_, i) => [env[`GIT_CONFIG_KEY_${i}`], env[`GIT_CONFIG_VALUE_${i}`]]),
+    );
+    expect(entries['http.https://github.com/.extraHeader']).toBe(`Authorization: Basic ${Buffer.from('x-access-token:ghs_abc').toString('base64')}`);
+    expect(entries['http.extraHeader']).toBeUndefined();
+  });
+
+  test('gitEnv turns off hooks, fsmonitor, other protocols, and global config', () => {
+    const env = gitEnv();
+    const keys = Array.from({ length: Number(env.GIT_CONFIG_COUNT) }, (_, i) => `${env[`GIT_CONFIG_KEY_${i}`]}=${env[`GIT_CONFIG_VALUE_${i}`]}`);
+    expect(keys).toEqual(['core.hooksPath=/dev/null', 'core.fsmonitor=false', 'protocol.allow=never', 'protocol.https.allow=always']);
+    expect(env.GIT_CONFIG_GLOBAL).toBe('/dev/null');
+    expect(env.GIT_CONFIG_NOSYSTEM).toBe('1');
+  });
+
+  test('cleanGitConfig keeps only the remote', () => {
+    expect(cleanGitConfig('https://github.com/acme/api.git')).toContain('url = https://github.com/acme/api.git');
+    expect(cleanGitConfig('https://github.com/acme/api.git')).not.toContain('insteadOf');
   });
 
   test('redactCredentials strips URL credentials and the token', () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { buildCommentBody, commentStateFor, COMMENT_MARKER } from './github/pr-comment.js';
+import { buildCommentBody, commentStateFor, COMMENT_MARKER, sanitizeForComment } from './github/pr-comment.js';
 import { countFindings, severityCounts } from './analysis/summary.js';
 
 const data = {
@@ -64,5 +64,27 @@ describe('severity counts', () => {
 
   it('ignores unknown severities', () => {
     expect(countFindings([{ severity: 'critical' }, { severity: 'nope' }])).toEqual({ critical: 1, high: 0, medium: 0, low: 0, info: 0 });
+  });
+});
+
+describe('sanitizeForComment', () => {
+  it('drops images and elements that load a URL', () => {
+    expect(sanitizeForComment('Fine. ![x](https://evil.example/?d=1) <img src="https://evil.example/a">'))
+      .toBe('Fine.');
+    expect(sanitizeForComment('a <iframe src="https://evil.example"></iframe> b <IMG SRC=x> c')).toBe('a  b  c');
+  });
+
+  it('keeps angle brackets that are just code', () => {
+    expect(sanitizeForComment('Returns `Array<string>` and Map<string, number>; also <br> stays.'))
+      .toBe('Returns `Array<string>` and Map<string, number>; also <br> stays.');
+  });
+
+  it('redacts anything shaped like a credential', () => {
+    const text = 'key sk-ant-api03-abcdefghijklmnop and ghs_abcdefghijklmnopqrstuvwxyz0123 and cl_live_abcdefghijklmnopqrst';
+    expect(sanitizeForComment(text)).toBe('key [redacted] and [redacted] and [redacted]');
+  });
+
+  it('leaves ordinary text and links alone', () => {
+    expect(sanitizeForComment('See [the docs](https://example.com) for `x < y`.')).toBe('See [the docs](https://example.com) for `x < y`.');
   });
 });
