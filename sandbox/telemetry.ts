@@ -2,18 +2,17 @@
  * OTEL telemetry bootstrap for the sandbox.
  *
  * Instrumentation is delegated to `@astropods/adapter-claude-agent-sdk`, a
- * drop-in replacement for `@anthropic-ai/claude-agent-sdk` that wires up an
- * OTLP exporter and applies OpenInference's `ClaudeAgentSDKInstrumentation`
- * when `OTEL_EXPORTER_OTLP_ENDPOINT` is set. The adapter also installs
- * SIGTERM/SIGINT flush handlers internally.
+ * drop-in replacement for `@anthropic-ai/claude-agent-sdk` that applies
+ * OpenInference's `ClaudeAgentSDKInstrumentation` when
+ * `OTEL_EXPORTER_OTLP_ENDPOINT` is set. The tracer provider (OTLP exporter,
+ * SIGTERM/SIGINT flush) comes from `@astropods/adapter-core`, which builds
+ * one per process and hands the same one to every caller.
  *
  * This module re-exports the adapter's SDK surface and keeps a small
  * diagnostic surface:
  *   - `getTelemetryStatus()` reports endpoint + recent OTEL warnings/errors.
- *   - `runTelemetryTest()` emits a span via the globally registered tracer.
- *     The adapter does not expose its provider handle, so this can't
- *     force-flush — the BatchSpanProcessor's auto-flush will eventually
- *     deliver it. Verify at the Langfuse end.
+ *   - `runTelemetryTest()` emits a span and force-flushes the shared
+ *     provider, so an export failure shows up in the response.
  *
  * The diag logger is installed in `./diag-init.ts`, which MUST be imported
  * before the adapter so its `instrumentSDK()` init-time diagnostics land in
@@ -27,6 +26,7 @@
 
 import { diagBuffer, type DiagEntry } from './diag-init.ts';
 import { trace, type Span } from '@opentelemetry/api';
+import { getOrCreateAstroTracerProvider } from '@astropods/adapter-core';
 
 export {
   query,
@@ -45,12 +45,12 @@ interface TelemetryStatus {
 
 const endpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? null;
 const status: TelemetryStatus = {
-  // The adapter only instruments when the endpoint is set, so env presence is
-  // an accurate proxy for "initialized" without needing a handle from the adapter.
-  initialized: !!endpoint,
+  // The same cached provider the adapter instrumented the SDK with
+  initialized: getOrCreateAstroTracerProvider() !== null,
   endpoint,
   exporterUrl: endpoint ? endpoint.replace(/\/+$/, '') + '/v1/traces' : null,
-  serviceName: process.env.ASTRO_AGENT_NAME ?? 'cruise-line-sandbox',
+  // What adapter-core puts on the resource
+  serviceName: process.env.ASTRO_AGENT_NAME ?? 'astro-agent',
   serviceVersion: process.env.ASTRO_AGENT_BUILD ?? 'dev',
   recentDiag: diagBuffer,
 };
@@ -65,11 +65,7 @@ export function getTelemetryStatus(): TelemetryStatus {
   return { ...status, recentDiag: [...diagBuffer] };
 }
 
-/**
- * Emit a test span via the globally registered tracer. The adapter owns the
- * provider, so we can't force-flush here — confirm delivery at the Langfuse
- * end (or wait for the BatchSpanProcessor's scheduled export).
- */
+/** Emit a test span and flush it, reporting any export error */
 export async function runTelemetryTest(): Promise<{
   ok: boolean;
   spanEmitted: boolean;
@@ -82,6 +78,7 @@ export async function runTelemetryTest(): Promise<{
   const before = diagBuffer.length;
   let spanEmitted = false;
   let span: Span | null = null;
+  const provider = getOrCreateAstroTracerProvider();
   try {
     const tracer = trace.getTracer('cruise-line.sandbox.debug', '0.1.0');
     span = tracer.startSpan('telemetry.test', {
@@ -92,6 +89,7 @@ export async function runTelemetryTest(): Promise<{
     });
     span.end();
     spanEmitted = true;
+    await provider?.forceFlush();
   } catch (err) {
     return {
       ok: false,
