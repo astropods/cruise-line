@@ -50,9 +50,10 @@ export function App() {
           <Route path="/__ui" element={<Suspense fallback={null}><UiGallery /></Suspense>} />
         )}
 
-        {/* Signed out, the root is the public home page; signed in, it's the inbox */}
-        <Route element={<AuthGate signedOut={<HomePage />} />}>
-          <Route element={<SetupGate />}>
+        {/* Unconfigured installs go to setup first, since nobody can sign in yet.
+            After that, signed out, the root is the public home page; signed in, it's the inbox */}
+        <Route element={<SetupGate />}>
+          <Route element={<AuthGate signedOut={<HomePage />} />}>
             <Route element={<AppShell />}>
               <Route index element={<InboxHome />} />
               <Route path="/:owner/:repo/pull/:pr/:view?" element={<ReviewRoute />} />

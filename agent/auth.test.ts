@@ -46,6 +46,7 @@ mock.module(path.resolve(import.meta.dir, './config.ts'), () => ({
     github: { baseUrl: 'https://api.github.com' },
     session: { cookieName: 'cruise_session' },
   },
+  isGitHubConfigured: () => true,
 }));
 
 mock.module(path.resolve(import.meta.dir, './github/app.ts'), () => ({

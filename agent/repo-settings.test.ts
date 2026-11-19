@@ -6,6 +6,7 @@ mock.module(path.resolve(import.meta.dir, './config.ts'), () => ({
   config: {
     db: { url: 'postgres://mock@localhost:5432/mock' },
   },
+  isGitHubConfigured: () => true,
 }));
 
 const { normalizeScopePath, normalizeScopePaths, anyFileMatchesScope } =
