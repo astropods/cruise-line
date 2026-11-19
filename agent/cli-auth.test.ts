@@ -32,6 +32,7 @@ mock.module(path.resolve(import.meta.dir, './config.ts'), () => ({
     // because no test path actually opens a real Postgres connection.
     db: { url: 'postgres://noop' },
   },
+  isGitHubConfigured: () => true,
 }));
 
 // db/sessions.ts pulls in ./client.ts (real Postgres) unless we stub it —

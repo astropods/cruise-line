@@ -1,20 +1,23 @@
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, mock, it } from 'bun:test';
+import path from 'path';
 import { Hono } from 'hono';
-import { config } from './config.js';
-import { contentSecurityPolicy } from './middleware/csp.js';
 
-async function policyFor(htmlUrl: string): Promise<string> {
-  // Other test files mock config with a partial object that can lack github
-  (config as any).github ??= {};
-  const previous = config.github.htmlUrl;
-  config.github.htmlUrl = htmlUrl;
-  try {
-    const app = new Hono().use('*', contentSecurityPolicy).get('/', (c) => c.text('ok'));
-    const res = await app.request('/');
-    return res.headers.get('Content-Security-Policy') ?? '';
-  } finally {
-    config.github.htmlUrl = previous;
-  }
+// Module mocks are process-wide, and other files mock config with partial
+// objects, so this file brings its own
+const mockConfig = { github: { htmlUrl: 'https://github.com' } };
+let appConfigured = true;
+mock.module(path.resolve(import.meta.dir, './config.ts'), () => ({
+  config: mockConfig,
+  isGitHubConfigured: () => appConfigured,
+}));
+const { contentSecurityPolicy } = await import('./middleware/csp.js');
+
+async function policyFor(htmlUrl: string, { configured = true } = {}): Promise<string> {
+  mockConfig.github.htmlUrl = htmlUrl;
+  appConfigured = configured;
+  const app = new Hono().use('*', contentSecurityPolicy).get('/', (c) => c.text('ok'));
+  const res = await app.request('/');
+  return res.headers.get('Content-Security-Policy') ?? '';
 }
 
 describe('contentSecurityPolicy', () => {
@@ -33,5 +36,15 @@ describe('contentSecurityPolicy', () => {
     const csp = await policyFor('https://github.com');
     expect(csp).toContain('https://fonts.googleapis.com');
     expect(csp).toContain('font-src');
+  });
+
+  it('lets first-time setup post the App manifest to any GitHub host', async () => {
+    const csp = await policyFor('https://github.com', { configured: false });
+    expect(csp).toContain("form-action 'self' https:");
+  });
+
+  it('keeps forms on the app once the GitHub App exists', async () => {
+    const csp = await policyFor('https://github.com');
+    expect(csp).toContain("form-action 'self';");
   });
 });
